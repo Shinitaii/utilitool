@@ -1,5 +1,5 @@
-import { Request, Response } from 'express';
-import { propertyService } from './property.service';
+﻿import {Request, Response} from "express";
+import {propertyService} from "./property.service";
 import {
   CreatePropertyBatchDTO,
   CreatePropertyDTO,
@@ -7,8 +7,8 @@ import {
   PropertyByIdParamsDTO,
   UpdatePropertyBatchDTO,
   UpdatePropertyDTO,
-} from './property.dto';
-import { AppError } from '../../utils/error.util';
+} from "./property.dto";
+import {AppError} from "../../utils/error.util";
 
 export const createProperty = async (
   req: Request,
@@ -32,11 +32,11 @@ export const getPropertyById = async (
   req: Request,
   res: Response
 ): Promise<void> => {
-  const { id } = req.params as unknown as PropertyByIdParamsDTO;
+  const {id} = req.params as unknown as PropertyByIdParamsDTO;
   const property = await propertyService.getById(id);
 
   if (!property) {
-    throw new AppError(404, 'Property not found');
+    throw new AppError(404, "Property not found");
   }
 
   res.status(200).json(property);
@@ -62,7 +62,7 @@ export const updateProperty = async (
   req: Request,
   res: Response
 ): Promise<void> => {
-  const { id } = req.params;
+  const {id} = req.params;
   const data = req.body as UpdatePropertyDTO;
   const result = await propertyService.update(id, data);
   res.status(200).json(result);
@@ -81,7 +81,7 @@ export const deleteProperty = async (
   req: Request,
   res: Response
 ): Promise<void> => {
-  const { id } = req.params;
+  const {id} = req.params;
   await propertyService.delete(id);
   res.status(204).send();
 };
@@ -90,7 +90,7 @@ export const softDeleteProperty = async (
   req: Request,
   res: Response
 ): Promise<void> => {
-  const { id } = req.params;
+  const {id} = req.params;
   const result = await propertyService.softDelete(id);
   res.status(200).json(result);
 };

@@ -1,9 +1,9 @@
-import { AppError } from '../../utils/error.util';
-import { logger } from '../../utils/logger.util';
-import { propertyRepository } from '../property/property.repository';
-import { tenantRepository } from './tenant.repository';
-import { CreateTenantDTO, UpdateTenantDTO } from './tenant.dto';
-import { Tenant } from './tenant.model';
+﻿import {AppError} from "../../utils/error.util";
+import {logger} from "../../utils/logger.util";
+import {propertyRepository} from "../property/property.repository";
+import {tenantRepository} from "./tenant.repository";
+import {CreateTenantDTO, UpdateTenantDTO} from "./tenant.dto";
+import {Tenant} from "./tenant.model";
 
 const normalizeTenantName = (tenantName: string) => tenantName.trim().toLowerCase();
 
@@ -13,10 +13,10 @@ export class TenantValidator {
     tenantName: string,
     excludeId?: string
   ): Promise<Tenant | undefined> {
-    const { data: candidates } = await tenantRepository.search({
+    const {data: candidates} = await tenantRepository.search({
       limit: 1000,
-      orderBy: 'created_at',
-      filters: { property_id: propertyId },
+      orderBy: "created_at",
+      filters: {property_id: propertyId},
     });
 
     const normalizedTenantName = normalizeTenantName(tenantName);
@@ -35,11 +35,11 @@ export class TenantValidator {
     let total = 0;
 
     do {
-      const { data, hasMore, nextCursor } = await tenantRepository.search({
+      const {data, hasMore, nextCursor} = await tenantRepository.search({
         limit: 1000,
-        orderBy: 'created_at',
+        orderBy: "created_at",
         cursor,
-        filters: { property_id: propertyId },
+        filters: {property_id: propertyId},
       });
 
       total += data.length;
@@ -52,7 +52,7 @@ export class TenantValidator {
   private async ensurePropertyExists(propertyId: string): Promise<void> {
     const property = await propertyRepository.getById(propertyId);
     if (!property) {
-      throw new AppError(404, 'Property not found');
+      throw new AppError(404, "Property not found");
     }
   }
 
@@ -60,18 +60,18 @@ export class TenantValidator {
     const property = await propertyRepository.getById(data.property_id);
 
     if (!property) {
-      throw new AppError(404, 'Property not found');
+      throw new AppError(404, "Property not found");
     }
 
     const tenantCount = await this.countTenantsForProperty(data.property_id);
     if (tenantCount >= property.tenant_amount) {
-      throw new AppError(409, 'Property has reached the maximum number of tenants allowed');
+      throw new AppError(409, "Property has reached the maximum number of tenants allowed");
     }
 
     const duplicate = await this.findDuplicateTenant(data.property_id, data.tenant_name);
     if (duplicate) {
-      logger.warn({ property_id: data.property_id, tenant_name: data.tenant_name }, 'Duplicate tenant creation attempt');
-      throw new AppError(409, 'Tenant name already exists for the selected property');
+      logger.warn({property_id: data.property_id, tenant_name: data.tenant_name}, "Duplicate tenant creation attempt");
+      throw new AppError(409, "Tenant name already exists for the selected property");
     }
   }
 
@@ -84,7 +84,7 @@ export class TenantValidator {
         const property = await propertyRepository.getById(item.property_id);
 
         if (!property) {
-          throw new AppError(404, 'Property not found');
+          throw new AppError(404, "Property not found");
         }
 
         const existingCount = await this.countTenantsForProperty(item.property_id);
@@ -101,13 +101,13 @@ export class TenantValidator {
       const normalizedTenantName = normalizeTenantName(item.tenant_name);
 
       if (propertyState && propertyState.existingCount + propertyState.seenCount >= propertyState.tenantAmount) {
-        throw new AppError(409, 'Property has reached the maximum number of tenants allowed');
+        throw new AppError(409, "Property has reached the maximum number of tenants allowed");
       }
 
       const duplicate = await this.findDuplicateTenant(item.property_id, item.tenant_name);
       if (duplicate || seenNames.has(normalizedTenantName)) {
-        logger.warn({ property_id: item.property_id, tenant_name: item.tenant_name }, 'Duplicate tenant batch creation attempt');
-        throw new AppError(409, 'Tenant name already exists for the selected property');
+        logger.warn({property_id: item.property_id, tenant_name: item.tenant_name}, "Duplicate tenant batch creation attempt");
+        throw new AppError(409, "Tenant name already exists for the selected property");
       }
 
       seenNames.add(normalizedTenantName);
@@ -130,15 +130,15 @@ export class TenantValidator {
       if (property) {
         const tenantCount = await this.countTenantsForProperty(data.property_id);
         if (tenantCount >= property.tenant_amount) {
-          throw new AppError(409, 'Property has reached the maximum number of tenants allowed');
+          throw new AppError(409, "Property has reached the maximum number of tenants allowed");
         }
       }
     }
 
     const duplicate = await this.findDuplicateTenant(nextPropertyId, nextTenantName, tenant.id);
     if (duplicate) {
-      logger.warn({ property_id: nextPropertyId, tenant_name: nextTenantName }, 'Duplicate tenant update attempt');
-      throw new AppError(409, 'Tenant name already exists for the selected property');
+      logger.warn({property_id: nextPropertyId, tenant_name: nextTenantName}, "Duplicate tenant update attempt");
+      throw new AppError(409, "Tenant name already exists for the selected property");
     }
   }
 
@@ -147,7 +147,7 @@ export class TenantValidator {
       const tenant = await tenantRepository.getById(update.id);
 
       if (!tenant) {
-        throw new AppError(404, 'Tenant not found');
+        throw new AppError(404, "Tenant not found");
       }
 
       await this.validateUpdate(tenant, update.data);

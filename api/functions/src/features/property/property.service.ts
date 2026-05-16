@@ -1,9 +1,9 @@
-import { AppError } from '../../utils/error.util';
-import { PaginatedResult } from '../../utils/pagination.util';
-import { propertyRepository } from './property.repository';
-import { CreatePropertyDTO, UpdatePropertyDTO } from './property.dto';
-import { Property } from './property.model';
-import { PropertyValidator } from './property.validator';
+﻿import {AppError} from "../../utils/error.util";
+import {PaginatedResult} from "../../utils/pagination.util";
+import {propertyRepository} from "./property.repository";
+import {CreatePropertyDTO, UpdatePropertyDTO} from "./property.dto";
+import {Property} from "./property.model";
+import {PropertyValidator} from "./property.validator";
 
 const validator = new PropertyValidator();
 
@@ -32,12 +32,12 @@ export const propertyService = {
   async search(options: PropertySearchOptions): Promise<PaginatedResult<Property>> {
     return propertyRepository.search({
       limit: options.limit,
-      orderBy: 'created_at',
-      orderDirection: 'desc',
+      orderBy: "created_at",
+      orderDirection: "desc",
       cursor: options.cursor,
       filters: {
-        ...(options.roomName ? { room_name: options.roomName } : {}),
-        ...(options.meterGroupId ? { meter_group_id: options.meterGroupId } : {}),
+        ...(options.roomName ? {room_name: options.roomName} : {}),
+        ...(options.meterGroupId ? {meter_group_id: options.meterGroupId} : {}),
       },
     });
   },
@@ -46,7 +46,7 @@ export const propertyService = {
     const property = await propertyRepository.getById(id);
 
     if (!property) {
-      throw new AppError(404, 'Property not found');
+      throw new AppError(404, "Property not found");
     }
 
     await validator.validateUpdate(property, data);
@@ -68,7 +68,7 @@ export const propertyService = {
     const property = await propertyRepository.getById(id);
 
     if (!property) {
-      throw new AppError(404, 'Property not found');
+      throw new AppError(404, "Property not found");
     }
 
     await propertyRepository.delete(id);
@@ -78,7 +78,7 @@ export const propertyService = {
     const property = await propertyRepository.getById(id);
 
     if (!property) {
-      throw new AppError(404, 'Property not found');
+      throw new AppError(404, "Property not found");
     }
 
     return propertyRepository.softDelete(id);

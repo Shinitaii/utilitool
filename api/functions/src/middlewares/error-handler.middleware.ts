@@ -1,6 +1,6 @@
-import { Request, Response, NextFunction } from 'express';
-import { logger } from '../utils/logger.util';
-import { AppError } from '../utils/error.util';
+﻿import {Request, Response, NextFunction} from "express";
+import {logger} from "../utils/logger.util";
+import {AppError} from "../utils/error.util";
 
 export const errorHandler = (
   error: Error,
@@ -15,9 +15,9 @@ export const errorHandler = (
       path: req.path,
       method: req.method,
       statusCode: error.statusCode,
-    }, 'Request error');
+    }, "Request error");
 
-    res.status(error.statusCode).json({ error: error.message });
+    res.status(error.statusCode).json({error: error.message});
     return;
   }
 
@@ -26,7 +26,7 @@ export const errorHandler = (
     stack: error.stack,
     path: req.path,
     method: req.method,
-  }, 'Request error');
+  }, "Request error");
 
-  res.status(500).json({ error: 'Internal server error' });
+  res.status(500).json({error: "Internal server error"});
 };

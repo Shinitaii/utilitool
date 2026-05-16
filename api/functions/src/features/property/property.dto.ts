@@ -1,5 +1,5 @@
-import { z } from 'zod';
-import { stripHtml } from '../../utils/sanitize.util';
+﻿import {z} from "zod";
+import {stripHtml} from "../../utils/sanitize.util";
 
 export const CreatePropertyDTOSchema = z.object({
   room_name: z.string().trim().min(1).max(255).transform(stripHtml),

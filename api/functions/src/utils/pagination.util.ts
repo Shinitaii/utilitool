@@ -1,7 +1,7 @@
-export interface PaginationOptions {
+﻿export interface PaginationOptions {
   limit: number;
   orderBy: string;
-  orderDirection?: 'asc' | 'desc';
+  orderDirection?: "asc" | "desc";
   cursor?: string | null;
 }
 

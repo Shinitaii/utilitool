@@ -1,4 +1,4 @@
-import path from "node:path";
+﻿import path from "node:path";
 import dotenv from "dotenv";
 
 export const isEmulator = Boolean(
@@ -10,7 +10,7 @@ export const isEmulator = Boolean(
 const bootstrapEnv = process.env.APP_ENV ?? (isEmulator ? "test" : "dev");
 
 const envFile = path.resolve(process.cwd(), "secrets", `.env.${bootstrapEnv}`);
-dotenv.config({ path: envFile });
+dotenv.config({path: envFile});
 
 export const firebaseProjectId =
   process.env.GCLOUD_PROJECT ||
@@ -18,15 +18,15 @@ export const firebaseProjectId =
   process.env.PROJECT_ID;
 
 export const getFirebaseAppOptions = () => {
-	const options: { projectId?: string; databaseURL?: string } = {};
+  const options: { projectId?: string; databaseURL?: string } = {};
 
-	if (firebaseProjectId) {
-		options.projectId = firebaseProjectId;
-	}
+  if (firebaseProjectId) {
+    options.projectId = firebaseProjectId;
+  }
 
-	if (process.env.FIREBASE_DATABASE_URL) {
-		options.databaseURL = process.env.FIREBASE_DATABASE_URL;
-	}
+  if (process.env.FIREBASE_DATABASE_URL) {
+    options.databaseURL = process.env.FIREBASE_DATABASE_URL;
+  }
 
-	return options;
+  return options;
 };

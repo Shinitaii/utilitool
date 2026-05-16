@@ -1,5 +1,5 @@
-import { Request, Response } from 'express';
-import { tenantService } from './tenant.service';
+﻿import {Request, Response} from "express";
+import {tenantService} from "./tenant.service";
 import {
   CreateTenantBatchDTO,
   CreateTenantDTO,
@@ -7,8 +7,8 @@ import {
   TenantByIdParamsDTO,
   UpdateTenantBatchDTO,
   UpdateTenantDTO,
-} from './tenant.dto';
-import { AppError } from '../../utils/error.util';
+} from "./tenant.dto";
+import {AppError} from "../../utils/error.util";
 
 export const createTenant = async (
   req: Request,
@@ -32,11 +32,11 @@ export const getTenantById = async (
   req: Request,
   res: Response
 ): Promise<void> => {
-  const { id } = req.params as unknown as TenantByIdParamsDTO;
+  const {id} = req.params as unknown as TenantByIdParamsDTO;
   const tenant = await tenantService.getById(id);
 
   if (!tenant) {
-    throw new AppError(404, 'Tenant not found');
+    throw new AppError(404, "Tenant not found");
   }
 
   res.status(200).json(tenant);
@@ -62,7 +62,7 @@ export const updateTenant = async (
   req: Request,
   res: Response
 ): Promise<void> => {
-  const { id } = req.params;
+  const {id} = req.params;
   const data = req.body as UpdateTenantDTO;
   const result = await tenantService.update(id, data);
   res.status(200).json(result);
@@ -81,7 +81,7 @@ export const deleteTenant = async (
   req: Request,
   res: Response
 ): Promise<void> => {
-  const { id } = req.params;
+  const {id} = req.params;
   await tenantService.delete(id);
   res.status(204).send();
 };
@@ -90,7 +90,7 @@ export const softDeleteTenant = async (
   req: Request,
   res: Response
 ): Promise<void> => {
-  const { id } = req.params;
+  const {id} = req.params;
   const result = await tenantService.softDelete(id);
   res.status(200).json(result);
 };

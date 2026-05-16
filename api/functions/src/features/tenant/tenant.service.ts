@@ -1,10 +1,10 @@
-import { Timestamp } from 'firebase-admin/firestore';
-import { AppError } from '../../utils/error.util';
-import { PaginatedResult } from '../../utils/pagination.util';
-import { tenantRepository } from './tenant.repository';
-import { CreateTenantDTO, UpdateTenantDTO } from './tenant.dto';
-import { Tenant } from './tenant.model';
-import { TenantValidator } from './tenant.validator';
+﻿import {Timestamp} from "firebase-admin/firestore";
+import {AppError} from "../../utils/error.util";
+import {PaginatedResult} from "../../utils/pagination.util";
+import {tenantRepository} from "./tenant.repository";
+import {CreateTenantDTO, UpdateTenantDTO} from "./tenant.dto";
+import {Tenant} from "./tenant.model";
+import {TenantValidator} from "./tenant.validator";
 
 const validator = new TenantValidator();
 
@@ -43,12 +43,12 @@ export const tenantService = {
   async search(options: TenantSearchOptions): Promise<PaginatedResult<Tenant>> {
     return tenantRepository.search({
       limit: options.limit,
-      orderBy: 'created_at',
-      orderDirection: 'desc',
+      orderBy: "created_at",
+      orderDirection: "desc",
       cursor: options.cursor,
       filters: {
-        ...(options.tenantName ? { tenant_name: options.tenantName } : {}),
-        ...(options.propertyId ? { property_id: options.propertyId } : {}),
+        ...(options.tenantName ? {tenant_name: options.tenantName} : {}),
+        ...(options.propertyId ? {property_id: options.propertyId} : {}),
       },
     });
   },
@@ -57,7 +57,7 @@ export const tenantService = {
     const tenant = await tenantRepository.getById(id);
 
     if (!tenant) {
-      throw new AppError(404, 'Tenant not found');
+      throw new AppError(404, "Tenant not found");
     }
 
     await validator.validateUpdate(tenant, data);
@@ -79,7 +79,7 @@ export const tenantService = {
     const tenant = await tenantRepository.getById(id);
 
     if (!tenant) {
-      throw new AppError(404, 'Tenant not found');
+      throw new AppError(404, "Tenant not found");
     }
 
     await tenantRepository.delete(id);
@@ -89,7 +89,7 @@ export const tenantService = {
     const tenant = await tenantRepository.getById(id);
 
     if (!tenant) {
-      throw new AppError(404, 'Tenant not found');
+      throw new AppError(404, "Tenant not found");
     }
 
     return tenantRepository.softDelete(id);

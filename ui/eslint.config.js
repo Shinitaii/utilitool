@@ -1,4 +1,4 @@
-import prettier from 'eslint-config-prettier';
+﻿import prettier from 'eslint-config-prettier';
 import path from 'node:path';
 import { includeIgnoreFile } from '@eslint/compat';
 import js from '@eslint/js';

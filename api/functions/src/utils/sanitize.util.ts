@@ -1,1 +1,1 @@
-export const stripHtml = (value: string) => value.replace(/<[^>]*>/g, '');
+﻿export const stripHtml = (value: string) => value.replace(/<[^>]*>/g, "");

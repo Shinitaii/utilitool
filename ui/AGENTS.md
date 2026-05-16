@@ -1,4 +1,4 @@
-## Project Configuration
+﻿## Project Configuration
 
 - **Language**: TypeScript
 - **Package Manager**: npm

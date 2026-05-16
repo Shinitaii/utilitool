@@ -1,4 +1,4 @@
-# CLAUDE.md
+﻿# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -255,3 +255,102 @@ Only administrators can create meter groups, run billing cycles, and manage the 
 ## Conclusion
 
 Utilitool transforms utility billing from a manual, error-prone spreadsheet nightmare into a validated, auditable, and transparent system. By catching errors early and automating calculations, it protects both the utility provider's revenue and the customer's trust.
+
+---
+
+# File & Folder Reference Map
+
+For quick navigation of critical files and folders, refer to the tables below. Each entry lists what the file or folder handles or owns.
+
+## Root Level
+
+| Path | What It Handles |
+|---|---|
+| `CLAUDE.md` | Project guidance, API/UI commands, business overview, file map |
+| `docker-compose.yml` | Docker multi-container orchestration (currently empty placeholder) |
+| `Dockerfile` | Docker image build configuration (currently empty placeholder) |
+| `.dockerignore` | Docker build exclusions (currently empty placeholder) |
+| `.gitignore` | Git ignore patterns: `api/functions/node_modules`, `api/functions/package-lock.json` |
+| `.vscode/settings.json` | VSCode editor configuration: file/search/watcher exclusions, UI preferences |
+| `.github/workflows/` | CI/CD pipeline definitions (directory empty, no workflows defined yet) |
+
+## API Backend — `api/`
+
+### Configuration & Setup
+
+| Path | What It Handles |
+|---|---|
+| `api/firebase.json` | Firebase CLI config: function codebase location, pre-deploy hooks (lint, build), ignore patterns |
+| `api/.firebaserc` | Firebase project alias mapping: `utilitool-3fe70` |
+
+### TypeScript Backend — `api/functions/`
+
+| Path | What It Handles |
+|---|---|
+| `api/functions/CLAUDE.md` | Backend architecture rules, feature layer pattern, coding conventions |
+| `api/functions/package.json` | Dependencies: Express, Firebase Admin/Functions v7, Zod v4, Pino logging, ts-jest |
+| `api/functions/tsconfig.json` | TypeScript compiler config: `es2017` target, `NodeNext` modules, `src` → `lib` compilation |
+| `api/functions/tsconfig.dev.json` | Dev-only TypeScript config for ESLint parsing |
+| `api/functions/.eslintrc.js` | ESLint config: Google style guide, TypeScript, import plugin, Jest plugin for tests |
+| `api/functions/jest.config.ts` | Jest test runner config: ts-jest preset, `src/` root, matches `*.test.ts` / `*.spec.ts` |
+| `api/functions/src/` | All TypeScript source code (compiles to `lib/`) |
+| `api/functions/lib/` | Compiled JavaScript output (mirrors `src/` structure) |
+| `api/functions/secrets/` | Environment variable files: `.env.{APP_ENV}` (git-ignored, not committed) |
+
+### API Source Layer: `api/functions/src/`
+
+| Path | What It Handles |
+|---|---|
+| `src/index.ts` | Firebase Cloud Function entry point: Express app initialization, feature router mounting (`/meter-groups`, `/properties`, `/tenants`) |
+| `src/config/` | Configuration modules: env vars, error handling, Firebase initialization, logging, rate limiting, Redis connection |
+| `src/constants/` | Constants: Firestore collection names, utility type definitions (electricity, water) |
+| `src/lib/` | Firebase abstraction layer: generic `Repository<T>` class, Firestore/Realtime DB primitives, stubs for auth/storage/notifications |
+| `src/middlewares/` | Express middleware: authentication, error handling, request logging, DTO validation, Zod schema validation |
+| `src/utils/` | Shared utilities: `BaseModel` interface, `AppError` exception class, Pino logger, Firestore snapshot conversion, pagination, HTML sanitization |
+
+### API Features: `api/functions/src/features/`
+
+Each feature follows the 8-layer pattern: model → dto → repository → service → controller → route → validator → test
+
+| Feature | Status | Handles |
+|---|---|---|
+| `src/features/meter-group/` | ✅ Complete | Meter group CRUD operations: create, read, search, update, soft delete |
+| `src/features/property/` | ✅ Complete | Property CRUD operations: create, read, search, update, delete |
+| `src/features/tenant/` | ✅ Complete | Tenant CRUD operations: create, read, search, update, delete; enforces max-tenant-count per property; ensures unique tenant names per property |
+| `src/features/reading/` | 🔲 Model Only | Meter reading data structure: `meter_group_id`, `reading_amount`, `reading_date`; service/route layers not yet implemented |
+| `src/features/billing/` | 🔲 Model Only | Billing data structure: `property_id`, `previous_reading_id`, `current_reading_id`; service/route layers not yet implemented |
+| `src/features/billing-cycle/` | 🔲 Model Only | Billing cycle data structure: billing IDs map, rate, consumption, start/end dates; service/route layers not yet implemented |
+| `src/features/audit/` | 🔲 Empty | Audit trail (placeholder for future audit logging) |
+
+## UI Frontend — `ui/`
+
+### Configuration & Setup
+
+| Path | What It Handles |
+|---|---|
+| `ui/CLAUDE.md` | Frontend architecture rules: Svelte 5 runes mode, MCP tools required, TypeScript conventions |
+| `ui/AGENTS.md` | Agent-specific instructions and guidelines |
+| `ui/package.json` | Dependencies: SvelteKit, Svelte 5, Tailwind CSS v4, Vitest, Playwright, mdsvex |
+| `ui/svelte.config.js` | Svelte compiler config: Vercel adapter, runes mode enforced globally, mdsvex for `.md`/`.svx` |
+| `ui/vite.config.ts` | Vite bundler config: Tailwind v4 Vite plugin, Vitest with browser (Playwright) and Node test projects |
+| `ui/tsconfig.json` | TypeScript compiler config: strict mode, bundler module resolution, source maps enabled |
+| `ui/playwright.config.ts` | Playwright E2E test config: builds and previews on port 4173; matches `**/*.e2e.{ts,js}` |
+| `ui/eslint.config.js` | ESLint flat config: TypeScript, Svelte, Prettier integration |
+
+### SvelteKit App — `ui/src/`
+
+| Path | What It Handles |
+|---|---|
+| `ui/src/app.d.ts` | SvelteKit type augmentation (empty/placeholder for future use) |
+| `ui/src/app.html` | HTML shell template: `%sveltekit.head%` and `%sveltekit.body%` placeholders |
+| `ui/src/lib/` | Shared components, utilities, and the `$lib` alias root; future `src/lib/server/` for server-only code |
+| `ui/src/lib/assets/` | Static assets: favicon.svg |
+| `ui/src/lib/vitest-examples/` | Example test files: `greet()` utility with server-side unit test, `Welcome.svelte` component with browser test |
+| `ui/src/routes/` | SvelteKit file-based routing: `layout.css` for global Tailwind import, root layout/page, `/demo` pages |
+| `ui/src/routes/layout.css` | Global CSS: `@import 'tailwindcss'` directive and Tailwind Forms plugin import |
+| `ui/src/routes/+layout.svelte` | Root layout component: renders favicon, loads global CSS, renders page content |
+| `ui/src/routes/+page.svelte` | Root page: placeholder welcome message |
+| `ui/src/routes/demo/+page.svelte` | Demo page with link to Playwright demo |
+| `ui/src/routes/demo/playwright/+page.svelte` | Playwright E2E test demo page |
+| `ui/src/routes/demo/playwright/page.svelte.e2e.ts` | Playwright E2E test: verifies h1 heading visible on demo page |
+| `ui/static/` | Public static assets: `robots.txt` |

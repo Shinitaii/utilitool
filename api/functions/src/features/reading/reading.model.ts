@@ -1,5 +1,5 @@
-import { Timestamp } from "firebase-admin/firestore";
-import { BaseModel } from "../../utils/model.util";
+﻿import {Timestamp} from "firebase-admin/firestore";
+import {BaseModel} from "../../utils/model.util";
 
 export interface Reading extends BaseModel {
     meter_group_id: string;

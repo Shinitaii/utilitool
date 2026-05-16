@@ -1,4 +1,4 @@
-/// TDD Case for meter group
+﻿/// TDD Case for meter group
 /// You must not touch the any of the code here.
 /// To create a new test case, create pseudo code in the form of a comment.
 /// This could mean what it does, and what it returns.

@@ -1,4 +1,4 @@
-import { mdsvex } from 'mdsvex';
+﻿import { mdsvex } from 'mdsvex';
 import adapter from '@sveltejs/adapter-vercel';
 
 /** @type {import('@sveltejs/kit').Config} */

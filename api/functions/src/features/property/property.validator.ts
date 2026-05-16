@@ -1,10 +1,10 @@
-import { AppError } from '../../utils/error.util';
-import { logger } from '../../utils/logger.util';
-import { meterGroupRepository } from '../meter-group/meter-group.repository';
-import { tenantRepository } from '../tenant/tenant.repository';
-import { propertyRepository } from './property.repository';
-import { CreatePropertyDTO, UpdatePropertyDTO } from './property.dto';
-import { Property } from './property.model';
+﻿import {AppError} from "../../utils/error.util";
+import {logger} from "../../utils/logger.util";
+import {meterGroupRepository} from "../meter-group/meter-group.repository";
+import {tenantRepository} from "../tenant/tenant.repository";
+import {propertyRepository} from "./property.repository";
+import {CreatePropertyDTO, UpdatePropertyDTO} from "./property.dto";
+import {Property} from "./property.model";
 
 const normalizeRoomName = (roomName: string) => roomName.trim().toLowerCase();
 
@@ -14,10 +14,10 @@ export class PropertyValidator {
     roomName: string,
     excludeId?: string
   ): Promise<Property | undefined> {
-    const { data: candidates } = await propertyRepository.search({
+    const {data: candidates} = await propertyRepository.search({
       limit: 1000,
-      orderBy: 'created_at',
-      filters: { meter_group_id: meterGroupId },
+      orderBy: "created_at",
+      filters: {meter_group_id: meterGroupId},
     });
 
     const normalizedRoomName = normalizeRoomName(roomName);
@@ -36,11 +36,11 @@ export class PropertyValidator {
     let total = 0;
 
     do {
-      const { data, hasMore, nextCursor } = await tenantRepository.search({
+      const {data, hasMore, nextCursor} = await tenantRepository.search({
         limit: 1000,
-        orderBy: 'created_at',
+        orderBy: "created_at",
         cursor,
-        filters: { property_id: propertyId },
+        filters: {property_id: propertyId},
       });
 
       total += data.length;
@@ -53,7 +53,7 @@ export class PropertyValidator {
   private async ensureMeterGroupExists(meterGroupId: string): Promise<void> {
     const meterGroup = await meterGroupRepository.getById(meterGroupId);
     if (!meterGroup) {
-      throw new AppError(404, 'Meter group not found');
+      throw new AppError(404, "Meter group not found");
     }
   }
 
@@ -62,8 +62,8 @@ export class PropertyValidator {
 
     const duplicate = await this.findDuplicateProperty(data.meter_group_id, data.room_name);
     if (duplicate) {
-      logger.warn({ meter_group_id: data.meter_group_id, room_name: data.room_name }, 'Duplicate property creation attempt');
-      throw new AppError(409, 'Room name already exists for the selected meter group');
+      logger.warn({meter_group_id: data.meter_group_id, room_name: data.room_name}, "Duplicate property creation attempt");
+      throw new AppError(409, "Room name already exists for the selected meter group");
     }
   }
 
@@ -77,17 +77,17 @@ export class PropertyValidator {
         const meterGroup = await meterGroupRepository.getById(item.meter_group_id);
 
         if (!meterGroup) {
-          throw new AppError(404, 'Meter group not found');
+          throw new AppError(404, "Meter group not found");
         }
 
         knownMeterGroups.add(item.meter_group_id);
       }
 
       if (!existingByMeterGroup.has(item.meter_group_id)) {
-        const { data: candidates } = await propertyRepository.search({
+        const {data: candidates} = await propertyRepository.search({
           limit: 1000,
-          orderBy: 'created_at',
-          filters: { meter_group_id: item.meter_group_id },
+          orderBy: "created_at",
+          filters: {meter_group_id: item.meter_group_id},
         });
 
         existingByMeterGroup.set(item.meter_group_id, candidates);
@@ -101,8 +101,8 @@ export class PropertyValidator {
         existing.some((property) => normalizeRoomName(property.room_name) === normalizedRoomName) ||
         seenNames.has(normalizedRoomName)
       ) {
-        logger.warn({ meter_group_id: item.meter_group_id, room_name: item.room_name }, 'Duplicate property batch creation attempt');
-        throw new AppError(409, 'Room name already exists for the selected meter group');
+        logger.warn({meter_group_id: item.meter_group_id, room_name: item.room_name}, "Duplicate property batch creation attempt");
+        throw new AppError(409, "Room name already exists for the selected meter group");
       }
 
       seenNames.add(normalizedRoomName);
@@ -120,15 +120,15 @@ export class PropertyValidator {
 
     const duplicate = await this.findDuplicateProperty(nextMeterGroupId, nextRoomName, property.id);
     if (duplicate) {
-      logger.warn({ meter_group_id: nextMeterGroupId, room_name: nextRoomName }, 'Duplicate property update attempt');
-      throw new AppError(409, 'Room name already exists for the selected meter group');
+      logger.warn({meter_group_id: nextMeterGroupId, room_name: nextRoomName}, "Duplicate property update attempt");
+      throw new AppError(409, "Room name already exists for the selected meter group");
     }
 
     if (data.tenant_amount !== undefined) {
       const tenantCount = await this.countTenantsForProperty(property.id);
 
       if (data.tenant_amount < tenantCount) {
-        throw new AppError(409, 'Tenant amount cannot be less than current tenant count');
+        throw new AppError(409, "Tenant amount cannot be less than current tenant count");
       }
     }
   }
@@ -138,7 +138,7 @@ export class PropertyValidator {
       const property = await propertyRepository.getById(update.id);
 
       if (!property) {
-        throw new AppError(404, 'Property not found');
+        throw new AppError(404, "Property not found");
       }
 
       await this.validateUpdate(property, update.data);

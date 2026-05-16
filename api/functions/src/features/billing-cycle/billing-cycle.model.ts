@@ -1,5 +1,5 @@
-import { Timestamp } from "firebase-admin/firestore";
-import { BaseModel } from "../../utils/model.util";
+﻿import {Timestamp} from "firebase-admin/firestore";
+import {BaseModel} from "../../utils/model.util";
 
 export interface BillingCycle extends BaseModel {
     billing_ids: Record<string, number>;

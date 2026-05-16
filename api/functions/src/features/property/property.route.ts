@@ -1,4 +1,4 @@
-import { Router } from 'express';
+﻿import {Router} from "express";
 import {
   createBatchProperties,
   createProperty,
@@ -8,7 +8,7 @@ import {
   softDeleteProperty,
   updateProperty,
   updateBatchProperties,
-} from './property.controller';
+} from "./property.controller";
 import {
   CreatePropertyBatchDTOSchema,
   CreatePropertyDTOSchema,
@@ -16,56 +16,56 @@ import {
   PropertyByIdParamsDTOSchema,
   UpdatePropertyBatchDTOSchema,
   UpdatePropertyDTOSchema,
-} from './property.dto';
-import { validateRequest } from '../../middlewares/validate-request.middleware';
+} from "./property.dto";
+import {validateRequest} from "../../middlewares/validate-request.middleware";
 
 const router = Router();
 
 router.post(
-  '/batch',
-  validateRequest({ body: CreatePropertyBatchDTOSchema }),
+  "/batch",
+  validateRequest({body: CreatePropertyBatchDTOSchema}),
   createBatchProperties
 );
 
 router.put(
-  '/batch',
-  validateRequest({ body: UpdatePropertyBatchDTOSchema }),
+  "/batch",
+  validateRequest({body: UpdatePropertyBatchDTOSchema}),
   updateBatchProperties
 );
 
 router.post(
-  '/',
-  validateRequest({ body: CreatePropertyDTOSchema }),
+  "/",
+  validateRequest({body: CreatePropertyDTOSchema}),
   createProperty
 );
 
 router.get(
-  '/',
-  validateRequest({ query: GetPropertiesQueryDTOSchema }),
+  "/",
+  validateRequest({query: GetPropertiesQueryDTOSchema}),
   getProperties
 );
 
 router.get(
-  '/:id',
-  validateRequest({ params: PropertyByIdParamsDTOSchema }),
+  "/:id",
+  validateRequest({params: PropertyByIdParamsDTOSchema}),
   getPropertyById
 );
 
 router.put(
-  '/:id',
-  validateRequest({ params: PropertyByIdParamsDTOSchema, body: UpdatePropertyDTOSchema }),
+  "/:id",
+  validateRequest({params: PropertyByIdParamsDTOSchema, body: UpdatePropertyDTOSchema}),
   updateProperty
 );
 
 router.delete(
-  '/:id',
-  validateRequest({ params: PropertyByIdParamsDTOSchema }),
+  "/:id",
+  validateRequest({params: PropertyByIdParamsDTOSchema}),
   deleteProperty
 );
 
 router.delete(
-  '/soft/:id',
-  validateRequest({ params: PropertyByIdParamsDTOSchema }),
+  "/soft/:id",
+  validateRequest({params: PropertyByIdParamsDTOSchema}),
   softDeleteProperty
 );
 

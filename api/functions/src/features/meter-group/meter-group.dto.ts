@@ -1,11 +1,11 @@
-import { UTILITY_TYPES } from "../../constants/utility.constants";
-import { z } from 'zod';
-import { stripHtml } from '../../utils/sanitize.util';
+﻿import {UTILITY_TYPES} from "../../constants/utility.constants";
+import {z} from "zod";
+import {stripHtml} from "../../utils/sanitize.util";
 
 // Create DTOS
 export const CreateMeterGroupDTOSchema = z.object({
   meter_name: z.string().trim().min(1).max(255).transform(stripHtml),
-	utility_type: z.enum(Object.values(UTILITY_TYPES)),
+  utility_type: z.enum(Object.values(UTILITY_TYPES)),
 });
 export type CreateMeterGroupDTO = z.infer<typeof CreateMeterGroupDTOSchema>;
 
@@ -20,7 +20,7 @@ export type UpdateMeterGroupDTO = z.infer<typeof UpdateMeterGroupDTOSchema>;
 
 export const UpdateMeterGroupBatchItemSchema = z.object({
   id: z.string().min(1),
-  data: UpdateMeterGroupDTOSchema
+  data: UpdateMeterGroupDTOSchema,
 });
 export const UpdateMeterGroupBatchDTOSchema = z.array(
   UpdateMeterGroupBatchItemSchema
@@ -42,9 +42,9 @@ export const GetMeterGroupsQueryDTOSchema = z
   .superRefine((value, context) => {
     if (value.meterName && value.cursor) {
       context.addIssue({
-        code: 'custom',
-        message: 'cursor cannot be combined with meterName',
-        path: ['cursor'],
+        code: "custom",
+        message: "cursor cannot be combined with meterName",
+        path: ["cursor"],
       });
     }
   });

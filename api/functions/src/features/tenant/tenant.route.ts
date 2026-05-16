@@ -1,4 +1,4 @@
-import { Router } from 'express';
+﻿import {Router} from "express";
 import {
   createBatchTenants,
   createTenant,
@@ -8,7 +8,7 @@ import {
   softDeleteTenant,
   updateTenant,
   updateBatchTenants,
-} from './tenant.controller';
+} from "./tenant.controller";
 import {
   CreateTenantBatchDTOSchema,
   CreateTenantDTOSchema,
@@ -16,56 +16,56 @@ import {
   TenantByIdParamsDTOSchema,
   UpdateTenantBatchDTOSchema,
   UpdateTenantDTOSchema,
-} from './tenant.dto';
-import { validateRequest } from '../../middlewares/validate-request.middleware';
+} from "./tenant.dto";
+import {validateRequest} from "../../middlewares/validate-request.middleware";
 
 const router = Router();
 
 router.post(
-  '/batch',
-  validateRequest({ body: CreateTenantBatchDTOSchema }),
+  "/batch",
+  validateRequest({body: CreateTenantBatchDTOSchema}),
   createBatchTenants
 );
 
 router.put(
-  '/batch',
-  validateRequest({ body: UpdateTenantBatchDTOSchema }),
+  "/batch",
+  validateRequest({body: UpdateTenantBatchDTOSchema}),
   updateBatchTenants
 );
 
 router.post(
-  '/',
-  validateRequest({ body: CreateTenantDTOSchema }),
+  "/",
+  validateRequest({body: CreateTenantDTOSchema}),
   createTenant
 );
 
 router.get(
-  '/',
-  validateRequest({ query: GetTenantsQueryDTOSchema }),
+  "/",
+  validateRequest({query: GetTenantsQueryDTOSchema}),
   getTenants
 );
 
 router.get(
-  '/:id',
-  validateRequest({ params: TenantByIdParamsDTOSchema }),
+  "/:id",
+  validateRequest({params: TenantByIdParamsDTOSchema}),
   getTenantById
 );
 
 router.put(
-  '/:id',
-  validateRequest({ params: TenantByIdParamsDTOSchema, body: UpdateTenantDTOSchema }),
+  "/:id",
+  validateRequest({params: TenantByIdParamsDTOSchema, body: UpdateTenantDTOSchema}),
   updateTenant
 );
 
 router.delete(
-  '/:id',
-  validateRequest({ params: TenantByIdParamsDTOSchema }),
+  "/:id",
+  validateRequest({params: TenantByIdParamsDTOSchema}),
   deleteTenant
 );
 
 router.delete(
-  '/soft/:id',
-  validateRequest({ params: TenantByIdParamsDTOSchema }),
+  "/soft/:id",
+  validateRequest({params: TenantByIdParamsDTOSchema}),
   softDeleteTenant
 );
 

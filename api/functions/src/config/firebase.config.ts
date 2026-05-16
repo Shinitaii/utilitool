@@ -1,8 +1,8 @@
-import * as admin from "firebase-admin";
-import { getFirebaseAppOptions } from "./env.config";
+﻿import * as admin from "firebase-admin";
+import {getFirebaseAppOptions} from "./env.config";
 
 if (!admin.apps.length) {
-	admin.initializeApp(getFirebaseAppOptions());
+  admin.initializeApp(getFirebaseAppOptions());
 }
 
 export const firestore = admin.firestore();
