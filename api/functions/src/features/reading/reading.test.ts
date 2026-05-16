@@ -1,44 +1,454 @@
+jest.mock('./reading.repository');
+jest.mock('./reading.validator');
+
+import { describe, it, expect, beforeEach } from '@jest/globals';
+import { readingService } from './reading.service';
+import { readingRepository } from './reading.repository';
+import { ReadingValidator } from './reading.validator';
+import { CreateReadingDTOSchema, UpdateReadingDTOSchema, ReadingByIdParamsDTOSchema, CreateReadingBatchDTOSchema, UpdateReadingBatchDTOSchema } from './reading.dto';
+import { AppError } from '../../utils/error.util';
+import { Timestamp } from 'firebase-admin/firestore';
+
 /// Test cases for reading (TDD)
 /// You must not touch the any of the code here.
 /// To create a new test case, create pseudo code in the form of a comment.
 /// This could mean what it does, and what it returns.
 /// You can also add edge cases and error cases as well.
 
-// Create a new reading
-// It should create a new reading with the given name and return the reading ID.
-// It should return an error if the selected meter group is not provided.
-// It should return an error if the selected meter group does not exist.
-// It should return an error if the reading value is not a valid number.
-// It should return an error if the reading value is negative.
-// It should return an error if the reading date is not a valid date.
-// It should return an error if the reading date is in the future.
-// It should return an error if the selected meter group already has the maximum number of readings allowed.
+const now = Timestamp.now();
 
-// Get reading by ID
-// It should return the reading details for the given reading ID.
-// It should return an error if the reading ID is not provided.
-// It should return an error if the reading ID does not exist.
+const mockReading = (overrides?: Record<string, any>) => ({
+  id: 'reading-1',
+  meter_group_id: 'mg-1',
+  reading_amount: 100,
+  reading_date: now,
+  created_at: now,
+  updated_at: now,
+  ...overrides,
+});
 
-// Search readings
-// It should return a cursor-based paginated list of all readings based on the provided filters such as name and property ID.
-// It should return an empty list if there are no readings matching everything in the query.
+describe('readingService', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
-// Update reading
-// It should update the reading details for the given reading ID and return the updated reading details.
-// It should return an error if the reading ID is not provided.
-// It should return an error if the reading ID does not exist.
-// It should return an error if the updated meter group ID does not exist.
-// It should return an error if the updated reading value is not a valid number.
-// It should return an error if the updated reading value is negative.
-// It should return an error if the updated reading date is not a valid date.
-// It should return an error if the updated reading date is in the future.
+  // Create a new reading
+  describe('create', () => {
+    // It should create a new reading with the given name and return the reading ID.
+    it('should create a new reading with the given meter group ID and return the reading ID', async () => {
+      jest.mocked(ReadingValidator.prototype.validateCreate).mockResolvedValue(undefined);
+      jest.mocked(readingRepository.create).mockResolvedValue(mockReading());
 
-// Delete reading
-// It should delete the reading for the given reading ID and return a success message.
-// It should return an error if the reading ID is not provided.
-// It should return an error if the reading ID does not exist.
+      const input = {
+        meter_group_id: 'mg-1',
+        reading_amount: 100,
+        reading_date: Timestamp.now(),
+      };
+      const result = await readingService.create(input);
 
-// Soft delete reading
-// It should soft delete the reading for the given reading ID and return a success message.
-// It should return an error if the reading ID is not provided.
-// It should return an error if the reading ID does not exist.
+      expect(readingRepository.create).toHaveBeenCalledWith(input);
+      expect(result.id).toBe('reading-1');
+    });
+
+    // It should return an error if the selected meter group is not provided.
+    it('should return an error if the selected meter group is not provided', () => {
+      const result = CreateReadingDTOSchema.safeParse({
+        reading_amount: 100,
+        reading_date: Timestamp.now(),
+      });
+      expect(result.success).toBe(false);
+    });
+
+    // It should return an error if the selected meter group does not exist.
+    it('should return an error if the selected meter group does not exist', async () => {
+      jest.mocked(ReadingValidator.prototype.validateCreate).mockRejectedValue(
+        new AppError(404, 'Meter group not found')
+      );
+
+      await expect(
+        readingService.create({
+          meter_group_id: 'nonexistent',
+          reading_amount: 100,
+          reading_date: Timestamp.now(),
+        })
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    // It should return an error if the reading value is not a valid number.
+    it('should return an error if the reading value is not a valid number', () => {
+      const result = CreateReadingDTOSchema.safeParse({
+        meter_group_id: 'mg-1',
+        reading_amount: 'not-a-number',
+        reading_date: Timestamp.now(),
+      });
+      expect(result.success).toBe(false);
+    });
+
+    // It should return an error if the reading value is negative.
+    it('should return an error if the reading value is negative', async () => {
+      jest.mocked(ReadingValidator.prototype.validateCreate).mockRejectedValue(
+        new AppError(400, 'Reading amount cannot be negative')
+      );
+
+      await expect(
+        readingService.create({
+          meter_group_id: 'mg-1',
+          reading_amount: -50,
+          reading_date: Timestamp.now(),
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    // It should return an error if the reading date is not a valid date.
+    it('should return an error if the reading date is not a valid date', () => {
+      const result = CreateReadingDTOSchema.safeParse({
+        meter_group_id: 'mg-1',
+        reading_amount: 100,
+        reading_date: 'not-a-date',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    // It should return an error if the reading date is in the future.
+    it('should return an error if the reading date is in the future', async () => {
+      const futureDate = Timestamp.fromDate(new Date(Date.now() + 86400000));
+      jest.mocked(ReadingValidator.prototype.validateCreate).mockRejectedValue(
+        new AppError(400, 'Reading date cannot be in the future')
+      );
+
+      await expect(
+        readingService.create({
+          meter_group_id: 'mg-1',
+          reading_amount: 100,
+          reading_date: futureDate,
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    // It should return an error if the selected meter group already has the maximum number of readings allowed.
+    it('should return an error if the selected meter group already has the maximum number of readings allowed', async () => {
+      jest.mocked(ReadingValidator.prototype.validateCreate).mockRejectedValue(
+        new AppError(400, 'Maximum number of readings allowed for this meter group has been exceeded')
+      );
+
+      await expect(
+        readingService.create({
+          meter_group_id: 'mg-full',
+          reading_amount: 100,
+          reading_date: Timestamp.now(),
+        })
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+  });
+
+  // Batch create readings
+  describe('createBatch', () => {
+    // It should create multiple readings in a batch.
+    it('should create multiple readings in a batch', async () => {
+      const mocks = [
+        mockReading({ id: 'reading-1' }),
+        mockReading({ id: 'reading-2', reading_amount: 200 }),
+      ];
+      jest.mocked(ReadingValidator.prototype.validateBatch).mockResolvedValue(undefined);
+      jest.mocked(readingRepository.createBatch).mockResolvedValue(mocks);
+
+      const input = [
+        {
+          meter_group_id: 'mg-1',
+          reading_amount: 100,
+          reading_date: Timestamp.now(),
+        },
+        {
+          meter_group_id: 'mg-1',
+          reading_amount: 200,
+          reading_date: Timestamp.now(),
+        },
+      ];
+      const result = await readingService.createBatch(input);
+
+      expect(readingRepository.createBatch).toHaveBeenCalledWith(input);
+      expect(result).toHaveLength(2);
+    });
+
+    // It should return an error if batch is empty.
+    it('should return an error if batch array is empty', () => {
+      const result = CreateReadingBatchDTOSchema.safeParse([]);
+      expect(result.success).toBe(false);
+    });
+
+    // It should return an error if batch exceeds max size.
+    it('should return an error if batch exceeds max size of 10', () => {
+      const input = Array(11).fill({
+        meter_group_id: 'mg-1',
+        reading_amount: 100,
+        reading_date: Timestamp.now(),
+      });
+      const result = CreateReadingBatchDTOSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+
+    // It should return an error if any item in the batch has a validation error.
+    it('should return an error if any item in the batch has a negative reading', async () => {
+      jest.mocked(ReadingValidator.prototype.validateBatch).mockRejectedValue(
+        new AppError(400, 'Reading amount cannot be negative')
+      );
+
+      const input = [
+        {
+          meter_group_id: 'mg-1',
+          reading_amount: 100,
+          reading_date: Timestamp.now(),
+        },
+        {
+          meter_group_id: 'mg-1',
+          reading_amount: -50,
+          reading_date: Timestamp.now(),
+        },
+      ];
+
+      await expect(readingService.createBatch(input)).rejects.toMatchObject({ statusCode: 400 });
+    });
+  });
+
+  // Get reading by ID
+  describe('getById', () => {
+    // It should return the reading details for the given reading ID.
+    it('should return the reading details for the given reading ID', async () => {
+      jest.mocked(readingRepository.getById).mockResolvedValue(mockReading());
+
+      const result = await readingService.getById('reading-1');
+
+      expect(readingRepository.getById).toHaveBeenCalledWith('reading-1');
+      expect(result).toEqual(mockReading());
+    });
+
+    // It should return an error if the reading ID is not provided.
+    it('should return an error if the reading ID is not provided', () => {
+      const result = ReadingByIdParamsDTOSchema.safeParse({ id: '' });
+      expect(result.success).toBe(false);
+    });
+
+    // It should return an error if the reading ID does not exist.
+    it('should return an error if the reading ID does not exist', async () => {
+      jest.mocked(readingRepository.getById).mockResolvedValue(null);
+
+      const result = await readingService.getById('nonexistent');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  // Search readings
+  describe('search', () => {
+    // It should return a cursor-based paginated list of all readings based on the provided filters such as name and property ID.
+    it('should return a paginated list of readings with meterGroupId filter', async () => {
+      const paginated = { data: [mockReading()], hasMore: false, nextCursor: null };
+      jest.mocked(readingRepository.search).mockResolvedValue(paginated);
+
+      const result = await readingService.search({ meterGroupId: 'mg-1', limit: 20 });
+
+      expect(result.data).toHaveLength(1);
+      expect(result.hasMore).toBe(false);
+    });
+
+    // It should return an empty list if there are no readings matching everything in the query.
+    it('should return an empty list if there are no readings matching the query', async () => {
+      jest.mocked(readingRepository.search).mockResolvedValue({ data: [], hasMore: false, nextCursor: null });
+
+      const result = await readingService.search({ meterGroupId: 'nonexistent', limit: 20 });
+
+      expect(result.data).toHaveLength(0);
+    });
+
+    // It should return nextCursor when more results exist.
+    it('should return nextCursor when more results exist', async () => {
+      jest.mocked(readingRepository.search).mockResolvedValue({
+        data: [mockReading()],
+        hasMore: true,
+        nextCursor: 'cursor-abc',
+      });
+
+      const result = await readingService.search({ limit: 1 });
+
+      expect(result.hasMore).toBe(true);
+      expect(result.nextCursor).toBe('cursor-abc');
+    });
+
+    // It should handle cursor pagination edge cases.
+    it('should handle cursor pagination with no more results', async () => {
+      jest.mocked(readingRepository.search).mockResolvedValue({
+        data: [mockReading()],
+        hasMore: false,
+        nextCursor: null,
+      });
+
+      const result = await readingService.search({ cursor: 'cursor-xyz', limit: 20 });
+
+      expect(result.nextCursor).toBeNull();
+      expect(result.hasMore).toBe(false);
+    });
+  });
+
+  // Update reading
+  describe('update', () => {
+    // It should update the reading details for the given reading ID and return the updated reading details.
+    it('should update the reading details', async () => {
+      const updated = mockReading({ reading_amount: 150 });
+      jest.mocked(ReadingValidator.prototype.validateUpdate).mockResolvedValue(undefined);
+      jest.mocked(readingRepository.update).mockResolvedValue(updated);
+
+      const result = await readingService.update('reading-1', { reading_amount: 150 });
+
+      expect(readingRepository.update).toHaveBeenCalledWith('reading-1', { reading_amount: 150 });
+      expect(result.reading_amount).toBe(150);
+    });
+
+    // It should return an error if the reading ID is not provided.
+    it('should return an error if the reading ID is not provided', () => {
+      const result = ReadingByIdParamsDTOSchema.safeParse({ id: '' });
+      expect(result.success).toBe(false);
+    });
+
+    // It should return an error if the reading ID does not exist.
+    it('should return an error if the reading ID does not exist', async () => {
+      jest.mocked(readingRepository.update).mockRejectedValue(new AppError(404, 'Reading not found'));
+
+      await expect(
+        readingService.update('nonexistent', { reading_amount: 150 })
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    // It should return an error if the updated meter group ID does not exist.
+    it('should return an error if the updated meter group ID does not exist', async () => {
+      jest.mocked(ReadingValidator.prototype.validateUpdate).mockRejectedValue(
+        new AppError(404, 'Meter group not found')
+      );
+
+      await expect(
+        readingService.update('reading-1', { meter_group_id: 'nonexistent' })
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    // It should return an error if the updated reading value is not a valid number.
+    it('should return an error if the updated reading value is not a valid number', () => {
+      const result = UpdateReadingDTOSchema.safeParse({ reading_amount: 'invalid' });
+      expect(result.success).toBe(false);
+    });
+
+    // It should return an error if the updated reading value is negative.
+    it('should return an error if the updated reading value is negative', async () => {
+      jest.mocked(ReadingValidator.prototype.validateUpdate).mockRejectedValue(
+        new AppError(400, 'Reading amount cannot be negative')
+      );
+
+      await expect(
+        readingService.update('reading-1', { reading_amount: -50 })
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    // It should return an error if the updated reading date is not a valid date.
+    it('should return an error if the updated reading date is not a valid date', () => {
+      const result = UpdateReadingDTOSchema.safeParse({ reading_date: 'not-a-date' });
+      expect(result.success).toBe(false);
+    });
+
+    // It should return an error if the updated reading date is in the future.
+    it('should return an error if the updated reading date is in the future', async () => {
+      const futureDate = Timestamp.fromDate(new Date(Date.now() + 86400000));
+      jest.mocked(ReadingValidator.prototype.validateUpdate).mockRejectedValue(
+        new AppError(400, 'Reading date cannot be in the future')
+      );
+
+      await expect(
+        readingService.update('reading-1', { reading_date: futureDate })
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+  });
+
+  // Batch update readings
+  describe('updateBatch', () => {
+    // It should update multiple readings in a batch.
+    it('should update multiple readings in a batch', async () => {
+      const mocks = [
+        mockReading({ id: 'reading-1', reading_amount: 150 }),
+        mockReading({ id: 'reading-2', reading_amount: 250 }),
+      ];
+      jest.mocked(ReadingValidator.prototype.validateUpdateBatch).mockResolvedValue(undefined);
+      jest.mocked(readingRepository.updateBatch).mockResolvedValue(mocks);
+
+      const input = [
+        { id: 'reading-1', data: { reading_amount: 150 } },
+        { id: 'reading-2', data: { reading_amount: 250 } },
+      ];
+      const result = await readingService.updateBatch(input);
+
+      expect(readingRepository.updateBatch).toHaveBeenCalledWith(input);
+      expect(result).toHaveLength(2);
+    });
+
+    // It should return an error if batch is empty.
+    it('should return an error if batch array is empty', () => {
+      const result = UpdateReadingBatchDTOSchema.safeParse([]);
+      expect(result.success).toBe(false);
+    });
+
+    // It should return an error if batch exceeds max size.
+    it('should return an error if batch exceeds max size of 10', () => {
+      const input = Array(11).fill({ id: 'reading-1', data: { reading_amount: 100 } });
+      const result = UpdateReadingBatchDTOSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+  });
+
+  // Delete reading
+  describe('delete', () => {
+    // It should delete the reading for the given reading ID and return a success message.
+    it('should delete the reading', async () => {
+      jest.mocked(readingRepository.delete).mockResolvedValue(undefined);
+
+      await expect(readingService.delete('reading-1')).resolves.toBeUndefined();
+
+      expect(readingRepository.delete).toHaveBeenCalledWith('reading-1');
+    });
+
+    // It should return an error if the reading ID is not provided.
+    it('should return an error if the reading ID is not provided', () => {
+      const result = ReadingByIdParamsDTOSchema.safeParse({ id: '' });
+      expect(result.success).toBe(false);
+    });
+
+    // It should return an error if the reading ID does not exist.
+    it('should return an error if the reading ID does not exist', async () => {
+      jest.mocked(readingRepository.delete).mockRejectedValue(new AppError(404, 'Reading not found'));
+
+      await expect(readingService.delete('nonexistent')).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
+
+  // Soft delete reading
+  describe('softDelete', () => {
+    // It should soft delete the reading for the given reading ID and return a success message.
+    it('should soft delete the reading', async () => {
+      const softDeleted = mockReading({ deleted_at: Timestamp.now() });
+      jest.mocked(readingRepository.softDelete).mockResolvedValue(softDeleted);
+
+      const result = await readingService.softDelete('reading-1');
+
+      expect(readingRepository.softDelete).toHaveBeenCalledWith('reading-1');
+      expect(result.deleted_at).toBeDefined();
+    });
+
+    // It should return an error if the reading ID is not provided.
+    it('should return an error if the reading ID is not provided', () => {
+      const result = ReadingByIdParamsDTOSchema.safeParse({ id: '' });
+      expect(result.success).toBe(false);
+    });
+
+    // It should return an error if the reading ID does not exist.
+    it('should return an error if the reading ID does not exist', async () => {
+      jest.mocked(readingRepository.softDelete).mockRejectedValue(new AppError(404, 'Reading not found'));
+
+      await expect(readingService.softDelete('nonexistent')).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
+});

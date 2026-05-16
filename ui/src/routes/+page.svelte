@@ -1,13 +1,14 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import { browser } from '$app/environment';
   import { getAccessToken } from '$lib/api/client';
 
-  const token = getAccessToken();
-  if (token) {
-    goto('/dashboard');
-  } else {
-    goto('/login');
+  if (browser) {
+    const token = getAccessToken();
+    goto(token ? '/dashboard' : '/login');
   }
 </script>
 
-<div>Redirecting...</div>
+<div class="flex h-screen items-center justify-center">
+  <p class="text-gray-600">Redirecting...</p>
+</div>

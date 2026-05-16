@@ -217,22 +217,16 @@ ui/src/
   - Table: meter_group (lookup from id), reading_amount, reading_date, created_at
 - **Status**: ✅ Complete
 
-#### Billings (`/billings`)
+#### Billings (`/billings`) — Cycle-Centric
 - **Component**: `src/routes/(app)/billings/+page.svelte`
 - **API calls**:
-  - `GET /billings?limit=50` ← `getBillings()`
+  - `GET /billing-cycles?limit=100` ← `getBillingCycles()` — fetches all cycles
+  - `GET /billings?limit=100` ← `getBillings()` — lazy-loaded per cycle when expanded
 - **Displays**:
-  - Table: property_id, previous_reading_id, current_reading_id, created_at
-- **Status**: ✅ Complete (simple table)
-
-#### Billing Cycles (`/billing-cycles`)
-- **Component**: `src/routes/(app)/billing-cycles/+page.svelte`
-- **API calls**:
-  - `GET /billing-cycles?limit=50` ← `getBillingCycles()`
-- **Displays**:
-  - Table: period (start – end), consumption, rate, total_amount, num_billings
-  - Detail panel: breakdown of billings in cycle (future)
-- **Status**: ✅ Complete (list view)
+  - Expandable list of billing cycles (period, consumption, rate, total amount, billing count)
+  - On expand: nested table of billings in that cycle with individual amounts calculated from rate × consumption
+  - Each billing shows: property_id, reading pair (previous → current), consumption (from cycle.billing_ids map), amount charged
+- **Status**: ✅ Complete (cycle-centric design with nested billings)
 
 #### Bills / OCR Upload (`/bills`)
 - **Component**: `src/routes/(app)/bills/+page.svelte`

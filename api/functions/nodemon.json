@@ -1,0 +1,9 @@
+{
+  "watch": ["lib"],
+  "ext": "js",
+  "exec": "node",
+  "args": "lib/index.js",
+  "delay": 500,
+  "legacyWatch": true,
+  "ignore": ["node_modules", "src", "*.test.js"]
+}

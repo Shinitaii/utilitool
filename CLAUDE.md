@@ -14,9 +14,14 @@ Welcome to the Utilitool project. This document guides you through the repo stru
 - **Setting up locally**: See [Docker & Local Development](#docker--local-development) below
 - **Deploying**: See [CI/CD & Deployment](#cicd--deployment) below
 
-### Notes before navigation
+### Read Once Per Session
 
-- **Conditioned lookup**: When working on API, read only `api/CLAUDE.md` unless the task requires cross-module knowledge (e.g., "why is the UI calling this endpoint wrong?"). Same for UI work.
+When Claude Code starts work on a task:
+- **API task?** Read `api/CLAUDE.md` only
+- **UI task?** Read `ui/CLAUDE.md` only  
+- **Cross-module bug?** Read both, but start with the breaking side first
+
+Don't read this file (CLAUDE.md) again during the session unless you need context about deployment or setup.
 
 ---
 
@@ -198,15 +203,14 @@ Each page/component is organized by:
 
 ### UI Pages (Complete)
 - ✅ Login / Register
-- ✅ Dashboard (stub with stat cards)
+- ✅ Dashboard (stat cards + properties table)
 - ✅ Meter Groups (full CRUD table)
+- ✅ Properties (list + detail with tabs: Tenants | Readings | Billings | History)
 - ✅ Tenants (searchable list)
 - ✅ Readings (filterable list)
-- ✅ Billings (table)
-- ✅ Billing Cycles (table with rate/consumption)
+- ✅ Billings (cycle-centric: expandable cycles with nested billings)
 - 🚧 Bills / OCR upload (stub — "to be finished")
 - 🚧 Reports (stub — "to be finished")
-- 🚧 Properties detail (tabs: Tenants | Readings | Billings | History)
 
 ---
 

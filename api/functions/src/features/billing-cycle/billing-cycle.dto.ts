@@ -2,7 +2,7 @@ import {z} from "zod";
 import {Timestamp} from "firebase-admin/firestore";
 
 // Create DTOS
-export const CreateBillingCycleDTOSchema = z.object({
+const BillingCycleBaseSchema = z.object({
   billing_ids: z
     .record(z.string(), z.number().nonnegative())
     .refine(
@@ -13,7 +13,9 @@ export const CreateBillingCycleDTOSchema = z.object({
   billing_consumption: z.number().nonnegative(),
   billing_start_date: z.instanceof(Timestamp),
   billing_end_date: z.instanceof(Timestamp),
-}).refine(
+});
+
+export const CreateBillingCycleDTOSchema = BillingCycleBaseSchema.refine(
   (data) => data.billing_start_date < data.billing_end_date,
   {
     message: "billing_start_date must be before billing_end_date",
@@ -28,7 +30,18 @@ export const CreateBillingCycleBatchDTOSchema = z.array(
 export type CreateBillingCycleBatchDTO = z.infer<typeof CreateBillingCycleBatchDTOSchema>;
 
 // Update DTOS
-export const UpdateBillingCycleDTOSchema = CreateBillingCycleDTOSchema.partial();
+export const UpdateBillingCycleDTOSchema = BillingCycleBaseSchema.partial().refine(
+  (data) => {
+    if (data.billing_start_date && data.billing_end_date) {
+      return data.billing_start_date < data.billing_end_date;
+    }
+    return true;
+  },
+  {
+    message: "billing_start_date must be before billing_end_date",
+    path: ["billing_end_date"],
+  }
+);
 export type UpdateBillingCycleDTO = z.infer<typeof UpdateBillingCycleDTOSchema>;
 
 export const UpdateBillingCycleBatchItemSchema = z.object({

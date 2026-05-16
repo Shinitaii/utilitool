@@ -10,4 +10,4 @@ COPY src ./src
 
 EXPOSE 5002
 
-CMD ["npm", "run", "build:watch"]
+CMD ["npm", "run", "dev:watch"]

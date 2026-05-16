@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
+import "../config/env.config";
 
 const JWT_SECRET = process.env.JWT_SECRET || "";
 const BCRYPT_SALT_ROUNDS = 15;

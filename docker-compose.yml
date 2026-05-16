@@ -2,10 +2,13 @@ version: "3.8"
 
 services:
   firebase-emulator:
-    image: google/cloud-tools:emulators
+    build:
+      context: .
+      dockerfile: Dockerfile.firebase
     container_name: firebase-emulator
     ports:
       - "4400:4400" # Emulator Suite UI
+      - "4401:4401" # Emulator Hub
       - "5000:5000" # Realtime Database
       - "5001:5001" # Cloud Functions
       - "8080:8080" # Firestore
@@ -14,11 +17,15 @@ services:
       - FIREBASE_DATABASE_NAME=default
     volumes:
       - firebase-emulator-data:/home/user/.cache/firebase/emulators
+      - ./api/firebase.json:/app/firebase.json
+      - ./api/functions:/app/functions
+    working_dir: /app
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4400"]
       interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout: 20s
+      retries: 15
+      start_period: 90s
 
   api:
     build:
@@ -42,7 +49,7 @@ services:
       - ./api/functions/src:/app/src
       - ./api/functions/secrets:/app/secrets
       - ./api/functions/lib:/app/lib # Compiled output
-    command: npm run build:watch
+    command: npm run dev:watch
     # Requires: api/functions/secrets/.env.test file
     # See: API_SETUP.md for environment setup
 

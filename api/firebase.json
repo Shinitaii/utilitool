@@ -19,24 +19,28 @@
   ],
   "emulators": {
     "auth": {
-      "host": "localhost",
+      "host": "0.0.0.0",
       "port": 9099
     },
     "functions": {
-      "host": "localhost",
+      "host": "0.0.0.0",
       "port": 5001
     },
     "firestore": {
-      "host": "localhost",
+      "host": "0.0.0.0",
       "port": 8080
     },
     "database": {
-      "host": "localhost",
+      "host": "0.0.0.0",
       "port": 5000
+    },
+    "hub": {
+      "host": "0.0.0.0",
+      "port": 4401
     },
     "ui": {
       "enabled": true,
-      "host": "localhost",
+      "host": "0.0.0.0",
       "port": 4400
     }
   }

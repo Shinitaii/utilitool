@@ -60,3 +60,26 @@ app.get('/health', (_req, res) => {
 });
 
 export const api = onRequest(app);
+
+// Local development server
+if (process.env.NODE_ENV === 'development') {
+  const PORT = process.env.PORT || 5002;
+  try {
+    app.listen(PORT, () => {
+      logger.info(`API server running on port ${PORT}`);
+    });
+  } catch (error) {
+    logger.error({error}, 'Failed to start server');
+    process.exit(1);
+  }
+
+  process.on('uncaughtException', (error) => {
+    logger.error({error}, 'Uncaught exception');
+    process.exit(1);
+  });
+
+  process.on('unhandledRejection', (reason, promise) => {
+    logger.error({reason, promise}, 'Unhandled rejection');
+    process.exit(1);
+  });
+}

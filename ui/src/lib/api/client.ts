@@ -1,3 +1,4 @@
+import { browser } from '$app/environment';
 import type { ApiError } from '$lib/types/api.types';
 
 const API_BASE_URL = 'http://localhost:5002';
@@ -12,19 +13,21 @@ let refreshToken: string | null = null;
 export function setTokens(access: string, refresh: string) {
   accessToken = access;
   refreshToken = refresh;
-  localStorage.setItem('access_token', access);
-  localStorage.setItem('refresh_token', refresh);
+  if (browser) {
+    localStorage.setItem('access_token', access);
+    localStorage.setItem('refresh_token', refresh);
+  }
 }
 
 export function getAccessToken(): string | null {
-  if (!accessToken) {
+  if (!accessToken && browser) {
     accessToken = localStorage.getItem('access_token');
   }
   return accessToken;
 }
 
 export function getRefreshToken(): string | null {
-  if (!refreshToken) {
+  if (!refreshToken && browser) {
     refreshToken = localStorage.getItem('refresh_token');
   }
   return refreshToken;
@@ -33,8 +36,10 @@ export function getRefreshToken(): string | null {
 export function clearTokens() {
   accessToken = null;
   refreshToken = null;
-  localStorage.removeItem('access_token');
-  localStorage.removeItem('refresh_token');
+  if (browser) {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+  }
 }
 
 async function refreshAccessToken(): Promise<boolean> {

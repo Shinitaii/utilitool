@@ -14,8 +14,7 @@
     { label: 'Properties', href: '/properties', badge: 4 },
     { label: 'Tenants', href: '/tenants', badge: 12 },
     { label: 'Readings', href: '/readings', badge: 0 },
-    { label: 'Billings', href: '/billings', badge: 0 },
-    { label: 'Billing Cycles', href: '/billing-cycles', badge: 2 },
+    { label: 'Billings', href: '/billings', badge: 2 },
     { label: 'Reports', href: '/reports' }
   ];
 
