@@ -1,0 +1,36 @@
+{
+    "files.exclude": {
+        "**/.git": true,
+        "**/.DS_Store": true,
+        "**/node_modules": true,
+        "**/.svelte-kit": true,
+        "**/dist/**": true,
+        "**/package-lock.json": true,
+    },
+    "files.watcherExclude": {
+        ".git/objects/**": true,
+        ".git/subtree-cache/**": true,
+        ".hg/store/**": true,
+        "*/.git/objects/**": true,
+        "*/.git/subtree-cache/**": true,
+        "*/.hg/store/**": true,
+        "**/node_modules/**": true,
+        "**/.svelte-kit/**": true,
+        "**/dist/**": true,
+        "**/package-lock.json": true
+    },
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/bower_components": true,
+        "**/*.code-search": true,
+        "**/.svelte-kit": true,
+        "**/dist/**": true,
+        "**/package-lock.json": true
+    },
+    "js/ts.tsserver.log": "off",
+    "js/ts.tsserver.automaticTypeAcquisition.enabled": false,
+    "js/ts.tsserver.experimental.enableProjectDiagnostics": false,
+    "editor.minimap.enabled": false,
+    "breadcrumbs.enabled": false,
+    "editor.codeLens": false,
+}
