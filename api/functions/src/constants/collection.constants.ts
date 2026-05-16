@@ -3,5 +3,9 @@
   PROPERTIES: "properties",
   TENANTS: "tenants",
   READINGS: "readings",
+  BILLINGS: "billings",
+  BILLING_CYCLES: "billing_cycles",
   AUDITS: "audits",
+  USERS: "users",
+  REFRESH_TOKENS: "refresh_tokens",
 };

@@ -1,0 +1,593 @@
+import { PathsObject } from 'swagger-ui-express';
+
+export const billingCyclePaths: PathsObject = {
+  '/billing-cycles': {
+    post: {
+      tags: ['Billing Cycles'],
+      summary: 'Create a new billing cycle',
+      description:
+        'Create a single billing cycle. Validates that all billing IDs exist, start date < end date, and billing consumption is within 3% tolerance of the sum of individual billing amounts.',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              $ref: '#/components/schemas/CreateBillingCycleRequest',
+            },
+          },
+        },
+      },
+      responses: {
+        '200': {
+          description: 'Billing cycle created',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/BillingCycle',
+              },
+            },
+          },
+        },
+        '400': {
+          description:
+            'Validation error (invalid date range, consumption mismatch >3%, empty billing_ids, negative values)',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ValidationErrorResponse',
+              },
+            },
+          },
+        },
+        '401': {
+          description: 'Unauthorized',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+        '404': {
+          description: 'Billing not found',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+        '500': {
+          description: 'Internal server error',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+      },
+    },
+    get: {
+      tags: ['Billing Cycles'],
+      summary: 'List billing cycles',
+      description:
+        'Retrieve paginated list of billing cycles. Can filter by start and end dates. Note: cursor and date filters are mutually exclusive.',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        {
+          name: 'billingStartDate',
+          in: 'query',
+          description: 'Filter by billing start date (ISO 8601 datetime string)',
+          schema: {
+            type: 'string',
+            format: 'date-time',
+          },
+        },
+        {
+          name: 'billingEndDate',
+          in: 'query',
+          description: 'Filter by billing end date (ISO 8601 datetime string)',
+          schema: {
+            type: 'string',
+            format: 'date-time',
+          },
+        },
+        {
+          name: 'limit',
+          in: 'query',
+          description: 'Number of results per page (1-100, default 20)',
+          schema: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 100,
+            default: 20,
+          },
+        },
+        {
+          name: 'cursor',
+          in: 'query',
+          description:
+            'Pagination cursor from previous response. Cannot be combined with date filters.',
+          schema: {
+            type: 'string',
+          },
+        },
+      ],
+      responses: {
+        '200': {
+          description: 'List of billing cycles',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/PaginatedBillingCycles',
+              },
+            },
+          },
+        },
+        '400': {
+          description: 'Validation error',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ValidationErrorResponse',
+              },
+            },
+          },
+        },
+        '401': {
+          description: 'Unauthorized',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+        '500': {
+          description: 'Internal server error',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+  '/billing-cycles/batch': {
+    post: {
+      tags: ['Billing Cycles'],
+      summary: 'Create multiple billing cycles',
+      description: 'Batch create 1-10 billing cycles.',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'array',
+              items: {
+                $ref: '#/components/schemas/CreateBillingCycleRequest',
+              },
+              minItems: 1,
+              maxItems: 10,
+            },
+          },
+        },
+      },
+      responses: {
+        '200': {
+          description: 'Billing cycles created',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'array',
+                items: {
+                  $ref: '#/components/schemas/BillingCycle',
+                },
+              },
+            },
+          },
+        },
+        '400': {
+          description: 'Validation error',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ValidationErrorResponse',
+              },
+            },
+          },
+        },
+        '401': {
+          description: 'Unauthorized',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+        '404': {
+          description: 'Billing not found',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+        '500': {
+          description: 'Internal server error',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+      },
+    },
+    put: {
+      tags: ['Billing Cycles'],
+      summary: 'Update multiple billing cycles',
+      description: 'Batch update 1-10 billing cycles.',
+      security: [{ BearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: {
+                    type: 'string',
+                  },
+                  data: {
+                    $ref: '#/components/schemas/UpdateBillingCycleRequest',
+                  },
+                },
+                required: ['id', 'data'],
+              },
+              minItems: 1,
+              maxItems: 10,
+            },
+          },
+        },
+      },
+      responses: {
+        '200': {
+          description: 'Billing cycles updated',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'array',
+                items: {
+                  $ref: '#/components/schemas/BillingCycle',
+                },
+              },
+            },
+          },
+        },
+        '400': {
+          description: 'Validation error',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ValidationErrorResponse',
+              },
+            },
+          },
+        },
+        '401': {
+          description: 'Unauthorized',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+        '404': {
+          description: 'Billing cycle or billing not found',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+        '500': {
+          description: 'Internal server error',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+  '/billing-cycles/{id}': {
+    get: {
+      tags: ['Billing Cycles'],
+      summary: 'Get billing cycle by ID',
+      description: 'Retrieve a single billing cycle by ID.',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        {
+          name: 'id',
+          in: 'path',
+          required: true,
+          schema: {
+            type: 'string',
+            minLength: 1,
+          },
+        },
+      ],
+      responses: {
+        '200': {
+          description: 'Billing cycle retrieved',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/BillingCycle',
+              },
+            },
+          },
+        },
+        '401': {
+          description: 'Unauthorized',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+        '404': {
+          description: 'Billing cycle not found',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+        '500': {
+          description: 'Internal server error',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+      },
+    },
+    put: {
+      tags: ['Billing Cycles'],
+      summary: 'Update a billing cycle',
+      description: 'Update a single billing cycle.',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        {
+          name: 'id',
+          in: 'path',
+          required: true,
+          schema: {
+            type: 'string',
+            minLength: 1,
+          },
+        },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              $ref: '#/components/schemas/UpdateBillingCycleRequest',
+            },
+          },
+        },
+      },
+      responses: {
+        '200': {
+          description: 'Billing cycle updated',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/BillingCycle',
+              },
+            },
+          },
+        },
+        '400': {
+          description: 'Validation error',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ValidationErrorResponse',
+              },
+            },
+          },
+        },
+        '401': {
+          description: 'Unauthorized',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+        '404': {
+          description: 'Billing cycle or billing not found',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+        '500': {
+          description: 'Internal server error',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+      },
+    },
+    delete: {
+      tags: ['Billing Cycles'],
+      summary: 'Delete a billing cycle (hard delete)',
+      description: 'Permanently delete a billing cycle.',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        {
+          name: 'id',
+          in: 'path',
+          required: true,
+          schema: {
+            type: 'string',
+            minLength: 1,
+          },
+        },
+      ],
+      responses: {
+        '200': {
+          description: 'Billing cycle deleted',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  message: {
+                    type: 'string',
+                  },
+                },
+              },
+            },
+          },
+        },
+        '401': {
+          description: 'Unauthorized',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+        '404': {
+          description: 'Billing cycle not found',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+        '500': {
+          description: 'Internal server error',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+  '/billing-cycles/soft/{id}': {
+    delete: {
+      tags: ['Billing Cycles'],
+      summary: 'Soft delete a billing cycle',
+      description: 'Soft delete (mark as deleted) a billing cycle.',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        {
+          name: 'id',
+          in: 'path',
+          required: true,
+          schema: {
+            type: 'string',
+            minLength: 1,
+          },
+        },
+      ],
+      responses: {
+        '200': {
+          description: 'Billing cycle soft deleted',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/BillingCycle',
+              },
+            },
+          },
+        },
+        '401': {
+          description: 'Unauthorized',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+        '404': {
+          description: 'Billing cycle not found',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+        '500': {
+          description: 'Internal server error',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+};

@@ -1,2 +1,22 @@
 api/functions/node_modules
 api/functions/package-lock.json
+api/functions/lib
+api/functions/secrets/.env.*
+!api/functions/secrets/.env.example
+
+ui/node_modules
+ui/package-lock.json
+ui/.svelte-kit
+ui/build
+
+# OS & IDE
+.DS_Store
+.vscode/launch.json
+.idea
+
+# Firebase emulator data
+firebase-emulator-data/
+
+# Logs
+*.log
+npm-debug.log*

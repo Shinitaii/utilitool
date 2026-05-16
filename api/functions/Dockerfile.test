@@ -1,0 +1,21 @@
+FROM node:24-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY tsconfig*.json jest.config.ts ./
+COPY src ./src
+
+# Test environment (uses Firebase emulator)
+ENV NODE_ENV=test
+ENV APP_ENV=test
+
+# Emulator host (must match docker-compose service name)
+ENV FIRESTORE_EMULATOR_HOST=firebase-emulator:8080
+ENV FIREBASE_DATABASE_EMULATOR_HOST=firebase-emulator:5000
+ENV FIREBASE_AUTH_EMULATOR_HOST=firebase-emulator:9099
+ENV GCLOUD_PROJECT=utilitool-test
+
+CMD ["npm", "test", "--", "--coverage", "--coverageReporters=json-summary", "--coverageReporters=text"]

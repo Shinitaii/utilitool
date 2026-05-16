@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "utilitool-3fe70"
-  }
+    "staging": "utilitool-staging",
+    "production": "utilitool-3fe70"
+  },
+  "targets": {},
+  "etags": {}
 }

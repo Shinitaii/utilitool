@@ -1,0 +1,68 @@
+version: "3.8"
+
+services:
+  firebase-emulator:
+    image: google/cloud-tools:emulators
+    container_name: firebase-emulator
+    ports:
+      - "4400:4400" # Emulator Suite UI
+      - "5000:5000" # Realtime Database
+      - "5001:5001" # Cloud Functions
+      - "8080:8080" # Firestore
+      - "9099:9099" # Authentication
+    environment:
+      - FIREBASE_DATABASE_NAME=default
+    volumes:
+      - firebase-emulator-data:/home/user/.cache/firebase/emulators
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4400"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./api/functions
+      dockerfile: Dockerfile.dev
+    container_name: api-dev
+    ports:
+      - "5002:5002"
+    depends_on:
+      firebase-emulator:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=development
+      - APP_ENV=test
+      - FIREBASE_EMULATOR_HUB=firebase-emulator:4400
+      - FIRESTORE_EMULATOR_HOST=firebase-emulator:8080
+      - FIREBASE_DATABASE_EMULATOR_HOST=firebase-emulator:5000
+      - FIREBASE_AUTH_EMULATOR_HOST=firebase-emulator:9099
+      - GCLOUD_PROJECT=utilitool-test
+    volumes:
+      - ./api/functions/src:/app/src
+      - ./api/functions/secrets:/app/secrets
+      - ./api/functions/lib:/app/lib # Compiled output
+    command: npm run build:watch
+    # Requires: api/functions/secrets/.env.test file
+    # See: API_SETUP.md for environment setup
+
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile.dev
+    container_name: ui-dev
+    ports:
+      - "5173:5173"
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://api:5002
+    volumes:
+      - ./ui/src:/app/src
+      - ./ui/lib:/app/lib # Node modules cache
+    command: npm run dev -- --host
+
+volumes:
+  firebase-emulator-data:

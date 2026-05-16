@@ -1,356 +1,275 @@
-﻿# CLAUDE.md
+﻿# Utilitool — Claude Code Navigation Guide
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Welcome to the Utilitool project. This document guides you through the repo structure and points you to the right documentation based on what you're working on.
+
+---
+
+## Quick Navigation
+
+### 📚 What are you doing?
+
+- **Understanding the business**: Start with [Business Overview](#business-overview) below
+- **Working on the API**: Read `api/CLAUDE.md` → covers backend architecture, API specs (Swagger), and feature-by-feature file locations
+- **Working on the UI**: Read `ui/CLAUDE.md` → covers frontend architecture, component structure, and which API endpoints each page calls
+- **Setting up locally**: See [Docker & Local Development](#docker--local-development) below
+- **Deploying**: See [CI/CD & Deployment](#cicd--deployment) below
+
+### Notes before navigation
+
+- **Conditioned lookup**: When working on API, read only `api/CLAUDE.md` unless the task requires cross-module knowledge (e.g., "why is the UI calling this endpoint wrong?"). Same for UI work.
+
+---
 
 ## Project Layout
 
-- `api/functions/` — Firebase Cloud Functions backend (Express, TypeScript, Firestore)
-- `ui/` — SvelteKit frontend (TypeScript, Tailwind CSS v4, Vite, Playwright)
+```
+utilitool/
+├── api/functions/          → Backend (Express + Firebase Cloud Functions)
+│   └── CLAUDE.md           → Read for API architecture & feature file map
+├── ui/                     → Frontend (SvelteKit + Svelte 5)
+│   └── CLAUDE.md           → Read for UI architecture & component map
+├── docker-compose.yml      → Local dev orchestration
+├── CLAUDE.md               → This file (navigation orchestrator)
+├── API_SETUP.md            → API setup guide
+└── EMULATOR_SETUP.md       → Firebase emulator configuration
+```
 
-Read `api/functions/CLAUDE.md` for backend architecture. Read `ui/CLAUDE.md` for Svelte MCP tools.
+---
 
-## API Commands
+## Business Overview
 
-Run from `api/functions/`:
+**Utilitool** is a utility meter reading and billing management system. It automates the workflow from capturing readings to generating accurate per-tenant bills.
 
+### Core Entities
+1. **Meter Groups** — Containers for utility types (electricity, water)
+2. **Properties** — Buildings/units that consume utilities
+3. **Tenants** — Individual renters/occupants
+4. **Readings** — Snapshots of consumption at a point in time
+5. **Billings** — Individual bill records (property + previous/current readings)
+6. **Billing Cycles** — Periods that validate and rate all readings (enforces 3% tolerance, no meter rollback)
+
+### The Happy Path
+1. Capture readings from meters
+2. Create a billing cycle (date range + total consumption + total charges)
+3. System validates readings + consumption (3% tolerance)
+4. System generates per-tenant bills
+5. Track payment status
+
+---
+
+## Technology Stack
+
+| Layer | Stack | Details |
+|-------|-------|---------|
+| **Backend** | Express + Firebase Cloud Functions | TypeScript, Firestore, Zod validation, custom JWT auth |
+| **Frontend** | SvelteKit 5 + Svelte 5 runes | TypeScript, Tailwind v4, Playwright E2E |
+| **Database** | Firestore (emulated locally) | No-SQL, real-time capabilities |
+| **Deployment** | Firebase (API) + Vercel (UI) | Staging & production aliases configured |
+
+---
+
+## Docker & Local Development
+
+### Quick Start
+```bash
+docker-compose up
+```
+
+Starts:
+- **Firebase Emulator** (port 4400) — Firestore, Auth, Realtime DB
+- **API** (port 5002) — Express server, watch mode
+- **UI** (port 5173) — SvelteKit dev server
+
+See `docker-compose.yml` for full config.
+
+### Manual Setup
+```bash
+# Terminal 1: Start emulator + API
+cd api/functions
+npm ci
+npm run serve
+
+# Terminal 2: Start UI
+cd ui
+npm ci
+npm run dev
+```
+
+---
+
+## Commands Quick Reference
+
+### API (`api/functions/`)
 | Task | Command |
-|---|---|
-| Build | `npm run build` |
-| Build (watch) | `npm run build:watch` |
+|------|---------|
+| Dev (emulator + watch) | `npm run serve` |
+| Type check | `npx tsc --noEmit` |
 | Lint | `npm run lint` |
-| Test (all) | `npm test` |
-| Test (watch) | `npm run test:watch` |
-| Test (single file) | `npx jest src/features/meter-group/meter-group.test.ts` |
-| Local emulator | `npm run serve` |
-
-## UI Commands
-
-Run from `ui/`:
-
-| Task | Command |
-|---|---|
-| Dev server | `npm run dev` |
+| Test | `npm test` |
 | Build | `npm run build` |
-| Lint + format check | `npm run lint` |
-| Format | `npm run format` |
+
+### UI (`ui/`)
+| Task | Command |
+|------|---------|
+| Dev server | `npm run dev` |
 | Type check | `npm run check` |
-| Unit tests | `npm run test:unit` |
-| E2E tests | `npm run test:e2e` |
-
-# Utilitool: Business Overview
-
-## What is Utilitool?
-
-Utilitool is a **utility meter reading and billing management system** designed to streamline how utility providers (electricity, water) track consumption and generate accurate bills for multiple tenants or properties.
-
-Think of it as a centralized hub for managing all meter-related operations—from recording readings to validating bills before they're sent to customers.
+| Lint | `npm run lint` |
+| Test (unit) | `npm run test:unit` |
+| Test (E2E) | `npm run test:e2e` |
+| Build | `npm run build` |
 
 ---
 
-## The Core Problem It Solves
+## Swagger / API Documentation
 
-Utility billing is inherently complex:
-- **Multiple properties** need individual readings
-- **Manual errors** in reading transcription corrupt billing data
-- **Consumption calculations** must be accurate for financial integrity
-- **Billing discrepancies** lead to customer disputes and lost revenue
-- **No single source of truth** for who owes what
+**When API is running** (`npm run serve`):
+- **Swagger UI**: http://localhost:5002/docs
+- **OpenAPI spec**: http://localhost:5002/docs/swagger.json
 
-Utilitool automates and validates this entire workflow.
+Each feature has a `.swagger.ts` file defining its endpoints. Reference Swagger for:
+- Request/response shapes
+- Error codes & meanings
+- Business rule constraints (e.g., 3% tolerance)
 
----
-
-## Key Business Concepts
-
-### 1. **Meter Groups**
-A meter group is a logical container for a specific utility type (electricity or water). 
-
-**Why it matters:** 
-- A property might have *both* electricity and water meters
-- Each utility has different rates, billing cycles, and regulations
-- By grouping meters by utility, you can manage rates and cycles independently
-
-*Example:* Building A has "Electricity Meter Group" and "Water Meter Group"
+**All documented in `api/CLAUDE.md`** — see "API Endpoints by Feature" section.
 
 ---
 
-### 2. **Tenants**
-Tenants are individual units or properties that consume utilities and receive bills.
+## CI/CD & Deployment
 
-**Why it matters:**
-- One building might house 20 units—each gets its own bill
-- Each tenant's consumption is tracked separately
-- Tenants belong to a meter group (linked by the building's meter infrastructure)
+### Staging
+- **API**: Automatically deploys on push to `main` in `api/functions/**`
+  - Project alias: `staging` (utilitool-staging)
+  - Requires: `FIREBASE_TOKEN_STAGING` in GitHub secrets
 
-*Example:* Unit 101, Unit 102, Unit 103 are all tenants under "Building A's Electricity Meter Group"
+- **UI**: Preview deploys on pull requests
+  - Project: Vercel
+  - Requires: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`
 
----
+### Production
+- **Firestore**: utilitool-3fe70
+- **Manual deployment only** — not in CI/CD
 
-### 3. **Meter Readings**
-A meter reading is a snapshot of consumption at a specific point in time.
-
-**Why it matters:**
-- Readings are the *raw data* for billing
-- Each reading must be recorded with: tenant ID, utility type, reading value, and date
-- The system prevents duplicate readings in the same month (data quality)
-
-*Example:* Unit 101's electricity meter on June 1st shows 5,432 kWh
+See `.github/workflows/` for full pipeline definitions.
 
 ---
 
-### 4. **Billing Cycles**
-A billing cycle groups all tenants' readings within a time period and calculates charges.
+## File Maps
 
-**How it works:**
-1. Define the billing period (e.g., June 1 – June 30)
-2. Specify total consumption and total charges for the meter group
-3. The system validates that:
-   - All readings are present and valid
-   - Consumption calculations match (within 3% tolerance for rounding errors)
-   - Present reading is always greater than previous reading (meter didn't roll back)
-   - No tenant appears twice in the cycle
+### Per-Feature File Map
+Each API feature is self-contained in `api/functions/src/features/<feature>/` following this pattern:
 
-4. Once validated, the system automatically breaks down charges per tenant based on their consumption
+```
+<feature>/
+├── <feature>.model.ts        → TypeScript type definition
+├── <feature>.dto.ts          → Input/output shape validation (Zod)
+├── <feature>.repository.ts   → Firestore CRUD operations
+├── <feature>.service.ts      → Business logic & validation
+├── <feature>.controller.ts   → HTTP request handling
+├── <feature>.route.ts        → Express route definitions
+├── <feature>.validator.ts    → Zod schema validators
+├── <feature>.swagger.ts      → OpenAPI documentation
+└── <feature>.test.ts         → Jest tests
+```
 
-**Why it matters:**
-- Prevents billing fraud and accidental overcharges
-- Creates an audit trail of every billing decision
-- Warns about unusual patterns (e.g., one tenant using 10x the average)
+**Full details**: See `api/CLAUDE.md` → "File & Folder Reference by Feature"
 
-*Example:* June billing cycle for Building A electricity: 500 kWh total, ₱5,000 total charge = ₱10/kWh rate
+### Per-Component File Map (UI)
+Each page/component is organized by:
+- **Pages**: `ui/src/routes/(app)/<feature>/+page.svelte`
+- **API modules**: `ui/src/lib/api/<feature>.ts` (calls backend)
+- **Components**: `ui/src/lib/components/<shared|feature>/`
+- **Types**: `ui/src/lib/types/<feature>.types.ts` (matches backend models)
 
----
-
-### 5. **Individual Bills**
-Bills are the end product—each tenant gets a line item showing their share of the cycle's charges.
-
-**Components of a bill:**
-- Previous meter reading
-- Current meter reading
-- Consumption (current − previous)
-- Charge (consumption × rate)
-
-**Why it matters:**
-- Bills are what customers see and pay
-- Must be accurate or customers dispute them
-- Part of the payment/collections workflow
-
-*Example:* Unit 101 used 45 kWh in June → charged ₱450 (45 × ₱10)
+**Full details**: See `ui/CLAUDE.md` → "Component & API Mapping"
 
 ---
 
-### 6. **Payments**
-Records of when and how tenants paid their bills.
+## Feature Status
 
-**Why it matters:**
-- Tracks which bills are paid, partial, or pending
-- Enables collections management
-- Provides cash flow visibility
+### API Features (Complete)
+- ✅ Meter Groups (CRUD, batch)
+- ✅ Properties (CRUD, batch)
+- ✅ Tenants (CRUD, batch)
+- ✅ Readings (CRUD, batch)
+- ✅ Billings (CRUD, batch)
+- ✅ Billing Cycles (CRUD, batch, validation)
+- ✅ Auth (JWT: login, register, refresh, logout)
 
-*Example:* Unit 101's June bill (₱450) marked as "paid" on June 28th
-
----
-
-## The Happy Path: A Complete Billing Workflow
-
-### Step 1: Capture Readings
-- Meter readers record consumption from physical meters
-- Readings can be entered manually or extracted from photos using AI
-- System rejects duplicates (same tenant, same utility, same month)
-
-### Step 2: Create Billing Cycle
-- Admin defines: start date, end date, total expected consumption, total charges
-- Provides list of tenant readings to include
-
-### Step 3: System Validates
-The system checks:
-- ✅ Do all readings exist in the database?
-- ✅ Do they belong to the correct tenants?
-- ✅ Is present reading > previous reading?
-- ✅ Is total calculated consumption within 3% of provided total?
-- ✅ Is the billing rate reasonable (not suspiciously high/low)?
-- ✅ No duplicate tenants in this cycle?
-
-If any check fails → billing is rejected with specific error details
-
-### Step 4: Bills Are Generated
-Once validated, the system:
-- Calculates per-tenant consumption
-- Applies the rate to generate individual charges
-- Creates a bill record for each tenant
-
-### Step 5: Bills Are Tracked
-- Admin marks cycle as "printed" (ready to send to customers)
-- Bills are sent to tenants
-- Payments are recorded as they arrive
+### UI Pages (Complete)
+- ✅ Login / Register
+- ✅ Dashboard (stub with stat cards)
+- ✅ Meter Groups (full CRUD table)
+- ✅ Tenants (searchable list)
+- ✅ Readings (filterable list)
+- ✅ Billings (table)
+- ✅ Billing Cycles (table with rate/consumption)
+- 🚧 Bills / OCR upload (stub — "to be finished")
+- 🚧 Reports (stub — "to be finished")
+- 🚧 Properties detail (tabs: Tenants | Readings | Billings | History)
 
 ---
 
-## Key Business Rules & Safeguards
+## Getting Started
 
-### Consumption Accuracy (3% Tolerance)
-Billing is calculated twice: once from individual readings, once from the cycle's totals. If they differ by more than 3%, the system blocks billing to prevent bad data propagating.
+### 1. First Time Setup
+```bash
+# Clone repo
+git clone <repo>
+cd new-utility-calculator
 
-*Why:* Small rounding differences are normal, but large gaps indicate data corruption.
+# Start dev environment
+docker-compose up
 
-### No Meter Rollback
-The system rejects any situation where a present reading is less than or equal to the previous reading.
+# Open in browser
+# UI: http://localhost:5173
+# API Docs: http://localhost:5002/docs
+# Emulator: http://localhost:4400
+```
 
-*Why:* Meters don't go backwards (unless replaced). If they do, it's a data error that must be investigated.
+### 2. Register a User
+- Go to http://localhost:5173
+- Click "Sign up"
+- Create test account (e.g., `test@example.com` / `password123`)
+- Login → Dashboard
 
-### Duplicate Detection
-You can't record two readings for the same tenant, utility type, and month.
+### 3. Explore the API
+- Visit http://localhost:5002/docs
+- Try endpoints: POST meter-group, POST property, POST tenant, POST reading, etc.
+- See real request/response shapes in Swagger UI
 
-*Why:* Duplicate readings corrupt consumption calculations and hide real problems.
-
-### Admin-Only Access
-Only administrators can create meter groups, run billing cycles, and manage the system.
-
-*Why:* Billing data directly affects revenue and customer trust.
-
----
-
-## The Value Proposition
-
-**For Utility Providers:**
-- ⚡ **Speed**: Automate the most error-prone part of billing
-- 🛡️ **Accuracy**: Multi-layer validation catches mistakes before they reach customers
-- 📊 **Visibility**: See consumption trends, identify top users, spot anomalies
-- 📋 **Compliance**: Audit trail for every reading and bill for regulatory/dispute resolution
-- 💰 **Revenue**: Prevent undercharging due to calculation errors
-
-**For Customers:**
-- 📱 Access to their own readings and bills
-- 🔍 Transparency in how charges are calculated
-- 🚨 Early warning if consumption spikes (leak detection)
+### 4. Understand Features
+- Need to add a **new API feature**? → See `api/CLAUDE.md` → "Adding a New Feature"
+- Need to add a **new UI page**? → See `ui/CLAUDE.md` → "Adding a New Page"
+- Need to understand a **specific business rule**? → See section in this doc or the Business Overview
 
 ---
 
-## Typical Use Case: Multi-Unit Building
+## Key Files
 
-**Scenario:** A 50-unit condominium with centralized electricity and water meters.
-
-1. **Monthly**: Meter readers visit and capture readings from the central meter and any sub-meters
-2. **Mid-month**: Readings are entered into Utilitool (some via phone camera, AI extracts the numbers)
-3. **Month-end**: 
-   - Admin inputs the billing cycle details (dates, total expected consumption, total charges from the utility)
-   - System validates all 50 tenants have readings
-   - System calculates each unit's share and charge
-   - Cycle marked as valid
-4. **Billing day**: System generates 50 individual bills, printed and distributed
-5. **Tracking**: Payment status is recorded as checks/transfers arrive
+| File | Why It Matters |
+|------|---|
+| `docker-compose.yml` | Start the whole stack with one command |
+| `api/functions/src/index.ts` | API entry point — all routes mounted here |
+| `api/functions/src/config/swagger.config.ts` | OpenAPI spec generator — aggregates all `.swagger.ts` files |
+| `ui/src/routes/(app)/+layout.ts` | Auth guard for all protected routes |
+| `ui/src/lib/api/client.ts` | JWT token refresh interceptor — handles 401 + retry |
+| `ui/src/lib/stores/auth.svelte.ts` | Authentication state (Svelte writable store) |
 
 ---
 
-## Success Metrics
+## Further Reading
 
-- **Billing accuracy**: Zero discrepancies between system-calculated and manually-verified totals
-- **Cycle completion time**: From readings captured → bills ready to send (target: < 2 days)
-- **Dispute rate**: Customer complaints about billing errors (target: < 1% of bills)
-- **System uptime**: Billing cycles never fail mid-process
-- **Audit readiness**: Any bill can be traced back to original readings in seconds
-
----
-
-## Conclusion
-
-Utilitool transforms utility billing from a manual, error-prone spreadsheet nightmare into a validated, auditable, and transparent system. By catching errors early and automating calculations, it protects both the utility provider's revenue and the customer's trust.
+- **Deep dive on API**: `api/CLAUDE.md`
+- **Deep dive on UI**: `ui/CLAUDE.md`
+- **API setup & environments**: `API_SETUP.md`
+- **Emulator configuration**: `EMULATOR_SETUP.md`
 
 ---
 
-# File & Folder Reference Map
+## Questions?
 
-For quick navigation of critical files and folders, refer to the tables below. Each entry lists what the file or folder handles or owns.
-
-## Root Level
-
-| Path | What It Handles |
-|---|---|
-| `CLAUDE.md` | Project guidance, API/UI commands, business overview, file map |
-| `docker-compose.yml` | Docker multi-container orchestration (currently empty placeholder) |
-| `Dockerfile` | Docker image build configuration (currently empty placeholder) |
-| `.dockerignore` | Docker build exclusions (currently empty placeholder) |
-| `.gitignore` | Git ignore patterns: `api/functions/node_modules`, `api/functions/package-lock.json` |
-| `.vscode/settings.json` | VSCode editor configuration: file/search/watcher exclusions, UI preferences |
-| `.github/workflows/` | CI/CD pipeline definitions (directory empty, no workflows defined yet) |
-
-## API Backend — `api/`
-
-### Configuration & Setup
-
-| Path | What It Handles |
-|---|---|
-| `api/firebase.json` | Firebase CLI config: function codebase location, pre-deploy hooks (lint, build), ignore patterns |
-| `api/.firebaserc` | Firebase project alias mapping: `utilitool-3fe70` |
-
-### TypeScript Backend — `api/functions/`
-
-| Path | What It Handles |
-|---|---|
-| `api/functions/CLAUDE.md` | Backend architecture rules, feature layer pattern, coding conventions |
-| `api/functions/package.json` | Dependencies: Express, Firebase Admin/Functions v7, Zod v4, Pino logging, ts-jest |
-| `api/functions/tsconfig.json` | TypeScript compiler config: `es2017` target, `NodeNext` modules, `src` → `lib` compilation |
-| `api/functions/tsconfig.dev.json` | Dev-only TypeScript config for ESLint parsing |
-| `api/functions/.eslintrc.js` | ESLint config: Google style guide, TypeScript, import plugin, Jest plugin for tests |
-| `api/functions/jest.config.ts` | Jest test runner config: ts-jest preset, `src/` root, matches `*.test.ts` / `*.spec.ts` |
-| `api/functions/src/` | All TypeScript source code (compiles to `lib/`) |
-| `api/functions/lib/` | Compiled JavaScript output (mirrors `src/` structure) |
-| `api/functions/secrets/` | Environment variable files: `.env.{APP_ENV}` (git-ignored, not committed) |
-
-### API Source Layer: `api/functions/src/`
-
-| Path | What It Handles |
-|---|---|
-| `src/index.ts` | Firebase Cloud Function entry point: Express app initialization, feature router mounting (`/meter-groups`, `/properties`, `/tenants`) |
-| `src/config/` | Configuration modules: env vars, error handling, Firebase initialization, logging, rate limiting, Redis connection |
-| `src/constants/` | Constants: Firestore collection names, utility type definitions (electricity, water) |
-| `src/lib/` | Firebase abstraction layer: generic `Repository<T>` class, Firestore/Realtime DB primitives, stubs for auth/storage/notifications |
-| `src/middlewares/` | Express middleware: authentication, error handling, request logging, DTO validation, Zod schema validation |
-| `src/utils/` | Shared utilities: `BaseModel` interface, `AppError` exception class, Pino logger, Firestore snapshot conversion, pagination, HTML sanitization |
-
-### API Features: `api/functions/src/features/`
-
-Each feature follows the 8-layer pattern: model → dto → repository → service → controller → route → validator → test
-
-| Feature | Status | Handles |
-|---|---|---|
-| `src/features/meter-group/` | ✅ Complete | Meter group CRUD operations: create, read, search, update, soft delete |
-| `src/features/property/` | ✅ Complete | Property CRUD operations: create, read, search, update, delete |
-| `src/features/tenant/` | ✅ Complete | Tenant CRUD operations: create, read, search, update, delete; enforces max-tenant-count per property; ensures unique tenant names per property |
-| `src/features/reading/` | 🔲 Model Only | Meter reading data structure: `meter_group_id`, `reading_amount`, `reading_date`; service/route layers not yet implemented |
-| `src/features/billing/` | 🔲 Model Only | Billing data structure: `property_id`, `previous_reading_id`, `current_reading_id`; service/route layers not yet implemented |
-| `src/features/billing-cycle/` | 🔲 Model Only | Billing cycle data structure: billing IDs map, rate, consumption, start/end dates; service/route layers not yet implemented |
-| `src/features/audit/` | 🔲 Empty | Audit trail (placeholder for future audit logging) |
-
-## UI Frontend — `ui/`
-
-### Configuration & Setup
-
-| Path | What It Handles |
-|---|---|
-| `ui/CLAUDE.md` | Frontend architecture rules: Svelte 5 runes mode, MCP tools required, TypeScript conventions |
-| `ui/AGENTS.md` | Agent-specific instructions and guidelines |
-| `ui/package.json` | Dependencies: SvelteKit, Svelte 5, Tailwind CSS v4, Vitest, Playwright, mdsvex |
-| `ui/svelte.config.js` | Svelte compiler config: Vercel adapter, runes mode enforced globally, mdsvex for `.md`/`.svx` |
-| `ui/vite.config.ts` | Vite bundler config: Tailwind v4 Vite plugin, Vitest with browser (Playwright) and Node test projects |
-| `ui/tsconfig.json` | TypeScript compiler config: strict mode, bundler module resolution, source maps enabled |
-| `ui/playwright.config.ts` | Playwright E2E test config: builds and previews on port 4173; matches `**/*.e2e.{ts,js}` |
-| `ui/eslint.config.js` | ESLint flat config: TypeScript, Svelte, Prettier integration |
-
-### SvelteKit App — `ui/src/`
-
-| Path | What It Handles |
-|---|---|
-| `ui/src/app.d.ts` | SvelteKit type augmentation (empty/placeholder for future use) |
-| `ui/src/app.html` | HTML shell template: `%sveltekit.head%` and `%sveltekit.body%` placeholders |
-| `ui/src/lib/` | Shared components, utilities, and the `$lib` alias root; future `src/lib/server/` for server-only code |
-| `ui/src/lib/assets/` | Static assets: favicon.svg |
-| `ui/src/lib/vitest-examples/` | Example test files: `greet()` utility with server-side unit test, `Welcome.svelte` component with browser test |
-| `ui/src/routes/` | SvelteKit file-based routing: `layout.css` for global Tailwind import, root layout/page, `/demo` pages |
-| `ui/src/routes/layout.css` | Global CSS: `@import 'tailwindcss'` directive and Tailwind Forms plugin import |
-| `ui/src/routes/+layout.svelte` | Root layout component: renders favicon, loads global CSS, renders page content |
-| `ui/src/routes/+page.svelte` | Root page: placeholder welcome message |
-| `ui/src/routes/demo/+page.svelte` | Demo page with link to Playwright demo |
-| `ui/src/routes/demo/playwright/+page.svelte` | Playwright E2E test demo page |
-| `ui/src/routes/demo/playwright/page.svelte.e2e.ts` | Playwright E2E test: verifies h1 heading visible on demo page |
-| `ui/static/` | Public static assets: `robots.txt` |
+- **"Where is [feature]?"** → Check the file map in the relevant CLAUDE.md (`api/` or `ui/`)
+- **"How do I [add a feature]?"** → Check "Adding a New Feature" in the relevant CLAUDE.md
+- **"What does [API endpoint] do?"** → Check Swagger UI at http://localhost:5002/docs
+- **"Which API endpoints does [page] call?"** → Check `ui/CLAUDE.md` → "Page-to-API Mapping"

@@ -1,0 +1,49 @@
+import {z} from "zod";
+
+// Create DTOS
+export const CreateBillingDTOSchema = z.object({
+  property_id: z.string().trim().min(1),
+  previous_reading_id: z.string().trim().min(1),
+  current_reading_id: z.string().trim().min(1),
+});
+export type CreateBillingDTO = z.infer<typeof CreateBillingDTOSchema>;
+
+export const CreateBillingBatchDTOSchema = z.array(
+  CreateBillingDTOSchema
+).min(1).max(10);
+export type CreateBillingBatchDTO = z.infer<typeof CreateBillingBatchDTOSchema>;
+
+// Update DTOS
+export const UpdateBillingDTOSchema = CreateBillingDTOSchema.partial();
+export type UpdateBillingDTO = z.infer<typeof UpdateBillingDTOSchema>;
+
+export const UpdateBillingBatchItemSchema = z.object({
+  id: z.string().min(1),
+  data: UpdateBillingDTOSchema,
+});
+export const UpdateBillingBatchDTOSchema = z.array(
+  UpdateBillingBatchItemSchema
+).min(1).max(10);
+export type UpdateBillingBatchDTO = z.infer<typeof UpdateBillingBatchDTOSchema>;
+
+export const BillingByIdParamsDTOSchema = z.object({
+  id: z.string().trim().min(1),
+});
+export type BillingByIdParamsDTO = z.infer<typeof BillingByIdParamsDTOSchema>;
+
+export const GetBillingsQueryDTOSchema = z
+  .object({
+    propertyId: z.string().trim().min(1).optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+    cursor: z.string().trim().min(1).optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.propertyId && value.cursor) {
+      context.addIssue({
+        code: "custom",
+        message: "cursor cannot be combined with propertyId",
+        path: ["cursor"],
+      });
+    }
+  });
+export type GetBillingsQueryDTO = z.infer<typeof GetBillingsQueryDTOSchema>;

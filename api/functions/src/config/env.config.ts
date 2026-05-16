@@ -7,7 +7,12 @@ export const isEmulator = Boolean(
   process.env.FIREBASE_EMULATOR_HUB,
 );
 
-const bootstrapEnv = process.env.APP_ENV ?? (isEmulator ? "test" : "dev");
+export const nodeEnv = (process.env.NODE_ENV ?? "development") as
+  | "development"
+  | "staging"
+  | "production";
+
+const bootstrapEnv = process.env.APP_ENV ?? (isEmulator ? "test" : nodeEnv);
 
 const envFile = path.resolve(process.cwd(), "secrets", `.env.${bootstrapEnv}`);
 dotenv.config({path: envFile});
