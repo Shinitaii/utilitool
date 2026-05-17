@@ -16,4 +16,5 @@ export interface UpdateReadingRequest {
   meter_group_id?: string;
   reading_amount?: number;
   reading_date?: FirestoreTimestamp | string;
+  deleted_at?: null;
 }

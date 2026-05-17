@@ -1,0 +1,88 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import { getTenants, updateTenant, deleteTenant } from '$lib/api/tenants';
+  import type { Tenant, UpdateTenantRequest } from '$lib/types/tenant.types';
+  import type { PaginatedResult } from '$lib/types/api.types';
+  import { formatDate } from '$lib/utils/format';
+  import { toDate } from '$lib/utils/timestamp';
+  import ArchivePageTemplate from '$lib/components/shared/ArchivePageTemplate.svelte';
+
+  let data = $state<PaginatedResult<Tenant>>({
+    data: [],
+    nextCursor: null,
+    hasMore: false
+  });
+  let isLoading = $state(false);
+  let error = $state('');
+  let restoringId = $state<string | null>(null);
+  let deletingId = $state<string | null>(null);
+
+  const columns = [
+    { key: 'tenant_name', label: 'Tenant Name' },
+    { key: 'property_id', label: 'Property ID', format: (v: string) => v.slice(0, 8) + '...' },
+    {
+      key: 'created_at',
+      label: 'Created',
+      format: (v: any) => formatDate(toDate(v))
+    }
+  ];
+
+  onMount(async () => {
+    await loadData();
+  });
+
+  async function loadData() {
+    isLoading = true;
+    error = '';
+    try {
+      const result = await getTenants({ limit: 100 });
+      data = {
+        ...result,
+        data: result.data.filter((t: Tenant) => t.deleted_at !== null && t.deleted_at !== undefined)
+      };
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to load archived tenants';
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  async function handleRestore(id: string) {
+    restoringId = id;
+    try {
+      await updateTenant(id, { deleted_at: null } as UpdateTenantRequest);
+      await loadData();
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to restore tenant';
+    } finally {
+      restoringId = null;
+    }
+  }
+
+  async function handleHardDelete(id: string) {
+    if (confirm('Permanently delete this tenant? This cannot be undone.')) {
+      deletingId = id;
+      try {
+        await deleteTenant(id);
+        await loadData();
+      } catch (err) {
+        error = err instanceof Error ? err.message : 'Failed to delete tenant';
+      } finally {
+        deletingId = null;
+      }
+    }
+  }
+</script>
+
+<ArchivePageTemplate
+  title="Tenants"
+  isEmpty={data.data.length === 0}
+  isLoading={isLoading}
+  error={error}
+  items={data.data}
+  columns={columns}
+  onRestore={handleRestore}
+  onHardDelete={handleHardDelete}
+  restoringId={restoringId}
+  deletingId={deletingId}
+/>

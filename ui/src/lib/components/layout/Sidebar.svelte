@@ -22,6 +22,14 @@
     { label: 'Reports', href: '/reports' }
   ];
 
+  const archiveItems: NavItem[] = [
+    { label: 'Meter Groups', href: '/meter-groups/archive' },
+    { label: 'Properties', href: '/properties/archive' },
+    { label: 'Tenants', href: '/tenants/archive' },
+    { label: 'Readings', href: '/readings/archive' },
+    { label: 'Billings', href: '/billings/archive' }
+  ];
+
   let userName = $state('User');
   let userEmail = $state('user@example.com');
   let isLoggingOut = $state(false);
@@ -58,27 +66,46 @@
     <h1 class="text-2xl font-bold" style="color: var(--color-accent)">utilitool</h1>
   </div>
 
-  <nav class="flex-1 space-y-1">
-    {#each navItems as item (item.href)}
-      <a
-        href={item.href}
-        class="flex items-center justify-between rounded px-3 py-2 text-sm font-medium transition-colors"
-        class:active={isActive(item.href)}
-        class:bg-gray-900={isActive(item.href)}
-        class:text-white={isActive(item.href)}
-        class:text-gray-700={!isActive(item.href)}
-        class:hover:bg-gray-50={!isActive(item.href)}
-      >
-        <span>{item.label}</span>
-        {#if item.badge && item.badge > 0}
-          <span
-            class="ml-2 rounded-full bg-gray-200 px-2 py-0.5 text-xs font-semibold text-gray-700"
-          >
-            {item.badge}
-          </span>
-        {/if}
-      </a>
-    {/each}
+  <nav class="flex-1 space-y-4 overflow-y-auto">
+    <div class="space-y-1">
+      {#each navItems as item (item.href)}
+        <a
+          href={item.href}
+          class="flex items-center justify-between rounded px-3 py-2 text-sm font-medium transition-colors"
+          class:active={isActive(item.href)}
+          class:bg-gray-900={isActive(item.href)}
+          class:text-white={isActive(item.href)}
+          class:text-gray-700={!isActive(item.href)}
+          class:hover:bg-gray-50={!isActive(item.href)}
+        >
+          <span>{item.label}</span>
+          {#if item.badge && item.badge > 0}
+            <span
+              class="ml-2 rounded-full bg-gray-200 px-2 py-0.5 text-xs font-semibold text-gray-700"
+            >
+              {item.badge}
+            </span>
+          {/if}
+        </a>
+      {/each}
+    </div>
+
+    <div class="space-y-1 pt-4 border-t border-gray-200">
+      <p class="px-3 text-xs font-semibold uppercase text-gray-500">Archives</p>
+      {#each archiveItems as item (item.href)}
+        <a
+          href={item.href}
+          class="flex items-center rounded px-3 py-2 text-xs font-medium transition-colors"
+          class:active={isActive(item.href)}
+          class:bg-gray-900={isActive(item.href)}
+          class:text-white={isActive(item.href)}
+          class:text-gray-600={!isActive(item.href)}
+          class:hover:bg-gray-50={!isActive(item.href)}
+        >
+          {item.label}
+        </a>
+      {/each}
+    </div>
   </nav>
 
   <div class="border-t border-gray-200 pt-4 space-y-3">

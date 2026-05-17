@@ -10,9 +10,13 @@ export interface Tenant extends BaseModel {
 export interface CreateTenantRequest {
   tenant_name: string;
   property_id: string;
+  tenant_start_date?: string;
 }
 
 export interface UpdateTenantRequest {
   tenant_name?: string;
   property_id?: string;
+  tenant_start_date?: string;
+  tenant_end_date?: string | null;
+  deleted_at?: null;
 }

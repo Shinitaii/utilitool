@@ -16,4 +16,5 @@ export interface UpdateBillingRequest {
   property_id?: string;
   previous_reading_id?: string;
   current_reading_id?: string;
+  deleted_at?: null;
 }

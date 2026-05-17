@@ -1,11 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getProperties, createProperty } from '$lib/api/properties';
+  import { getProperties, createProperty, updateProperty, softDeleteProperty } from '$lib/api/properties';
   import { getMeterGroups } from '$lib/api/meter-groups';
   import { getTenants } from '$lib/api/tenants';
   import { getReadings } from '$lib/api/readings';
   import { getBillings } from '$lib/api/billings';
-  import type { Property } from '$lib/types/property.types';
+  import type { Property, UpdatePropertyRequest } from '$lib/types/property.types';
   import type { MeterGroup } from '$lib/types/meter-group.types';
   import type { Tenant } from '$lib/types/tenant.types';
   import type { Reading } from '$lib/types/reading.types';
@@ -14,6 +14,7 @@
   import { formatDate, formatCurrency } from '$lib/utils/format';
   import { toDate } from '$lib/utils/timestamp';
   import EmptyState from '$lib/components/shared/EmptyState.svelte';
+  import EditModal from '$lib/components/shared/EditModal.svelte';
 
   let properties = $state<PaginatedResult<Property>>({
     data: [],
@@ -40,7 +41,20 @@
   let searchQuery = $state('');
   let activeTab = $state<'tenants' | 'readings' | 'billings' | 'history'>('tenants');
   let showNewPropertyForm = $state(false);
+  let editModalOpen = $state(false);
+  let editingProperty = $state<Property | null>(null);
+  let deletingPropertyId = $state<string | null>(null);
+
   let newPropertyForm = $state({
+    room_name: '',
+    tenant_amount: 1,
+    meter_groups: {
+      electricity: '',
+      water: ''
+    }
+  });
+
+  let editPropertyForm = $state({
     room_name: '',
     tenant_amount: 1,
     meter_groups: {
@@ -164,13 +178,65 @@
       isLoading = false;
     }
   }
+
+  function openEditModal(property: Property) {
+    editingProperty = property;
+    editPropertyForm = {
+      room_name: property.room_name,
+      tenant_amount: property.tenant_amount,
+      meter_groups: {
+        electricity: property.meter_groups.electricity,
+        water: property.meter_groups.water
+      }
+    };
+    editModalOpen = true;
+  }
+
+  async function handleUpdateProperty() {
+    if (!editingProperty) return;
+    isLoading = true;
+    error = '';
+    try {
+      await updateProperty(editingProperty.id, editPropertyForm);
+      editModalOpen = false;
+      editingProperty = null;
+      await loadProperties();
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to update property';
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  async function handleSoftDeleteProperty(id: string) {
+    if (confirm('Archive this property? It can be restored from the archive.')) {
+      deletingPropertyId = id;
+      error = '';
+      try {
+        await softDeleteProperty(id);
+        await loadProperties();
+      } catch (err) {
+        error = err instanceof Error ? err.message : 'Failed to archive property';
+      } finally {
+        deletingPropertyId = null;
+      }
+    }
+  }
 </script>
 
 <div class="flex h-screen flex-col">
   <div class="space-y-4 border-b border-gray-200 bg-white p-6">
-    <div>
-      <h1 class="text-3xl font-bold">Properties</h1>
-      <p class="mt-1 text-gray-600">{filteredProperties.length} rooms</p>
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-3xl font-bold">Properties</h1>
+        <p class="mt-1 text-gray-600">{filteredProperties.length} rooms</p>
+      </div>
+      <a
+        href="/properties/archive"
+        class="rounded px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium"
+      >
+        Archive
+      </a>
     </div>
 
     {#if error}
@@ -286,18 +352,41 @@
           </div>
         {:else}
           {#each filteredProperties as property (property.id)}
-            <button
-              onclick={() => handleSelectProperty(property)}
-              class="w-full border-b border-gray-200 px-4 py-3 text-left transition {selectedProperty?.id ===
-              property.id
-                ? 'bg-blue-100'
-                : 'hover:bg-gray-100'}"
-            >
-              <div class="font-medium text-gray-900">{property.room_name}</div>
-              <div class="text-xs text-gray-500">
-                {formatDate(toDate(property.created_at))}
+            <div class="border-b border-gray-200 p-3">
+              <button
+                onclick={() => handleSelectProperty(property)}
+                class="w-full px-1 py-2 text-left transition {selectedProperty?.id === property.id
+                  ? 'bg-blue-50 rounded'
+                  : 'hover:bg-gray-100 rounded'}"
+              >
+                <div class="font-medium text-gray-900">{property.room_name}</div>
+                <div class="text-xs text-gray-500">
+                  {formatDate(toDate(property.created_at))}
+                </div>
+              </button>
+              <div class="mt-2 flex gap-2">
+                <button
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    openEditModal(property);
+                  }}
+                  disabled={isLoading}
+                  class="flex-1 rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-200 disabled:opacity-50"
+                >
+                  Edit
+                </button>
+                <button
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    handleSoftDeleteProperty(property.id);
+                  }}
+                  disabled={isLoading || deletingPropertyId === property.id}
+                  class="flex-1 rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-200 disabled:opacity-50"
+                >
+                  {deletingPropertyId === property.id ? 'Archiving...' : 'Archive'}
+                </button>
               </div>
-            </button>
+            </div>
           {/each}
         {/if}
       </div>
@@ -465,6 +554,76 @@
     </div>
   </div>
 </div>
+
+<!-- Edit Modal -->
+<EditModal
+  bind:isOpen={editModalOpen}
+  title="Edit Property"
+  isLoading={isLoading}
+  onClose={() => {
+    editModalOpen = false;
+    editingProperty = null;
+  }}
+  onSubmit={handleUpdateProperty}
+>
+  <div class="space-y-4">
+    <div>
+      <label for="edit-room-name" class="block text-sm font-medium text-gray-700">Room Name</label>
+      <input
+        id="edit-room-name"
+        type="text"
+        bind:value={editPropertyForm.room_name}
+        class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+      />
+    </div>
+    <div>
+      <label for="edit-tenant-amount" class="block text-sm font-medium text-gray-700">Tenant Amount</label>
+      <input
+        id="edit-tenant-amount"
+        type="number"
+        bind:value={editPropertyForm.tenant_amount}
+        min="1"
+        class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+      />
+    </div>
+    <div>
+      <label for="edit-electricity-meter" class="block text-sm font-medium text-gray-700">Electricity Meter Group</label>
+      <select
+        id="edit-electricity-meter"
+        value={editPropertyForm.meter_groups?.electricity || ''}
+        onchange={(e) => {
+          if (editPropertyForm.meter_groups) {
+            editPropertyForm.meter_groups.electricity = (e.target as HTMLSelectElement).value;
+          }
+        }}
+        class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+      >
+        <option value="">Select electricity meter...</option>
+        {#each electricityMeters as group (group.id)}
+          <option value={group.id}>{group.meter_name}</option>
+        {/each}
+      </select>
+    </div>
+    <div>
+      <label for="edit-water-meter" class="block text-sm font-medium text-gray-700">Water Meter Group</label>
+      <select
+        id="edit-water-meter"
+        value={editPropertyForm.meter_groups?.water || ''}
+        onchange={(e) => {
+          if (editPropertyForm.meter_groups) {
+            editPropertyForm.meter_groups.water = (e.target as HTMLSelectElement).value;
+          }
+        }}
+        class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+      >
+        <option value="">Select water meter...</option>
+        {#each waterMeters as group (group.id)}
+          <option value={group.id}>{group.meter_name}</option>
+        {/each}
+      </select>
+    </div>
+  </div>
+</EditModal>
 
 <style>
   :global(html, body) {
