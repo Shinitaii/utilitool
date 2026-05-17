@@ -20,7 +20,8 @@
     nextCursor: null,
     hasMore: false
   });
-  let meterGroups = $state<MeterGroup[]>([]);
+  let electricityMeters = $state<MeterGroup[]>([]);
+  let waterMeters = $state<MeterGroup[]>([]);
   let selectedProperty = $state<Property | null>(null);
   let tenants = $state<Tenant[]>([]);
   let readings = $state<PaginatedResult<Reading>>({
@@ -42,7 +43,10 @@
   let newPropertyForm = $state({
     room_name: '',
     tenant_amount: 1,
-    meter_group_id: ''
+    meter_groups: {
+      electricity: '',
+      water: ''
+    }
   });
 
   const filteredProperties = $derived(
@@ -61,13 +65,15 @@
     isLoading = true;
     error = '';
     try {
-      const [propsResult, meterGroupsResult] = await Promise.all([
+      const [propsResult, electricityResult, waterResult] = await Promise.all([
         getProperties({ limit: 100 }),
-        getMeterGroups({ limit: 100, minimal: true })
+        getMeterGroups({ limit: 100, minimal: true, utilityType: 'electricity' }),
+        getMeterGroups({ limit: 100, minimal: true, utilityType: 'water' })
       ]);
 
       properties = propsResult;
-      meterGroups = meterGroupsResult.data;
+      electricityMeters = electricityResult.data;
+      waterMeters = waterResult.data;
 
       if (properties.data.length > 0 && !selectedProperty) {
         selectedProperty = properties.data[0];
@@ -89,7 +95,17 @@
           result => result.data
         );
       } else if (activeTab === 'readings') {
-        readings = await getReadings({ meterGroupId: selectedProperty.meter_group_id, limit: 50 });
+        // Load readings for both electricity and water meter groups
+        const [electricityReadings, waterReadings] = await Promise.all([
+          getReadings({ meterGroupId: selectedProperty.meter_groups.electricity, limit: 50 }),
+          getReadings({ meterGroupId: selectedProperty.meter_groups.water, limit: 50 })
+        ]);
+        // Combine results
+        readings = {
+          data: [...electricityReadings.data, ...waterReadings.data],
+          nextCursor: null,
+          hasMore: false
+        };
       } else if (activeTab === 'billings') {
         billings = await getBillings({ propertyId: selectedProperty.id, limit: 50 });
       }
@@ -115,8 +131,12 @@
   }
 
   async function handleCreateProperty() {
-    if (!newPropertyForm.room_name.trim() || !newPropertyForm.meter_group_id) {
-      error = 'Room name and meter group are required';
+    if (
+      !newPropertyForm.room_name.trim() ||
+      !newPropertyForm.meter_groups.electricity ||
+      !newPropertyForm.meter_groups.water
+    ) {
+      error = 'Room name, electricity meter group, and water meter group are required';
       return;
     }
 
@@ -126,12 +146,16 @@
       const created = await createProperty({
         room_name: newPropertyForm.room_name,
         tenant_amount: newPropertyForm.tenant_amount,
-        meter_group_id: newPropertyForm.meter_group_id
+        meter_groups: newPropertyForm.meter_groups
       });
 
       properties.data = [created, ...properties.data];
       selectedProperty = created;
-      newPropertyForm = { room_name: '', tenant_amount: 1, meter_group_id: '' };
+      newPropertyForm = {
+        room_name: '',
+        tenant_amount: 1,
+        meter_groups: { electricity: '', water: '' }
+      };
       showNewPropertyForm = false;
       await loadPropertyDetails();
     } catch (err) {
@@ -203,18 +227,35 @@
               />
             </div>
             <div>
-              <label for="meter-group-select" class="block text-xs font-medium text-gray-700"
-                >Meter Group</label
+              <label for="electricity-meter" class="block text-xs font-medium text-gray-700"
+                >Electricity Meter Group *</label
               >
               <select
-                id="meter-group-select"
-                bind:value={newPropertyForm.meter_group_id}
+                id="electricity-meter"
+                bind:value={newPropertyForm.meter_groups.electricity}
                 class="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm"
               >
-                <option value="">Select a meter group...</option>
-                {#each meterGroups as group (group.id)}
+                <option value="">Select electricity meter...</option>
+                {#each electricityMeters as group (group.id)}
                   <option value={group.id}>
-                    {group.meter_name} ({group.utility_type})
+                    {group.meter_name}
+                  </option>
+                {/each}
+              </select>
+            </div>
+            <div>
+              <label for="water-meter" class="block text-xs font-medium text-gray-700"
+                >Water Meter Group *</label
+              >
+              <select
+                id="water-meter"
+                bind:value={newPropertyForm.meter_groups.water}
+                class="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm"
+              >
+                <option value="">Select water meter...</option>
+                {#each waterMeters as group (group.id)}
+                  <option value={group.id}>
+                    {group.meter_name}
                   </option>
                 {/each}
               </select>
@@ -269,9 +310,16 @@
           <!-- Property Header -->
           <div class="border-b border-gray-200 bg-gray-50 p-6">
             <h2 class="text-2xl font-bold text-gray-900">{selectedProperty.room_name}</h2>
-            <p class="mt-1 text-sm text-gray-600">
-              Meter Group: <span class="font-mono">{selectedProperty.meter_group_id}</span>
-            </p>
+            <div class="mt-2 space-y-1 text-sm text-gray-600">
+              <p>
+                <span class="font-medium">Electricity:</span>
+                <span class="font-mono text-xs">{selectedProperty.meter_groups.electricity || 'N/A'}</span>
+              </p>
+              <p>
+                <span class="font-medium">Water:</span>
+                <span class="font-mono text-xs">{selectedProperty.meter_groups.water || 'N/A'}</span>
+              </p>
+            </div>
           </div>
 
           <!-- Tabs -->

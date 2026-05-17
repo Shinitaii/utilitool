@@ -13,6 +13,7 @@ Welcome to the Utilitool project. This document guides you through the repo stru
 - **Working on the UI**: Read `ui/CLAUDE.md` → covers frontend architecture, component structure, and which API endpoints each page calls
 - **Setting up locally**: See [Docker & Local Development](#docker--local-development) below
 - **Deploying**: See [CI/CD & Deployment](#cicd--deployment) below
+- **Understanding past decisions**: Check `decisions/` folder → read the **title first** to decide relevance before diving into full file
 
 ### Read Once Per Session
 

@@ -38,6 +38,9 @@ export const GetMeterGroupsQueryDTOSchema = z
     utilityType: z.enum(Object.values(UTILITY_TYPES)).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(20),
     cursor: z.string().trim().min(1).optional(),
+    minimal: z.enum(["true", "false"]).optional().transform(
+      (val) => val === "true"
+    ),
   })
   .superRefine((value, context) => {
     if (value.meterName && value.cursor) {

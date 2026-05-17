@@ -20,3 +20,6 @@ firebase-emulator-data/
 # Logs
 *.log
 npm-debug.log*
+
+# Decisions (local decision logs, not committed)
+decisions/

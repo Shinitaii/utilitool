@@ -51,6 +51,7 @@ export const getMeterGroups = async (
     utilityType: query.utilityType,
     limit: query.limit,
     cursor: query.cursor ?? null,
+    minimal: query.minimal,
   });
   res.status(200).json(result);
 };

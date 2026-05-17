@@ -9,7 +9,6 @@ const validator = new PropertyValidator();
 
 type PropertySearchOptions = {
   roomName?: string;
-  meterGroupId?: string;
   limit: number;
   cursor?: string | null;
 };
@@ -29,7 +28,9 @@ export const propertyService = {
     return propertyRepository.getById(id);
   },
 
-  async search(options: PropertySearchOptions): Promise<PaginatedResult<Property>> {
+  async search(
+    options: PropertySearchOptions
+  ): Promise<PaginatedResult<Property>> {
     return propertyRepository.search({
       limit: options.limit,
       orderBy: "created_at",
@@ -37,7 +38,6 @@ export const propertyService = {
       cursor: options.cursor,
       filters: {
         ...(options.roomName ? {room_name: options.roomName} : {}),
-        ...(options.meterGroupId ? {meter_group_id: options.meterGroupId} : {}),
       },
     });
   },

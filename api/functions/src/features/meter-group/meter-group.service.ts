@@ -11,6 +11,12 @@ type MeterGroupSearchOptions = {
   utilityType?: MeterGroup["utility_type"];
   limit: number;
   cursor?: string | null;
+  minimal?: boolean;
+};
+
+type MinimalMeterGroup = {
+  id: string;
+  meter_name: string;
 };
 
 export const meterGroupService = {
@@ -24,9 +30,10 @@ export const meterGroupService = {
     return meterGroupRepository.createBatch(data);
   },
 
-
-  async search(options: MeterGroupSearchOptions): Promise<PaginatedResult<MeterGroup>> {
-    return meterGroupRepository.search({
+  async search(
+    options: MeterGroupSearchOptions
+  ): Promise<PaginatedResult<MeterGroup | MinimalMeterGroup>> {
+    const result = await meterGroupRepository.search({
       limit: options.limit,
       orderBy: "created_at",
       orderDirection: "desc",
@@ -36,6 +43,18 @@ export const meterGroupService = {
         ...(options.utilityType ? {utility_type: options.utilityType} : {}),
       },
     });
+
+    if (options.minimal) {
+      return {
+        ...result,
+        data: result.data.map((mg) => ({
+          id: mg.id,
+          meter_name: mg.meter_name,
+        })),
+      };
+    }
+
+    return result;
   },
 
   async getById(id: string): Promise<MeterGroup | null> {
