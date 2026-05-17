@@ -1,10 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { getProperties, createProperty } from '$lib/api/properties';
+  import { getMeterGroups } from '$lib/api/meter-groups';
   import { getTenants } from '$lib/api/tenants';
   import { getReadings } from '$lib/api/readings';
   import { getBillings } from '$lib/api/billings';
   import type { Property } from '$lib/types/property.types';
+  import type { MeterGroup } from '$lib/types/meter-group.types';
   import type { Tenant } from '$lib/types/tenant.types';
   import type { Reading } from '$lib/types/reading.types';
   import type { Billing } from '$lib/types/billing.types';
@@ -18,6 +20,7 @@
     nextCursor: null,
     hasMore: false
   });
+  let meterGroups = $state<MeterGroup[]>([]);
   let selectedProperty = $state<Property | null>(null);
   let tenants = $state<Tenant[]>([]);
   let readings = $state<PaginatedResult<Reading>>({
@@ -58,7 +61,14 @@
     isLoading = true;
     error = '';
     try {
-      properties = await getProperties({ limit: 100 });
+      const [propsResult, meterGroupsResult] = await Promise.all([
+        getProperties({ limit: 100 }),
+        getMeterGroups({ limit: 100 })
+      ]);
+
+      properties = propsResult;
+      meterGroups = meterGroupsResult.data;
+
       if (properties.data.length > 0 && !selectedProperty) {
         selectedProperty = properties.data[0];
         await loadPropertyDetails();
@@ -193,16 +203,21 @@
               />
             </div>
             <div>
-              <label for="meter-group-id" class="block text-xs font-medium text-gray-700"
-                >Meter Group ID</label
+              <label for="meter-group-select" class="block text-xs font-medium text-gray-700"
+                >Meter Group</label
               >
-              <input
-                id="meter-group-id"
-                type="text"
+              <select
+                id="meter-group-select"
                 bind:value={newPropertyForm.meter_group_id}
-                placeholder="Meter group ID"
                 class="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm"
-              />
+              >
+                <option value="">Select a meter group...</option>
+                {#each meterGroups as group (group.id)}
+                  <option value={group.id}>
+                    {group.meter_name} ({group.utility_type})
+                  </option>
+                {/each}
+              </select>
             </div>
             <div class="flex gap-2">
               <button
