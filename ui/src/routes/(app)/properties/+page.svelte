@@ -63,7 +63,7 @@
     try {
       const [propsResult, meterGroupsResult] = await Promise.all([
         getProperties({ limit: 100 }),
-        getMeterGroups({ limit: 100 })
+        getMeterGroups({ limit: 100, minimal: true })
       ]);
 
       properties = propsResult;

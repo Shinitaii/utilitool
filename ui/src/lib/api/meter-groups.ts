@@ -7,12 +7,14 @@ export async function getMeterGroups(params?: {
   utilityType?: string;
   limit?: number;
   cursor?: string;
+  minimal?: boolean;
 }): Promise<PaginatedResult<MeterGroup>> {
   const query = new URLSearchParams();
   if (params?.meterName) query.set('meterName', params.meterName);
   if (params?.utilityType) query.set('utilityType', params.utilityType);
   if (params?.limit) query.set('limit', params.limit.toString());
   if (params?.cursor) query.set('cursor', params.cursor);
+  if (params?.minimal) query.set('minimal', 'true');
 
   const path = query.toString() ? `/meter-groups?${query}` : '/meter-groups';
   return apiGet<PaginatedResult<MeterGroup>>(path);
