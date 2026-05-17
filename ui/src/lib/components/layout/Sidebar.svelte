@@ -1,6 +1,10 @@
 <script lang="ts">
   import { page } from '$app/stores';
+  import { goto } from '$app/navigation';
   import { getInitials } from '$lib/utils/format';
+  import { logout } from '$lib/api/auth';
+  import { clearTokens, getRefreshToken } from '$lib/api/client';
+  import { authStore } from '$lib/stores/auth.svelte';
 
   interface NavItem {
     label: string;
@@ -20,6 +24,7 @@
 
   let userName = $state('User');
   let userEmail = $state('user@example.com');
+  let isLoggingOut = $state(false);
 
   function isActive(path: string): boolean {
     return $page.url.pathname.startsWith(path);
@@ -27,6 +32,24 @@
 
   function getInitialsFromName(name: string): string {
     return getInitials(name);
+  }
+
+  async function handleLogout() {
+    isLoggingOut = true;
+    try {
+      // Call logout endpoint if refresh token exists
+      const refreshTokenValue = getRefreshToken();
+      if (refreshTokenValue) {
+        await logout(refreshTokenValue);
+      }
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      // Clear tokens and auth state
+      clearTokens();
+      authStore.logout();
+      await goto('/login');
+    }
   }
 </script>
 
@@ -58,7 +81,7 @@
     {/each}
   </nav>
 
-  <div class="border-t border-gray-200 pt-4">
+  <div class="border-t border-gray-200 pt-4 space-y-3">
     <div class="flex items-center space-x-3">
       <div
         class="flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold text-white"
@@ -71,6 +94,13 @@
         <p class="truncate text-xs text-gray-500">{userEmail}</p>
       </div>
     </div>
+    <button
+      onclick={handleLogout}
+      disabled={isLoggingOut}
+      class="w-full rounded px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-50"
+    >
+      {isLoggingOut ? 'Logging out...' : 'Logout'}
+    </button>
   </div>
 </aside>
 
