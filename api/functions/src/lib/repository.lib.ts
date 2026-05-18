@@ -9,6 +9,7 @@ import {
   softDeleteDocument,
   softDeleteDocuments,
   deleteDocuments,
+  restoreDocument,
   collectionRef,
 } from "./firestore.lib";
 import {PaginatedResult} from "../utils/pagination.util";
@@ -21,6 +22,7 @@ export type SearchOptions<T extends BaseModel> = {
 	orderDirection?: "asc" | "desc";
 	cursor?: string | null;
 	filters?: Partial<WithoutBaseModel<T>>;
+	archived?: boolean;
 };
 
 export class Repository<T extends BaseModel> {
@@ -53,6 +55,7 @@ export class Repository<T extends BaseModel> {
       }
     }
 
+    query = query.where("is_deleted", "==", options.archived ?? false);
     query = query.orderBy(options.orderBy as string, options.orderDirection ?? "desc");
 
     if (options.cursor) {
@@ -87,6 +90,10 @@ export class Repository<T extends BaseModel> {
 
   async softDeleteBatch(ids: string[]): Promise<T[]> {
     return softDeleteDocuments<T>(this.collectionName, ids);
+  }
+
+  async restore(id: string): Promise<T> {
+    return restoreDocument<T>(this.collectionName, id);
   }
 
   async delete(id: string) {

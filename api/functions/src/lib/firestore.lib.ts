@@ -6,7 +6,8 @@ import {snapshotToModel} from "../utils/firestore.util";
 const withCreateTimestamps = <T extends Record<string, unknown>>(document: T) => ({
   ...document,
   created_at: FieldValue.serverTimestamp(),
-  updated_at: FieldValue.serverTimestamp(),
+  is_deleted: false,
+  deleted_at: null,
 });
 
 const withUpdateTimestamp = <T extends Record<string, unknown>>(document: Partial<T>) => ({
@@ -16,6 +17,7 @@ const withUpdateTimestamp = <T extends Record<string, unknown>>(document: Partia
 
 const withDeleteTimestamp = <T extends Record<string, unknown>>(document: Partial<T>) => ({
   ...document,
+  is_deleted: true,
   deleted_at: FieldValue.serverTimestamp(),
 });
 
@@ -76,7 +78,12 @@ export const getDocument = async <T extends BaseModel>(
     return null;
   }
 
-  return snapshotToModel<T>(snapshot);
+  const model = snapshotToModel<T>(snapshot);
+  if (model.is_deleted === true) {
+    return null;
+  }
+
+  return model;
 };
 
 export const softDeleteDocument = async <T extends BaseModel>(
@@ -85,6 +92,18 @@ export const softDeleteDocument = async <T extends BaseModel>(
 ): Promise<T> => {
   const reference = documentRef(collectionName, documentId);
   return updateAndFetch<T>(reference, withDeleteTimestamp({}));
+};
+
+export const restoreDocument = async <T extends BaseModel>(
+  collectionName: string,
+  documentId: string,
+): Promise<T> => {
+  const reference = documentRef(collectionName, documentId);
+  return updateAndFetch<T>(reference, {
+    is_deleted: false,
+    deleted_at: null,
+    updated_at: FieldValue.serverTimestamp(),
+  });
 };
 
 export const deleteDocument = async (collectionName: string, documentId: string) => {
