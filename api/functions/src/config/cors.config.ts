@@ -1,5 +1,5 @@
 import {CorsOptions} from "cors";
-import {isEmulator} from "./env.config";
+import {isDevelopment} from "./env.config";
 
 const productionOrigins: string[] = (process.env.ALLOWED_ORIGINS ?? "")
   .split(",")
@@ -15,7 +15,7 @@ export const corsOptions: CorsOptions = {
       return;
     }
 
-    if (isEmulator && localhostPattern.test(origin)) {
+    if (isDevelopment && localhostPattern.test(origin)) {
       callback(null, true);
       return;
     }

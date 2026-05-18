@@ -1,9 +1,9 @@
 {
-  "watch": ["lib"],
-  "ext": "js",
-  "exec": "node",
-  "args": "lib/index.js",
+  "watch": ["src"],
+  "ext": "ts",
+  "exec": "ts-node",
+  "args": "src/index.ts",
   "delay": 500,
   "legacyWatch": true,
-  "ignore": ["node_modules", "src", "*.test.js"]
+  "ignore": ["node_modules", "*.test.ts"]
 }

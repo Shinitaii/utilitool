@@ -1,18 +1,14 @@
 ﻿import path from "node:path";
 import dotenv from "dotenv";
 
-export const isEmulator = Boolean(
-  process.env.FUNCTIONS_EMULATOR ||
-  process.env.FIRESTORE_EMULATOR_HOST ||
-  process.env.FIREBASE_EMULATOR_HUB,
-);
-
 export const nodeEnv = (process.env.NODE_ENV ?? "development") as
   | "development"
   | "staging"
   | "production";
 
-const bootstrapEnv = process.env.APP_ENV ?? (isEmulator ? "test" : nodeEnv);
+export const isDevelopment = nodeEnv === "development";
+
+const bootstrapEnv = process.env.APP_ENV ?? nodeEnv;
 
 const envFile = path.resolve(process.cwd(), "secrets", `.env.${bootstrapEnv}`);
 dotenv.config({path: envFile});

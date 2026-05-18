@@ -7,5 +7,4 @@
   BILLING_CYCLES: "billing_cycles",
   AUDITS: "audits",
   USERS: "users",
-  REFRESH_TOKENS: "refresh_tokens",
 };
