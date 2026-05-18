@@ -14,7 +14,10 @@ export const CreateBillingBatchDTOSchema = z.array(
 export type CreateBillingBatchDTO = z.infer<typeof CreateBillingBatchDTOSchema>;
 
 // Update DTOS
-export const UpdateBillingDTOSchema = CreateBillingDTOSchema.partial();
+export const UpdateBillingDTOSchema = CreateBillingDTOSchema.partial().extend({
+  payment_status: z.enum(['pending', 'paid']).optional(),
+  paid_at: z.string().datetime().optional(),
+});
 export type UpdateBillingDTO = z.infer<typeof UpdateBillingDTOSchema>;
 
 export const UpdateBillingBatchItemSchema = z.object({
@@ -36,6 +39,9 @@ export const GetBillingsQueryDTOSchema = z
     propertyId: z.string().trim().min(1).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(20),
     cursor: z.string().trim().min(1).optional(),
+    archived: z.enum(["true", "false"]).optional().transform(
+      (val) => val === "true"
+    ),
   })
   .superRefine((value, context) => {
     if (value.propertyId && value.cursor) {

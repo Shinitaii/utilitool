@@ -50,8 +50,10 @@ export const getProperties = async (
 
   const result = await propertyService.search({
     roomName: query.roomName,
+    meterGroupId: query.meterGroupId,
     limit: query.limit,
     cursor: query.cursor ?? null,
+    archived: query.archived,
   });
 
   res.status(200).json(result);
@@ -91,5 +93,14 @@ export const softDeleteProperty = async (
 ): Promise<void> => {
   const {id} = req.params;
   const result = await propertyService.softDelete(id);
+  res.status(200).json(result);
+};
+
+export const restoreProperty = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const {id} = req.params;
+  const result = await propertyService.restore(id);
   res.status(200).json(result);
 };

@@ -1,18 +1,12 @@
-import {Router} from "express";
-import {z} from "zod";
-import {register, login, refresh, logout} from "./auth.controller";
-import {LoginDTOSchema, RegisterDTOSchema, RefreshTokenDTOSchema} from "./auth.dto";
-import {validateRequest} from "../../middlewares/validate-request.middleware";
+import { Router } from "express";
+import { getMe, updateMe } from "./auth.controller";
+import { authMiddleware } from "../../middlewares/auth.middleware";
+import { validateRequest } from "../../middlewares/validate-request.middleware";
+import { UpdateUserProfileDTOSchema } from "./auth.dto";
 
 const router = Router();
 
-const LogoutDTOSchema = z.object({
-  refreshTokenId: z.string().min(1),
-});
-
-router.post("/register", validateRequest({body: RegisterDTOSchema}), register);
-router.post("/login", validateRequest({body: LoginDTOSchema}), login);
-router.post("/refresh", validateRequest({body: RefreshTokenDTOSchema}), refresh);
-router.post("/logout", validateRequest({body: LogoutDTOSchema}), logout);
+router.get("/me", authMiddleware, getMe);
+router.patch("/me", authMiddleware, validateRequest({ body: UpdateUserProfileDTOSchema }), updateMe);
 
 export default router;

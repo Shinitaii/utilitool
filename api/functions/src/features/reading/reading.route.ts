@@ -6,8 +6,10 @@ import {
   updateReading,
   deleteReading,
   softDeleteReading,
+  restoreReading,
   createBatchReadings,
   updateBatchReadings,
+  ocrReading,
 } from "./reading.controller";
 import {
   CreateReadingBatchDTOSchema,
@@ -16,10 +18,17 @@ import {
   GetReadingsQueryDTOSchema,
   UpdateReadingBatchDTOSchema,
   UpdateReadingDTOSchema,
+  OcrReadingDTOSchema,
 } from "./reading.dto";
 import {validateRequest} from "../../middlewares/validate-request.middleware";
 
 const router = Router();
+
+router.post(
+  "/ocr",
+  validateRequest({body: OcrReadingDTOSchema}),
+  ocrReading
+);
 
 router.post(
   "/batch",
@@ -27,7 +36,7 @@ router.post(
   createBatchReadings
 );
 
-router.put(
+router.patch(
   "/batch",
   validateRequest({body: UpdateReadingBatchDTOSchema}),
   updateBatchReadings
@@ -51,7 +60,7 @@ router.get(
   getReadingById
 );
 
-router.put(
+router.patch(
   "/:id",
   validateRequest({params: ReadingByIdParamsDTOSchema, body: UpdateReadingDTOSchema}),
   updateReading
@@ -63,10 +72,16 @@ router.delete(
   deleteReading
 );
 
-router.delete(
-  "/soft/:id",
+router.patch(
+  "/:id/delete",
   validateRequest({params: ReadingByIdParamsDTOSchema}),
   softDeleteReading
+);
+
+router.patch(
+  "/:id/restore",
+  validateRequest({params: ReadingByIdParamsDTOSchema}),
+  restoreReading
 );
 
 export default router;

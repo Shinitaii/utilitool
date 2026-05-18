@@ -19,6 +19,7 @@ import tenantRoutes from './features/tenant/tenant.route';
 import readingRoutes from './features/reading/reading.route';
 import billingRoutes from './features/billing/billing.route';
 import billingCycleRoutes from './features/billing-cycle/billing-cycle.route';
+import billsRoutes from './features/bills/bills.route';
 
 const app = express();
 
@@ -29,8 +30,8 @@ app.use(helmet());
 // Logging
 app.use(pinoHttp({logger}));
 
-// Parsing
-app.use(express.json());
+// Parsing (increased limit for base64 images in OCR requests)
+app.use(express.json({ limit: '1mb' }));
 
 // Rate limiting (auth routes stricter)
 app.use('/auth', authRateLimiter);
@@ -50,6 +51,7 @@ app.use('/tenants', tenantRoutes);
 app.use('/readings', readingRoutes);
 app.use('/billings', billingRoutes);
 app.use('/billing-cycles', billingCycleRoutes);
+app.use('/bills', billsRoutes);
 
 // Error handling
 app.use(errorHandler);

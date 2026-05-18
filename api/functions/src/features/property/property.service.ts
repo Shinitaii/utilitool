@@ -9,8 +9,10 @@ const validator = new PropertyValidator();
 
 type PropertySearchOptions = {
   roomName?: string;
+  meterGroupId?: string;
   limit: number;
   cursor?: string | null;
+  archived?: boolean;
 };
 
 export const propertyService = {
@@ -31,15 +33,24 @@ export const propertyService = {
   async search(
     options: PropertySearchOptions
   ): Promise<PaginatedResult<Property>> {
-    return propertyRepository.search({
+    const result = await propertyRepository.search({
       limit: options.limit,
       orderBy: "created_at",
       orderDirection: "desc",
       cursor: options.cursor,
+      archived: options.archived,
       filters: {
         ...(options.roomName ? {room_name: options.roomName} : {}),
       },
     });
+
+    if (options.meterGroupId) {
+      result.data = result.data.filter((property) =>
+        Object.values(property.meter_groups).includes(options.meterGroupId!)
+      );
+    }
+
+    return result;
   },
 
   async update(id: string, data: UpdatePropertyDTO): Promise<Property> {
@@ -82,5 +93,15 @@ export const propertyService = {
     }
 
     return propertyRepository.softDelete(id);
+  },
+
+  async restore(id: string): Promise<Property> {
+    const property = await propertyRepository.getById(id);
+
+    if (!property) {
+      throw new AppError(404, "Property not found");
+    }
+
+    return propertyRepository.restore(id);
   },
 };

@@ -3,6 +3,7 @@ import {Billing} from "./billing.model";
 import {CreateBillingDTO} from "./billing.dto";
 import {PaginatedResult} from "../../utils/pagination.util";
 import {BillingValidator} from "./billing.validator";
+import {AppError} from "../../utils/error.util";
 
 const validator = new BillingValidator();
 
@@ -10,17 +11,26 @@ type BillingSearchOptions = {
   propertyId?: string;
   limit: number;
   cursor?: string | null;
+  archived?: boolean;
 };
 
 export const billingService = {
   async create(data: CreateBillingDTO): Promise<Billing> {
     await validator.validateCreate(data);
-    return billingRepository.create(data);
+    return billingRepository.create({
+      ...data,
+      payment_status: 'pending' as const,
+    });
   },
 
   async createBatch(data: CreateBillingDTO[]): Promise<Billing[]> {
     await validator.validateBatch(data);
-    return billingRepository.createBatch(data);
+    return billingRepository.createBatch(
+      data.map((item) => ({
+        ...item,
+        payment_status: 'pending' as const,
+      }))
+    );
   },
 
   async search(options: BillingSearchOptions): Promise<PaginatedResult<Billing>> {
@@ -29,6 +39,7 @@ export const billingService = {
       orderBy: "created_at",
       orderDirection: "desc",
       cursor: options.cursor,
+      archived: options.archived,
       filters: {
         ...(options.propertyId ? {property_id: options.propertyId} : {}),
       },
@@ -55,5 +66,13 @@ export const billingService = {
 
   async softDelete(id: string): Promise<Billing> {
     return billingRepository.softDelete(id);
+  },
+
+  async restore(id: string): Promise<Billing> {
+    const billing = await billingRepository.getById(id);
+    if (!billing) {
+      throw new AppError(404, "Billing not found");
+    }
+    return billingRepository.restore(id);
   },
 };

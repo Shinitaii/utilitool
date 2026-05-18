@@ -30,7 +30,17 @@ export const CreateBillingCycleBatchDTOSchema = z.array(
 export type CreateBillingCycleBatchDTO = z.infer<typeof CreateBillingCycleBatchDTOSchema>;
 
 // Update DTOS
-export const UpdateBillingCycleDTOSchema = BillingCycleBaseSchema.partial().refine(
+const UpdateBillingCycleBaseSchema = z.object({
+  billing_ids: z
+    .record(z.string(), z.number().nonnegative())
+    .optional(),
+  billing_rate: z.number().nonnegative().optional(),
+  billing_consumption: z.number().nonnegative().optional(),
+  billing_start_date: z.instanceof(Timestamp).optional(),
+  billing_end_date: z.instanceof(Timestamp).optional(),
+});
+
+export const UpdateBillingCycleDTOSchema = UpdateBillingCycleBaseSchema.refine(
   (data) => {
     if (data.billing_start_date && data.billing_end_date) {
       return data.billing_start_date < data.billing_end_date;
@@ -65,6 +75,9 @@ export const GetBillingCyclesQueryDTOSchema = z
     billingEndDate: z.string().datetime().optional(),
     limit: z.coerce.number().int().min(1).max(100).default(20),
     cursor: z.string().trim().min(1).optional(),
+    archived: z.enum(["true", "false"]).optional().transform(
+      (val) => val === "true"
+    ),
   })
   .superRefine((value, context) => {
     if ((value.billingStartDate || value.billingEndDate) && value.cursor) {

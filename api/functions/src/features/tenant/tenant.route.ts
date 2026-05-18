@@ -6,6 +6,7 @@ import {
   getTenantById,
   getTenants,
   softDeleteTenant,
+  restoreTenant,
   updateTenant,
   updateBatchTenants,
 } from "./tenant.controller";
@@ -27,7 +28,7 @@ router.post(
   createBatchTenants
 );
 
-router.put(
+router.patch(
   "/batch",
   validateRequest({body: UpdateTenantBatchDTOSchema}),
   updateBatchTenants
@@ -51,7 +52,7 @@ router.get(
   getTenantById
 );
 
-router.put(
+router.patch(
   "/:id",
   validateRequest({params: TenantByIdParamsDTOSchema, body: UpdateTenantDTOSchema}),
   updateTenant
@@ -63,10 +64,16 @@ router.delete(
   deleteTenant
 );
 
-router.delete(
-  "/soft/:id",
+router.patch(
+  "/:id/delete",
   validateRequest({params: TenantByIdParamsDTOSchema}),
   softDeleteTenant
+);
+
+router.patch(
+  "/:id/restore",
+  validateRequest({params: TenantByIdParamsDTOSchema}),
+  restoreTenant
 );
 
 export default router;

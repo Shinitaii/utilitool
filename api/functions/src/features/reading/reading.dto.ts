@@ -6,8 +6,20 @@ export const CreateReadingDTOSchema = z.object({
   meter_group_id: z.string().trim().min(1),
   reading_amount: z.number().int().min(0),
   reading_date: z.instanceof(Timestamp),
+  image_url: z.url().optional(),
 });
 export type CreateReadingDTO = z.infer<typeof CreateReadingDTOSchema>;
+
+// OCR DTOS
+export const OcrReadingDTOSchema = z.object({
+  image_url: z.url(),
+});
+export type OcrReadingDTO = z.infer<typeof OcrReadingDTOSchema>;
+
+export const OcrReadingResponseSchema = z.object({
+  suggested_reading_amount: z.number().int().nullable(),
+});
+export type OcrReadingResponse = z.infer<typeof OcrReadingResponseSchema>;
 
 export const CreateReadingBatchDTOSchema = z.array(
   CreateReadingDTOSchema
@@ -37,6 +49,9 @@ export const GetReadingsQueryDTOSchema = z
     meterGroupId: z.string().trim().min(1).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(20),
     cursor: z.string().trim().min(1).optional(),
+    archived: z.enum(["true", "false"]).optional().transform(
+      (val) => val === "true"
+    ),
   })
   .superRefine((value, context) => {
     if (value.meterGroupId && value.cursor) {

@@ -31,5 +31,8 @@ export const GetTenantsQueryDTOSchema = z.object({
   propertyId: z.string().trim().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   cursor: z.string().trim().min(1).optional(),
+  archived: z.enum(["true", "false"]).optional().transform(
+    (val) => val === "true"
+  ),
 });
 export type GetTenantsQueryDTO = z.infer<typeof GetTenantsQueryDTOSchema>;

@@ -5,6 +5,7 @@ import {
   ReadingByIdParamsDTO,
   GetReadingsQueryDTO,
   UpdateReadingDTO,
+  OcrReadingDTO,
 } from "./reading.dto";
 import {AppError} from "../../utils/error.util";
 
@@ -50,6 +51,7 @@ export const getReadings = async (
     meterGroupId: query.meterGroupId,
     limit: query.limit,
     cursor: query.cursor ?? null,
+    archived: query.archived,
   });
   res.status(200).json(result);
 };
@@ -89,4 +91,22 @@ export const softDeleteReading = async (
   const {id} = req.params;
   const result = await readingService.softDelete(id);
   res.status(200).json(result);
+};
+
+export const restoreReading = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const {id} = req.params;
+  const result = await readingService.restore(id);
+  res.status(200).json(result);
+};
+
+export const ocrReading = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const data = req.body as OcrReadingDTO;
+  const result = await readingService.extractReadingFromImage(data.image_url);
+  res.status(200).json({ suggested_reading_amount: result });
 };

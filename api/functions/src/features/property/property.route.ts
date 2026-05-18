@@ -6,6 +6,7 @@ import {
   getProperties,
   getPropertyById,
   softDeleteProperty,
+  restoreProperty,
   updateProperty,
   updateBatchProperties,
 } from "./property.controller";
@@ -27,7 +28,7 @@ router.post(
   createBatchProperties
 );
 
-router.put(
+router.patch(
   "/batch",
   validateRequest({body: UpdatePropertyBatchDTOSchema}),
   updateBatchProperties
@@ -51,7 +52,7 @@ router.get(
   getPropertyById
 );
 
-router.put(
+router.patch(
   "/:id",
   validateRequest({params: PropertyByIdParamsDTOSchema, body: UpdatePropertyDTOSchema}),
   updateProperty
@@ -63,10 +64,16 @@ router.delete(
   deleteProperty
 );
 
-router.delete(
-  "/soft/:id",
+router.patch(
+  "/:id/delete",
   validateRequest({params: PropertyByIdParamsDTOSchema}),
   softDeleteProperty
+);
+
+router.patch(
+  "/:id/restore",
+  validateRequest({params: PropertyByIdParamsDTOSchema}),
+  restoreProperty
 );
 
 export default router;

@@ -3,6 +3,8 @@ import {Reading} from "./reading.model";
 import {CreateReadingDTO} from "./reading.dto";
 import {PaginatedResult} from "../../utils/pagination.util";
 import {ReadingValidator} from "./reading.validator";
+import {AppError} from "../../utils/error.util";
+import {geminiLib} from "../../lib/gemini.lib";
 
 const validator = new ReadingValidator();
 
@@ -10,6 +12,7 @@ type ReadingSearchOptions = {
   meterGroupId?: string;
   limit: number;
   cursor?: string | null;
+  archived?: boolean;
 };
 
 export const readingService = {
@@ -29,6 +32,7 @@ export const readingService = {
       orderBy: "created_at",
       orderDirection: "desc",
       cursor: options.cursor,
+      archived: options.archived,
       filters: {
         ...(options.meterGroupId ? {meter_group_id: options.meterGroupId} : {}),
       },
@@ -55,5 +59,17 @@ export const readingService = {
 
   async softDelete(id: string): Promise<Reading> {
     return readingRepository.softDelete(id);
+  },
+
+  async restore(id: string): Promise<Reading> {
+    const reading = await readingRepository.getById(id);
+    if (!reading) {
+      throw new AppError(404, "Reading not found");
+    }
+    return readingRepository.restore(id);
+  },
+
+  async extractReadingFromImage(imageUrl: string): Promise<number | null> {
+    return geminiLib.extractReadingFromImage(imageUrl);
   },
 };

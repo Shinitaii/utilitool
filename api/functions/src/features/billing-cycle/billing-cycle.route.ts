@@ -6,6 +6,7 @@ import {
   updateBillingCycle,
   deleteBillingCycle,
   softDeleteBillingCycle,
+  restoreBillingCycle,
   createBatchBillingCycles,
   updateBatchBillingCycles,
 } from "./billing-cycle.controller";
@@ -27,7 +28,7 @@ router.post(
   createBatchBillingCycles
 );
 
-router.put(
+router.patch(
   "/batch",
   validateRequest({body: UpdateBillingCycleBatchDTOSchema}),
   updateBatchBillingCycles
@@ -51,7 +52,7 @@ router.get(
   getBillingCycleById
 );
 
-router.put(
+router.patch(
   "/:id",
   validateRequest({
     params: BillingCycleByIdParamsDTOSchema,
@@ -66,10 +67,16 @@ router.delete(
   deleteBillingCycle
 );
 
-router.delete(
-  "/soft/:id",
+router.patch(
+  "/:id/delete",
   validateRequest({params: BillingCycleByIdParamsDTOSchema}),
   softDeleteBillingCycle
+);
+
+router.patch(
+  "/:id/restore",
+  validateRequest({params: BillingCycleByIdParamsDTOSchema}),
+  restoreBillingCycle
 );
 
 export default router;

@@ -51,6 +51,7 @@ export const getBillingCycles = async (
     billingEndDate: query.billingEndDate,
     limit: query.limit,
     cursor: query.cursor ?? null,
+    archived: query.archived,
   });
   res.status(200).json(result);
 };
@@ -89,5 +90,14 @@ export const softDeleteBillingCycle = async (
 ): Promise<void> => {
   const {id} = req.params;
   const result = await billingCycleService.softDelete(id);
+  res.status(200).json(result);
+};
+
+export const restoreBillingCycle = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const {id} = req.params;
+  const result = await billingCycleService.restore(id);
   res.status(200).json(result);
 };

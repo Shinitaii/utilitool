@@ -41,6 +41,9 @@ export const GetMeterGroupsQueryDTOSchema = z
     minimal: z.enum(["true", "false"]).optional().transform(
       (val) => val === "true"
     ),
+    archived: z.enum(["true", "false"]).optional().transform(
+      (val) => val === "true"
+    ),
   })
   .superRefine((value, context) => {
     if (value.meterName && value.cursor) {

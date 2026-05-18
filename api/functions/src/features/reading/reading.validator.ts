@@ -29,8 +29,9 @@ export class ReadingValidator {
     }
   }
 
-  private async validateMeterGroupReadingLimit(
-    meterGroupId: string
+  private async validateMeterGroupConstraints(
+    meterGroupId: string,
+    readingDate: Timestamp
   ): Promise<void> {
     const {data: readings} = await readingRepository.search({
       limit: MAX_READINGS_PER_METER_GROUP + 1,
@@ -41,8 +42,23 @@ export class ReadingValidator {
     if (readings.length >= MAX_READINGS_PER_METER_GROUP) {
       throw new AppError(
         400,
-        "Maximum number of readings allowed for this meter group " +
-          "has been exceeded"
+        "Maximum number of readings allowed for this meter group has been exceeded"
+      );
+    }
+
+    const d = readingDate.toDate();
+    const month = d.getUTCMonth();
+    const year = d.getUTCFullYear();
+
+    const existingInMonth = readings.some((r) => {
+      const rd = r.reading_date.toDate();
+      return rd.getUTCMonth() === month && rd.getUTCFullYear() === year;
+    });
+
+    if (existingInMonth) {
+      throw new AppError(
+        409,
+        "A reading for this meter group already exists in this month"
       );
     }
   }
@@ -51,7 +67,7 @@ export class ReadingValidator {
     await this.validateMeterGroupExists(data.meter_group_id);
     this.validateReadingAmount(data.reading_amount);
     this.validateReadingDate(data.reading_date);
-    await this.validateMeterGroupReadingLimit(data.meter_group_id);
+    await this.validateMeterGroupConstraints(data.meter_group_id, data.reading_date);
   }
 
   async validateBatch(data: CreateReadingDTO[]): Promise<void> {
@@ -66,8 +82,8 @@ export class ReadingValidator {
       this.validateReadingDate(item.reading_date);
     }
 
-    for (const meterGroupId of meterGroupIds) {
-      await this.validateMeterGroupReadingLimit(meterGroupId);
+    for (const item of data) {
+      await this.validateMeterGroupConstraints(item.meter_group_id, item.reading_date);
     }
   }
 

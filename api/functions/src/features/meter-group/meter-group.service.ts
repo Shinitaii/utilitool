@@ -3,6 +3,7 @@ import {MeterGroup} from "./meter-group.model";
 import {CreateMeterGroupDTO} from "./meter-group.dto";
 import {PaginatedResult} from "../../utils/pagination.util";
 import {MeterGroupValidator} from "./meter-group.validator";
+import {AppError} from "../../utils/error.util";
 
 const validator = new MeterGroupValidator();
 
@@ -12,6 +13,7 @@ type MeterGroupSearchOptions = {
   limit: number;
   cursor?: string | null;
   minimal?: boolean;
+  archived?: boolean;
 };
 
 type MinimalMeterGroup = {
@@ -38,6 +40,7 @@ export const meterGroupService = {
       orderBy: "created_at",
       orderDirection: "desc",
       cursor: options.cursor,
+      archived: options.archived,
       filters: {
         ...(options.meterName ? {meter_name: options.meterName} : {}),
         ...(options.utilityType ? {utility_type: options.utilityType} : {}),
@@ -75,5 +78,13 @@ export const meterGroupService = {
 
   async softDelete(id: string): Promise<MeterGroup> {
     return meterGroupRepository.softDelete(id);
+  },
+
+  async restore(id: string): Promise<MeterGroup> {
+    const meterGroup = await meterGroupRepository.getById(id);
+    if (!meterGroup) {
+      throw new AppError(404, "Meter group not found");
+    }
+    return meterGroupRepository.restore(id);
   },
 };

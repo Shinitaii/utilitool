@@ -3,6 +3,7 @@ import {BillingCycle} from "./billing-cycle.model";
 import {CreateBillingCycleDTO} from "./billing-cycle.dto";
 import {PaginatedResult} from "../../utils/pagination.util";
 import {BillingCycleValidator} from "./billing-cycle.validator";
+import {AppError} from "../../utils/error.util";
 
 const validator = new BillingCycleValidator();
 
@@ -11,6 +12,7 @@ type BillingCycleSearchOptions = {
   billingEndDate?: string;
   limit: number;
   cursor?: string | null;
+  archived?: boolean;
 };
 
 export const billingCycleService = {
@@ -32,6 +34,7 @@ export const billingCycleService = {
       orderBy: "created_at",
       orderDirection: "desc",
       cursor: options.cursor,
+      archived: options.archived,
       filters: {},
     });
   },
@@ -59,5 +62,13 @@ export const billingCycleService = {
 
   async softDelete(id: string): Promise<BillingCycle> {
     return billingCycleRepository.softDelete(id);
+  },
+
+  async restore(id: string): Promise<BillingCycle> {
+    const billingCycle = await billingCycleRepository.getById(id);
+    if (!billingCycle) {
+      throw new AppError(404, "Billing cycle not found");
+    }
+    return billingCycleRepository.restore(id);
   },
 };

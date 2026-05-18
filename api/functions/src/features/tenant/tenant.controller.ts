@@ -53,6 +53,7 @@ export const getTenants = async (
     propertyId: query.propertyId,
     limit: query.limit,
     cursor: query.cursor ?? null,
+    archived: query.archived,
   });
 
   res.status(200).json(result);
@@ -92,5 +93,14 @@ export const softDeleteTenant = async (
 ): Promise<void> => {
   const {id} = req.params;
   const result = await tenantService.softDelete(id);
+  res.status(200).json(result);
+};
+
+export const restoreTenant = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const {id} = req.params;
+  const result = await tenantService.restore(id);
   res.status(200).json(result);
 };

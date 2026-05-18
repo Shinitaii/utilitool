@@ -13,6 +13,7 @@ type TenantSearchOptions = {
   propertyId?: string;
   limit: number;
   cursor?: string | null;
+  archived?: boolean;
 };
 
 export const tenantService = {
@@ -46,6 +47,7 @@ export const tenantService = {
       orderBy: "created_at",
       orderDirection: "desc",
       cursor: options.cursor,
+      archived: options.archived,
       filters: {
         ...(options.tenantName ? {tenant_name: options.tenantName} : {}),
         ...(options.propertyId ? {property_id: options.propertyId} : {}),
@@ -93,5 +95,15 @@ export const tenantService = {
     }
 
     return tenantRepository.softDelete(id);
+  },
+
+  async restore(id: string): Promise<Tenant> {
+    const tenant = await tenantRepository.getById(id);
+
+    if (!tenant) {
+      throw new AppError(404, "Tenant not found");
+    }
+
+    return tenantRepository.restore(id);
   },
 };

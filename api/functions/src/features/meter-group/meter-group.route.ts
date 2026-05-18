@@ -6,6 +6,7 @@ import {
   updateMeterGroup,
   deleteMeterGroup,
   softDeleteMeterGroup,
+  restoreMeterGroup,
   createBatchMeterGroups,
   updateBatchMeterGroups,
 } from "./meter-group.controller";
@@ -27,7 +28,7 @@ router.post(
   createBatchMeterGroups
 );
 
-router.put(
+router.patch(
   "/batch",
   validateRequest({body: UpdateMeterGroupBatchDTOSchema}),
   updateBatchMeterGroups
@@ -51,7 +52,7 @@ router.get(
   getMeterGroupById
 );
 
-router.put(
+router.patch(
   "/:id",
   validateRequest({params: MeterGroupByIdParamsDTOSchema, body: UpdateMeterGroupDTOSchema}),
   updateMeterGroup
@@ -63,10 +64,16 @@ router.delete(
   deleteMeterGroup
 );
 
-router.delete(
-  "/soft/:id",
+router.patch(
+  "/:id/delete",
   validateRequest({params: MeterGroupByIdParamsDTOSchema}),
   softDeleteMeterGroup
+);
+
+router.patch(
+  "/:id/restore",
+  validateRequest({params: MeterGroupByIdParamsDTOSchema}),
+  restoreMeterGroup
 );
 
 export default router;

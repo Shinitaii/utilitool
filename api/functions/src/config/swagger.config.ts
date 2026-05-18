@@ -8,6 +8,7 @@ import { tenantPaths } from '../features/tenant/tenant.swagger';
 import { readingPaths } from '../features/reading/reading.swagger';
 import { billingPaths } from '../features/billing/billing.swagger';
 import { billingCyclePaths } from '../features/billing-cycle/billing-cycle.swagger';
+import { billsPaths } from '../features/bills/bills.swagger';
 
 const swaggerSpec = {
   openapi: '3.0.3',
@@ -126,64 +127,45 @@ const swaggerSpec = {
         required: ['error'],
       },
       // Auth
-      LoginRequest: {
+      UserProfile: {
         type: 'object',
         properties: {
+          userId: {
+            type: 'string',
+          },
           email: {
             type: 'string',
             format: 'email',
           },
-          password: {
+          display_name: {
             type: 'string',
-            minLength: 8,
+          },
+          role: {
+            type: 'string',
+            enum: ['admin', 'landlord', 'assistant'],
+          },
+          qr_payment_url: {
+            type: 'string',
+            format: 'uri',
+            description: 'URL of the landlord\'s GCash/Maya payment QR code image',
           },
         },
-        required: ['email', 'password'],
+        required: ['userId', 'email', 'display_name', 'role'],
       },
-      RegisterRequest: {
+      UpdateUserProfile: {
         type: 'object',
         properties: {
-          email: {
-            type: 'string',
-            format: 'email',
-          },
-          password: {
-            type: 'string',
-            minLength: 8,
-          },
-        },
-        required: ['email', 'password'],
-      },
-      RefreshRequest: {
-        type: 'object',
-        properties: {
-          refresh_token: {
+          display_name: {
             type: 'string',
             minLength: 1,
+            maxLength: 255,
+          },
+          qr_payment_url: {
+            type: 'string',
+            format: 'uri',
+            description: 'URL of the landlord\'s GCash/Maya payment QR code image',
           },
         },
-        required: ['refresh_token'],
-      },
-      AuthResponse: {
-        type: 'object',
-        properties: {
-          access_token: {
-            type: 'string',
-          },
-          refresh_token: {
-            type: 'string',
-            description: 'Present in login/register only',
-          },
-          expires_in: {
-            type: 'integer',
-            description: 'Token expiration time in seconds',
-          },
-          token_type: {
-            type: 'string',
-            enum: ['Bearer'],
-          },
-        },
-        required: ['access_token', 'expires_in', 'token_type'],
       },
       // Meter Group
       MeterGroup: {
@@ -493,8 +475,18 @@ const swaggerSpec = {
               current_reading_id: {
                 type: 'string',
               },
+              payment_status: {
+                type: 'string',
+                enum: ['pending', 'paid'],
+                description: 'Payment status of the billing',
+              },
+              paid_at: {
+                type: 'string',
+                format: 'date-time',
+                description: 'ISO 8601 timestamp when billing was marked as paid',
+              },
             },
-            required: ['property_id', 'previous_reading_id', 'current_reading_id'],
+            required: ['property_id', 'previous_reading_id', 'current_reading_id', 'payment_status'],
           },
         ],
       },
@@ -530,6 +522,14 @@ const swaggerSpec = {
           current_reading_id: {
             type: 'string',
             minLength: 1,
+          },
+          payment_status: {
+            type: 'string',
+            enum: ['pending', 'paid'],
+          },
+          paid_at: {
+            type: 'string',
+            format: 'date-time',
           },
         },
       },
@@ -667,6 +667,50 @@ const swaggerSpec = {
         },
         required: ['data', 'nextCursor', 'hasMore'],
       },
+      OcrBillRequest: {
+        type: 'object',
+        required: ['image_url'],
+        properties: {
+          image_url: {
+            type: 'string',
+            format: 'uri',
+            description: 'URL of the bill image to process',
+            example: 'https://storage.googleapis.com/bucket/bills/bill.jpg',
+          },
+        },
+      },
+      OcrBillResponse: {
+        type: 'object',
+        properties: {
+          billing_start_date: {
+            type: 'string',
+            format: 'date',
+            description: 'Start date of the billing period (YYYY-MM-DD)',
+            example: '2026-04-17',
+          },
+          billing_end_date: {
+            type: 'string',
+            format: 'date',
+            description: 'End date of the billing period (YYYY-MM-DD)',
+            example: '2026-05-16',
+          },
+          billing_consumption: {
+            type: 'number',
+            description: 'Total consumption in kWh or cubic meters',
+            example: 145.5,
+          },
+          billing_rate: {
+            type: 'number',
+            description: 'Rate per unit (PHP/kWh or PHP/cubic meter)',
+            example: 12.5,
+          },
+          raw_amount: {
+            type: 'number',
+            description: 'Total amount charged',
+            example: 1818.75,
+          },
+        },
+      },
     },
     securitySchemes: {
       BearerAuth: {
@@ -685,6 +729,7 @@ const swaggerSpec = {
     ...readingPaths,
     ...billingPaths,
     ...billingCyclePaths,
+    ...billsPaths,
   },
 };
 

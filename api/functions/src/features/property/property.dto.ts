@@ -36,7 +36,17 @@ export const PropertyByIdParamsDTOSchema = z.object({
 });
 export type PropertyByIdParamsDTO = z.infer<typeof PropertyByIdParamsDTOSchema>;
 
-export const UpdatePropertyDTOSchema = CreatePropertyDTOSchema.partial();
+const UpdatePropertyBaseDTOSchema = z
+  .object({
+    room_name: z.string().trim().min(1).max(255).transform(stripHtml).optional(),
+    tenant_amount: z.number().int().min(1).optional(),
+    meter_groups: z.record(
+      z.enum(Object.values(UTILITY_TYPES)),
+      z.string().trim().min(1)
+    ).optional(),
+  });
+
+export const UpdatePropertyDTOSchema = UpdatePropertyBaseDTOSchema;
 export type UpdatePropertyDTO = z.infer<typeof UpdatePropertyDTOSchema>;
 
 export const UpdatePropertyBatchItemSchema = z.object({
@@ -54,7 +64,11 @@ export type UpdatePropertyBatchDTO = z.infer<
 
 export const GetPropertiesQueryDTOSchema = z.object({
   roomName: z.string().trim().min(1).max(255).optional(),
+  meterGroupId: z.string().trim().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   cursor: z.string().trim().min(1).optional(),
+  archived: z.enum(["true", "false"]).optional().transform(
+    (val) => val === "true"
+  ),
 });
 export type GetPropertiesQueryDTO = z.infer<typeof GetPropertiesQueryDTOSchema>;

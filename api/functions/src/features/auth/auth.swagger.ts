@@ -1,126 +1,23 @@
 export const authPaths = {
-  '/auth/register': {
-    post: {
+  '/auth/me': {
+    get: {
       tags: ['Auth'],
-      summary: 'Register a new user',
-      description: 'Create a new user account with email and password.',
-      requestBody: {
-        required: true,
-        content: {
-          'application/json': {
-            schema: {
-              $ref: '#/components/schemas/RegisterRequest',
-            },
-          },
-        },
-      },
+      summary: 'Get current user profile',
+      description: 'Retrieve the authenticated user\'s profile information.',
+      security: [{ BearerAuth: [] }],
       responses: {
         '200': {
-          description: 'User registered successfully',
+          description: 'User profile retrieved successfully',
           content: {
             'application/json': {
               schema: {
-                allOf: [
-                  {
-                    $ref: '#/components/schemas/AuthResponse',
-                  },
-                  {
-                    type: 'object',
-                    properties: {
-                      refresh_token: {
-                        type: 'string',
-                      },
-                    },
-                  },
-                ],
-              },
-            },
-          },
-        },
-        '400': {
-          description:
-            'Validation error (invalid email format, password too short)',
-          content: {
-            'application/json': {
-              schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
-              },
-            },
-          },
-        },
-        '409': {
-          description: 'Email already registered',
-          content: {
-            'application/json': {
-              schema: {
-                $ref: '#/components/schemas/ErrorResponse',
-              },
-            },
-          },
-        },
-        '500': {
-          description: 'Internal server error',
-          content: {
-            'application/json': {
-              schema: {
-                $ref: '#/components/schemas/ErrorResponse',
-              },
-            },
-          },
-        },
-      },
-    },
-  },
-  '/auth/login': {
-    post: {
-      tags: ['Auth'],
-      summary: 'Login user',
-      description: 'Authenticate with email and password, receive JWT tokens.',
-      requestBody: {
-        required: true,
-        content: {
-          'application/json': {
-            schema: {
-              $ref: '#/components/schemas/LoginRequest',
-            },
-          },
-        },
-      },
-      responses: {
-        '200': {
-          description: 'Login successful',
-          content: {
-            'application/json': {
-              schema: {
-                allOf: [
-                  {
-                    $ref: '#/components/schemas/AuthResponse',
-                  },
-                  {
-                    type: 'object',
-                    properties: {
-                      refresh_token: {
-                        type: 'string',
-                      },
-                    },
-                  },
-                ],
-              },
-            },
-          },
-        },
-        '400': {
-          description: 'Validation error (missing fields, invalid format)',
-          content: {
-            'application/json': {
-              schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: '#/components/schemas/UserProfile',
               },
             },
           },
         },
         '401': {
-          description: 'Invalid credentials (email or password incorrect)',
+          description: 'Unauthorized (missing or invalid token)',
           content: {
             'application/json': {
               schema: {
@@ -141,109 +38,48 @@ export const authPaths = {
         },
       },
     },
-  },
-  '/auth/refresh': {
-    post: {
+    patch: {
       tags: ['Auth'],
-      summary: 'Refresh access token',
-      description: 'Use refresh token to obtain a new access token.',
+      summary: 'Update current user profile',
+      description: 'Update the authenticated user\'s profile information.',
+      security: [{ BearerAuth: [] }],
       requestBody: {
         required: true,
         content: {
           'application/json': {
             schema: {
-              $ref: '#/components/schemas/RefreshRequest',
+              $ref: '#/components/schemas/UpdateUserProfile',
             },
           },
         },
       },
       responses: {
         '200': {
-          description: 'Token refreshed successfully',
+          description: 'User profile updated successfully',
           content: {
             'application/json': {
               schema: {
-                $ref: '#/components/schemas/AuthResponse',
+                $ref: '#/components/schemas/UserProfile',
               },
             },
           },
         },
         '400': {
-          description: 'Validation error (missing refresh token)',
+          description: 'Invalid request body',
           content: {
             'application/json': {
               schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: '#/components/schemas/ErrorResponse',
               },
             },
           },
         },
         '401': {
-          description: 'Invalid or expired refresh token',
+          description: 'Unauthorized (missing or invalid token)',
           content: {
             'application/json': {
               schema: {
                 $ref: '#/components/schemas/ErrorResponse',
-              },
-            },
-          },
-        },
-        '500': {
-          description: 'Internal server error',
-          content: {
-            'application/json': {
-              schema: {
-                $ref: '#/components/schemas/ErrorResponse',
-              },
-            },
-          },
-        },
-      },
-    },
-  },
-  '/auth/logout': {
-    post: {
-      tags: ['Auth'],
-      summary: 'Logout user',
-      description: 'Invalidate the refresh token.',
-      requestBody: {
-        required: true,
-        content: {
-          'application/json': {
-            schema: {
-              type: 'object',
-              properties: {
-                refreshTokenId: {
-                  type: 'string',
-                },
-              },
-              required: ['refreshTokenId'],
-            },
-          },
-        },
-      },
-      responses: {
-        '200': {
-          description: 'Logout successful',
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                properties: {
-                  message: {
-                    type: 'string',
-                  },
-                },
-              },
-            },
-          },
-        },
-        '400': {
-          description: 'Validation error',
-          content: {
-            'application/json': {
-              schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
               },
             },
           },

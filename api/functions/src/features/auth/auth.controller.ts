@@ -1,27 +1,28 @@
-import {Request, Response} from "express";
-import {authService} from "./auth.service";
-import {LoginDTO, RegisterDTO, RefreshTokenDTO} from "./auth.dto";
+import { Response } from "express";
+import { getMe as getUser, updateMe as updateUser } from "./auth.service";
+import { AuthenticatedRequest } from "../../utils/auth.util";
+import type { UpdateUserProfileDTO } from "./auth.dto";
 
-export const register = async (req: Request, res: Response): Promise<void> => {
-  const data = req.body as RegisterDTO;
-  const result = await authService.register(data);
-  res.status(201).json(result);
+export const getMe = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const { userId, email, displayName } = req.user!;
+  const result = await getUser(userId, email, displayName);
+  res.status(200).json({
+    userId: result.id,
+    email: result.email,
+    display_name: result.display_name,
+    role: result.role,
+    qr_payment_url: result.qr_payment_url,
+  });
 };
 
-export const login = async (req: Request, res: Response): Promise<void> => {
-  const data = req.body as LoginDTO;
-  const result = await authService.login(data);
-  res.status(200).json(result);
-};
-
-export const refresh = async (req: Request, res: Response): Promise<void> => {
-  const data = req.body as RefreshTokenDTO;
-  const result = await authService.refresh(data);
-  res.status(200).json(result);
-};
-
-export const logout = async (req: Request, res: Response): Promise<void> => {
-  const {refreshTokenId} = req.body as {refreshTokenId: string};
-  await authService.logout(refreshTokenId);
-  res.status(204).send();
+export const updateMe = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const { userId } = req.user!;
+  const result = await updateUser(userId, req.body as UpdateUserProfileDTO);
+  res.status(200).json({
+    userId: result.id,
+    email: result.email,
+    display_name: result.display_name,
+    role: result.role,
+    qr_payment_url: result.qr_payment_url,
+  });
 };

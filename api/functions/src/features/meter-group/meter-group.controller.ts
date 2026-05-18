@@ -52,6 +52,7 @@ export const getMeterGroups = async (
     limit: query.limit,
     cursor: query.cursor ?? null,
     minimal: query.minimal,
+    archived: query.archived,
   });
   res.status(200).json(result);
 };
@@ -90,5 +91,14 @@ export const softDeleteMeterGroup = async (
 ): Promise<void> => {
   const {id} = req.params;
   const result = await meterGroupService.softDelete(id);
+  res.status(200).json(result);
+};
+
+export const restoreMeterGroup = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const {id} = req.params;
+  const result = await meterGroupService.restore(id);
   res.status(200).json(result);
 };
