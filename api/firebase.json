@@ -32,7 +32,8 @@
     },
     "database": {
       "host": "0.0.0.0",
-      "port": 5000
+      "port": 5000,
+      "rules": "database.rules.json"
     },
     "hub": {
       "host": "0.0.0.0",
@@ -42,6 +43,6 @@
       "enabled": true,
       "host": "0.0.0.0",
       "port": 4400
-    }
+    },
   }
 }
