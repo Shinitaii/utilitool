@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getReadings, updateReading, deleteReading } from '$lib/api/readings';
+  import { getReadings, restoreReading, deleteReading } from '$lib/api/readings';
   import { getMeterGroups } from '$lib/api/meter-groups';
   import type { Reading } from '$lib/types/reading.types';
   import type { MeterGroup } from '$lib/types/meter-group.types';
@@ -47,7 +47,7 @@
     error = '';
     try {
       const [readingsResult, meterGroupsResult] = await Promise.all([
-        getReadings({ limit: 100 }),
+        getReadings({ limit: 100, archived: true }),
         getMeterGroups({ limit: 100 })
       ]);
 
@@ -56,10 +56,7 @@
         meterGroupsResult.data.map((mg: MeterGroup) => [mg.id, mg.meter_name])
       );
 
-      data = {
-        ...readingsResult,
-        data: readingsResult.data.filter((r: Reading) => r.deleted_at !== null && r.deleted_at !== undefined)
-      };
+      data = readingsResult;
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load archived readings';
     } finally {
@@ -70,7 +67,7 @@
   async function handleRestore(id: string) {
     restoringId = id;
     try {
-      await updateReading(id, { deleted_at: null });
+      await restoreReading(id);
       await loadData();
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to restore reading';

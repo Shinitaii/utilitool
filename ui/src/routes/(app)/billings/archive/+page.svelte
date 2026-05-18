@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getBillings, updateBilling, deleteBilling } from '$lib/api/billings';
+  import { getBillings, restoreBilling, deleteBilling } from '$lib/api/billings';
   import type { Billing } from '$lib/types/billing.types';
   import type { PaginatedResult } from '$lib/types/api.types';
   import { formatDate, formatCurrency } from '$lib/utils/format';
@@ -36,11 +36,8 @@
     isLoading = true;
     error = '';
     try {
-      const result = await getBillings({ limit: 100 });
-      data = {
-        ...result,
-        data: result.data.filter((b: Billing) => b.deleted_at !== null && b.deleted_at !== undefined)
-      };
+      const result = await getBillings({ limit: 100, archived: true });
+      data = result;
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load archived billings';
     } finally {
@@ -51,7 +48,7 @@
   async function handleRestore(id: string) {
     restoringId = id;
     try {
-      await updateBilling(id, { deleted_at: null });
+      await restoreBilling(id);
       await loadData();
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to restore billing';

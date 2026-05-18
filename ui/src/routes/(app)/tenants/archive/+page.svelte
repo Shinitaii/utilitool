@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getTenants, updateTenant, deleteTenant } from '$lib/api/tenants';
-  import type { Tenant, UpdateTenantRequest } from '$lib/types/tenant.types';
+  import { getTenants, restoreTenant, deleteTenant } from '$lib/api/tenants';
+  import type { Tenant } from '$lib/types/tenant.types';
   import type { PaginatedResult } from '$lib/types/api.types';
   import { formatDate } from '$lib/utils/format';
   import { toDate } from '$lib/utils/timestamp';
@@ -35,11 +35,8 @@
     isLoading = true;
     error = '';
     try {
-      const result = await getTenants({ limit: 100 });
-      data = {
-        ...result,
-        data: result.data.filter((t: Tenant) => t.deleted_at !== null && t.deleted_at !== undefined)
-      };
+      const result = await getTenants({ limit: 100, archived: true });
+      data = result;
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load archived tenants';
     } finally {
@@ -50,7 +47,7 @@
   async function handleRestore(id: string) {
     restoringId = id;
     try {
-      await updateTenant(id, { deleted_at: null } as UpdateTenantRequest);
+      await restoreTenant(id);
       await loadData();
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to restore tenant';

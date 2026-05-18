@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getProperties, updateProperty, deleteProperty } from '$lib/api/properties';
-  import type { Property, UpdatePropertyRequest } from '$lib/types/property.types';
+  import { getProperties, restoreProperty, deleteProperty } from '$lib/api/properties';
+  import type { Property } from '$lib/types/property.types';
   import type { PaginatedResult } from '$lib/types/api.types';
   import { formatDate } from '$lib/utils/format';
   import { toDate } from '$lib/utils/timestamp';
@@ -35,11 +35,8 @@
     isLoading = true;
     error = '';
     try {
-      const result = await getProperties({ limit: 100 });
-      data = {
-        ...result,
-        data: result.data.filter((p: Property) => p.deleted_at !== null && p.deleted_at !== undefined)
-      };
+      const result = await getProperties({ limit: 100, archived: true });
+      data = result;
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load archived properties';
     } finally {
@@ -50,7 +47,7 @@
   async function handleRestore(id: string) {
     restoringId = id;
     try {
-      await updateProperty(id, { deleted_at: null } as UpdatePropertyRequest);
+      await restoreProperty(id);
       await loadData();
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to restore property';

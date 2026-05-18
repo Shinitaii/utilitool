@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getMeterGroups, updateMeterGroup, deleteMeterGroup } from '$lib/api/meter-groups';
-  import type { MeterGroup, UpdateMeterGroupRequest } from '$lib/types/meter-group.types';
+  import { getMeterGroups, restoreMeterGroup, deleteMeterGroup } from '$lib/api/meter-groups';
+  import type { MeterGroup } from '$lib/types/meter-group.types';
   import type { PaginatedResult } from '$lib/types/api.types';
   import { formatDate } from '$lib/utils/format';
   import { toDate } from '$lib/utils/timestamp';
@@ -35,12 +35,8 @@
     isLoading = true;
     error = '';
     try {
-      const result = await getMeterGroups({ limit: 100 });
-      // Filter to show only soft-deleted items (deleted_at is set)
-      data = {
-        ...result,
-        data: result.data.filter((mg: MeterGroup) => mg.deleted_at !== null && mg.deleted_at !== undefined)
-      };
+      const result = await getMeterGroups({ limit: 100, archived: true });
+      data = result;
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load archived meter groups';
     } finally {
@@ -51,8 +47,7 @@
   async function handleRestore(id: string) {
     restoringId = id;
     try {
-      // Clear the deleted_at field to restore
-      await updateMeterGroup(id, { deleted_at: null } as UpdateMeterGroupRequest);
+      await restoreMeterGroup(id);
       await loadData();
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to restore meter group';
