@@ -7,7 +7,8 @@ export interface BaseModel {
   id: string;
   created_at: FirestoreTimestamp;
   updated_at?: FirestoreTimestamp;
-  deleted_at?: FirestoreTimestamp;
+  deleted_at?: FirestoreTimestamp | null;
+  is_deleted: boolean;
 }
 
 export interface PaginatedResult<T> {

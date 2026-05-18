@@ -1,21 +1,15 @@
-import { apiPost } from './client';
-import type { LoginRequest, RegisterRequest, RefreshRequest, AuthResponse } from '$lib/types/auth.types';
+import { apiGet, apiPatch } from './client';
+import type { AuthUser } from '$lib/types/auth.types';
 
-export async function login(email: string, password: string): Promise<AuthResponse> {
-  const request: LoginRequest = { email, password };
-  return apiPost<AuthResponse>('/auth/login', request, { skipAuth: true });
+export async function getMe(): Promise<AuthUser> {
+  return apiGet<AuthUser>('/auth/me');
 }
 
-export async function register(email: string, password: string): Promise<AuthResponse> {
-  const request: RegisterRequest = { email, password };
-  return apiPost<AuthResponse>('/auth/register', request, { skipAuth: true });
+export interface UpdateMeRequest {
+  display_name?: string;
+  qr_payment_url?: string;
 }
 
-export async function refreshToken(refreshToken: string): Promise<AuthResponse> {
-  const request: RefreshRequest = { refresh_token: refreshToken };
-  return apiPost<AuthResponse>('/auth/refresh', request, { skipAuth: true });
-}
-
-export async function logout(refreshTokenId: string): Promise<void> {
-  return apiPost('/auth/logout', { refreshTokenId });
+export async function updateMe(data: UpdateMeRequest): Promise<AuthUser> {
+  return apiPatch<AuthUser>('/auth/me', data);
 }

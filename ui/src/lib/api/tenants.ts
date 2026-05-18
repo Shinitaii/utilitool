@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut, apiDelete } from './client';
+import { apiGet, apiPost, apiPatch, apiDelete } from './client';
 import type { Tenant, CreateTenantRequest, UpdateTenantRequest } from '$lib/types/tenant.types';
 import type { PaginatedResult } from '$lib/types/api.types';
 
@@ -7,12 +7,14 @@ export async function getTenants(params?: {
   propertyId?: string;
   limit?: number;
   cursor?: string;
+  archived?: boolean;
 }): Promise<PaginatedResult<Tenant>> {
   const query = new URLSearchParams();
   if (params?.tenantName) query.set('tenantName', params.tenantName);
   if (params?.propertyId) query.set('propertyId', params.propertyId);
   if (params?.limit) query.set('limit', params.limit.toString());
   if (params?.cursor) query.set('cursor', params.cursor);
+  if (params?.archived) query.set('archived', 'true');
 
   const path = query.toString() ? `/tenants?${query}` : '/tenants';
   return apiGet<PaginatedResult<Tenant>>(path);
@@ -31,13 +33,13 @@ export async function createTenantsBatch(data: CreateTenantRequest[]): Promise<T
 }
 
 export async function updateTenant(id: string, data: UpdateTenantRequest): Promise<Tenant> {
-  return apiPut<Tenant>(`/tenants/${id}`, data);
+  return apiPatch<Tenant>(`/tenants/${id}`, data);
 }
 
 export async function updateTenantsBatch(
   data: { id: string; data: UpdateTenantRequest }[]
 ): Promise<Tenant[]> {
-  return apiPut<Tenant[]>('/tenants/batch', data);
+  return apiPatch<Tenant[]>('/tenants/batch', data);
 }
 
 export async function deleteTenant(id: string): Promise<void> {
@@ -45,5 +47,9 @@ export async function deleteTenant(id: string): Promise<void> {
 }
 
 export async function softDeleteTenant(id: string): Promise<Tenant> {
-  return apiDelete<Tenant>(`/tenants/soft/${id}`);
+  return apiPatch<Tenant>(`/tenants/${id}/delete`);
+}
+
+export async function restoreTenant(id: string): Promise<Tenant> {
+  return apiPatch<Tenant>(`/tenants/${id}/restore`, {});
 }

@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut, apiDelete } from './client';
+import { apiGet, apiPost, apiPatch, apiDelete } from './client';
 import type { Property, CreatePropertyRequest, UpdatePropertyRequest } from '$lib/types/property.types';
 import type { PaginatedResult } from '$lib/types/api.types';
 
@@ -7,12 +7,14 @@ export async function getProperties(params?: {
   meterGroupId?: string;
   limit?: number;
   cursor?: string;
+  archived?: boolean;
 }): Promise<PaginatedResult<Property>> {
   const query = new URLSearchParams();
   if (params?.roomName) query.set('roomName', params.roomName);
   if (params?.meterGroupId) query.set('meterGroupId', params.meterGroupId);
   if (params?.limit) query.set('limit', params.limit.toString());
   if (params?.cursor) query.set('cursor', params.cursor);
+  if (params?.archived) query.set('archived', 'true');
 
   const path = query.toString() ? `/properties?${query}` : '/properties';
   return apiGet<PaginatedResult<Property>>(path);
@@ -31,13 +33,13 @@ export async function createPropertiesBatch(data: CreatePropertyRequest[]): Prom
 }
 
 export async function updateProperty(id: string, data: UpdatePropertyRequest): Promise<Property> {
-  return apiPut<Property>(`/properties/${id}`, data);
+  return apiPatch<Property>(`/properties/${id}`, data);
 }
 
 export async function updatePropertiesBatch(
   data: { id: string; data: UpdatePropertyRequest }[]
 ): Promise<Property[]> {
-  return apiPut<Property[]>('/properties/batch', data);
+  return apiPatch<Property[]>('/properties/batch', data);
 }
 
 export async function deleteProperty(id: string): Promise<void> {
@@ -45,5 +47,9 @@ export async function deleteProperty(id: string): Promise<void> {
 }
 
 export async function softDeleteProperty(id: string): Promise<Property> {
-  return apiDelete<Property>(`/properties/soft/${id}`);
+  return apiPatch<Property>(`/properties/${id}/delete`);
+}
+
+export async function restoreProperty(id: string): Promise<Property> {
+  return apiPatch<Property>(`/properties/${id}/restore`, {});
 }

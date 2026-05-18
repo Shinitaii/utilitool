@@ -18,5 +18,4 @@ export interface UpdateTenantRequest {
   property_id?: string;
   tenant_start_date?: string;
   tenant_end_date?: string | null;
-  deleted_at?: null;
 }

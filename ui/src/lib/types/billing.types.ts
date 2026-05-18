@@ -4,6 +4,8 @@ export interface Billing extends BaseModel {
   property_id: string;
   previous_reading_id: string;
   current_reading_id: string;
+  payment_status: 'pending' | 'paid';
+  paid_at?: string;
 }
 
 export interface CreateBillingRequest {
@@ -16,5 +18,6 @@ export interface UpdateBillingRequest {
   property_id?: string;
   previous_reading_id?: string;
   current_reading_id?: string;
-  deleted_at?: null;
+  payment_status?: 'pending' | 'paid';
+  paid_at?: string;
 }

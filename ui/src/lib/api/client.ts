@@ -1,4 +1,4 @@
-import { browser } from '$app/environment';
+import { auth } from '$lib/firebase';
 import type { ApiError } from '$lib/types/api.types';
 
 const API_BASE_URL = 'http://localhost:5002';
@@ -7,63 +7,21 @@ interface RequestOptions extends RequestInit {
   skipAuth?: boolean;
 }
 
-let accessToken: string | null = null;
-let refreshToken: string | null = null;
-
-export function setTokens(access: string, refresh: string) {
-  accessToken = access;
-  refreshToken = refresh;
-  if (browser) {
-    localStorage.setItem('access_token', access);
-    localStorage.setItem('refresh_token', refresh);
-  }
-}
-
-export function getAccessToken(): string | null {
-  if (!accessToken && browser) {
-    accessToken = localStorage.getItem('access_token');
-  }
-  return accessToken;
-}
-
-export function getRefreshToken(): string | null {
-  if (!refreshToken && browser) {
-    refreshToken = localStorage.getItem('refresh_token');
-  }
-  return refreshToken;
-}
-
-export function clearTokens() {
-  accessToken = null;
-  refreshToken = null;
-  if (browser) {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-  }
+export async function getAccessToken(): Promise<string | null> {
+  const user = auth.currentUser;
+  if (!user) return null;
+  return user.getIdToken();
 }
 
 async function refreshAccessToken(): Promise<boolean> {
-  const token = getRefreshToken();
-  if (!token) return false;
+  const user = auth.currentUser;
+  if (!user) return false;
 
   try {
-    const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: token })
-    });
-
-    if (!response.ok) {
-      clearTokens();
-      return false;
-    }
-
-    const data = await response.json();
-    setTokens(data.access_token, token);
+    await user.getIdToken(true);
     return true;
   } catch (error) {
     console.error('Token refresh failed:', error);
-    clearTokens();
     return false;
   }
 }
@@ -77,7 +35,7 @@ export async function apiRequest<T>(
   const headers = new Headers(fetchOptions.headers || {});
 
   if (!skipAuth) {
-    const token = getAccessToken();
+    const token = await getAccessToken();
     if (token) {
       headers.set('Authorization', `Bearer ${token}`);
     }
@@ -88,11 +46,11 @@ export async function apiRequest<T>(
   const url = `${API_BASE_URL}${path}`;
   let response = await fetch(url, { ...fetchOptions, headers });
 
-  // Handle 401 by refreshing token and retrying once
+  // Handle 401 by force-refreshing token and retrying once
   if (response.status === 401 && !skipAuth) {
     const refreshed = await refreshAccessToken();
     if (refreshed) {
-      const token = getAccessToken();
+      const token = await getAccessToken();
       if (token) {
         headers.set('Authorization', `Bearer ${token}`);
       }
@@ -155,4 +113,16 @@ export async function apiPut<T>(
 
 export async function apiDelete<T>(path: string, options?: RequestOptions): Promise<T> {
   return apiRequest<T>(path, { ...options, method: 'DELETE' });
+}
+
+export async function apiPatch<T>(
+  path: string,
+  body?: unknown,
+  options?: RequestOptions
+): Promise<T> {
+  return apiRequest<T>(path, {
+    ...options,
+    method: 'PATCH',
+    body: body ? JSON.stringify(body) : undefined
+  });
 }

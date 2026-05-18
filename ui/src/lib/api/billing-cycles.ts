@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut, apiDelete } from './client';
+import { apiGet, apiPost, apiPatch, apiDelete } from './client';
 import type {
   BillingCycle,
   CreateBillingCycleRequest,
@@ -11,12 +11,14 @@ export async function getBillingCycles(params?: {
   billingEndDate?: string;
   limit?: number;
   cursor?: string;
+  archived?: boolean;
 }): Promise<PaginatedResult<BillingCycle>> {
   const query = new URLSearchParams();
   if (params?.billingStartDate) query.set('billingStartDate', params.billingStartDate);
   if (params?.billingEndDate) query.set('billingEndDate', params.billingEndDate);
   if (params?.limit) query.set('limit', params.limit.toString());
   if (params?.cursor) query.set('cursor', params.cursor);
+  if (params?.archived) query.set('archived', 'true');
 
   const path = query.toString() ? `/billing-cycles?${query}` : '/billing-cycles';
   return apiGet<PaginatedResult<BillingCycle>>(path);
@@ -40,13 +42,13 @@ export async function updateBillingCycle(
   id: string,
   data: UpdateBillingCycleRequest
 ): Promise<BillingCycle> {
-  return apiPut<BillingCycle>(`/billing-cycles/${id}`, data);
+  return apiPatch<BillingCycle>(`/billing-cycles/${id}`, data);
 }
 
 export async function updateBillingCyclesBatch(
   data: { id: string; data: UpdateBillingCycleRequest }[]
 ): Promise<BillingCycle[]> {
-  return apiPut<BillingCycle[]>('/billing-cycles/batch', data);
+  return apiPatch<BillingCycle[]>('/billing-cycles/batch', data);
 }
 
 export async function deleteBillingCycle(id: string): Promise<void> {
@@ -54,5 +56,9 @@ export async function deleteBillingCycle(id: string): Promise<void> {
 }
 
 export async function softDeleteBillingCycle(id: string): Promise<BillingCycle> {
-  return apiDelete<BillingCycle>(`/billing-cycles/soft/${id}`);
+  return apiPatch<BillingCycle>(`/billing-cycles/${id}/delete`);
+}
+
+export async function restoreBillingCycle(id: string): Promise<BillingCycle> {
+  return apiPatch<BillingCycle>(`/billing-cycles/${id}/restore`, {});
 }
