@@ -1,9 +1,9 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
+  import { signOut } from 'firebase/auth';
+  import { auth } from '$lib/firebase';
   import { getInitials } from '$lib/utils/format';
-  import { logout } from '$lib/api/auth';
-  import { clearTokens, getRefreshToken } from '$lib/api/client';
   import { authStore } from '$lib/stores/auth.svelte';
 
   interface NavItem {
@@ -19,7 +19,8 @@
     { label: 'Tenants', href: '/tenants', badge: 12 },
     { label: 'Readings', href: '/readings', badge: 0 },
     { label: 'Billings', href: '/billings', badge: 2 },
-    { label: 'Reports', href: '/reports' }
+    { label: 'Reports', href: '/reports' },
+    { label: 'Settings', href: '/settings' }
   ];
 
   const archiveItems: NavItem[] = [
@@ -30,9 +31,8 @@
     { label: 'Billings', href: '/billings/archive' }
   ];
 
-  let userName = $state('User');
-  let userEmail = $state('user@example.com');
   let isLoggingOut = $state(false);
+  const authState = $state(authStore);
 
   function isActive(path: string): boolean {
     return $page.url.pathname.startsWith(path);
@@ -45,18 +45,13 @@
   async function handleLogout() {
     isLoggingOut = true;
     try {
-      // Call logout endpoint if refresh token exists
-      const refreshTokenValue = getRefreshToken();
-      if (refreshTokenValue) {
-        await logout(refreshTokenValue);
-      }
+      await signOut(auth);
+      authStore.logout();
+      await goto('/login');
     } catch (err) {
       console.error('Logout error:', err);
     } finally {
-      // Clear tokens and auth state
-      clearTokens();
-      authStore.logout();
-      await goto('/login');
+      isLoggingOut = false;
     }
   }
 </script>
@@ -114,11 +109,11 @@
         class="flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold text-white"
         style="background-color: var(--color-accent)"
       >
-        {getInitialsFromName(userName)}
+        {authState.user ? getInitialsFromName(authState.user.display_name) : '?'}
       </div>
       <div class="flex-1 min-w-0">
-        <p class="truncate text-sm font-medium text-gray-900">{userName}</p>
-        <p class="truncate text-xs text-gray-500">{userEmail}</p>
+        <p class="truncate text-sm font-medium text-gray-900">{authState.user?.display_name || 'User'}</p>
+        <p class="truncate text-xs text-gray-500">{authState.user?.email || 'user@example.com'}</p>
       </div>
     </div>
     <button

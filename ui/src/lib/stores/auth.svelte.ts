@@ -1,4 +1,7 @@
 import { writable } from 'svelte/store';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '$lib/firebase';
+import { getMe } from '$lib/api/auth';
 import type { AuthUser } from '$lib/types/auth.types';
 
 export interface AuthState {
@@ -31,3 +34,20 @@ function createAuthStore() {
 }
 
 export const authStore = createAuthStore();
+
+export function initAuthListener() {
+  authStore.setLoading(true);
+  onAuthStateChanged(auth, async (firebaseUser) => {
+    if (firebaseUser) {
+      try {
+        const user = await getMe();
+        authStore.login(user);
+      } catch {
+        authStore.logout();
+      }
+    } else {
+      authStore.logout();
+    }
+    authStore.setLoading(false);
+  });
+}

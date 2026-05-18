@@ -150,7 +150,7 @@
     }
   }
 
-  const filteredData = getFilteredData();
+  const filteredData = $derived(getFilteredData());
 </script>
 
 <div class="space-y-6">

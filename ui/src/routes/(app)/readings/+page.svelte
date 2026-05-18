@@ -1,15 +1,26 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getReadings, createReading, updateReading, softDeleteReading } from '$lib/api/readings';
+  import { getReadings, createReadingsBatch, updateReading, softDeleteReading, ocrReadingImage } from '$lib/api/readings';
   import { getMeterGroups } from '$lib/api/meter-groups';
-  import type { Reading, CreateReadingRequest, UpdateReadingRequest } from '$lib/types/reading.types';
+  import { getProperties } from '$lib/api/properties';
+  import type { Reading, UpdateReadingRequest } from '$lib/types/reading.types';
   import type { MeterGroup } from '$lib/types/meter-group.types';
+  import type { Property } from '$lib/types/property.types';
   import type { PaginatedResult } from '$lib/types/api.types';
   import { formatDate } from '$lib/utils/format';
   import { toDate } from '$lib/utils/timestamp';
+  import { uploadToStorage } from '$lib/utils/firebase-storage';
   import EmptyState from '$lib/components/shared/EmptyState.svelte';
   import EditModal from '$lib/components/shared/EditModal.svelte';
   import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
+
+  interface BatchReadingRow {
+    property: Property;
+    reading_amount: number | null;
+    image_url: string | null;
+    suggested_amount: number | null;
+    is_processing: boolean;
+  }
 
   let readings = $state<PaginatedResult<Reading>>({
     data: [],
@@ -20,16 +31,15 @@
   let isLoading = $state(false);
   let error = $state('');
   let selectedMeterGroup = $state('');
-
   let createFormOpen = $state(false);
+
   let editModalOpen = $state(false);
   let editingItem = $state<Reading | null>(null);
 
-  let createFormData = $state({
-    meter_group_id: '',
-    reading_amount: 0,
-    reading_date: new Date().toISOString().split('T')[0]
-  });
+  // Batch reading form
+  let batchDate = $state(new Date().toISOString().split('T')[0]);
+  let batchRows = $state<BatchReadingRow[]>([]);
+  let batchLoading = $state(false);
 
   let editFormData = $state<{
     reading_amount: number;
@@ -79,19 +89,117 @@
     }
   }
 
-  async function handleCreate(e: SubmitEvent) {
-    e.preventDefault();
+  function openCreateForm() {
+    createFormOpen = true;
+    batchRows = [];
+    batchDate = new Date().toISOString().split('T')[0];
+    loadBatchProperties();
+  }
+
+  async function loadBatchProperties() {
+    if (!selectedMeterGroup) {
+      error = 'Please select a meter group first';
+      return;
+    }
+
+    batchLoading = true;
+    error = '';
     try {
-      await createReading(createFormData);
-      createFormOpen = false;
-      createFormData = {
-        meter_group_id: selectedMeterGroup,
-        reading_amount: 0,
-        reading_date: new Date().toISOString().split('T')[0]
-      };
-      await handleMeterGroupChange();
+      const result = await getProperties({ limit: 100, meterGroupId: selectedMeterGroup });
+
+      if (result.data.length === 0) {
+        error = 'No properties found for this meter group';
+        batchRows = [];
+      } else {
+        batchRows = result.data.map((property) => ({
+          property,
+          reading_amount: null,
+          image_url: null,
+          suggested_amount: null,
+          is_processing: false,
+        }));
+      }
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to create reading';
+      error = err instanceof Error ? err.message : 'Failed to load properties';
+      batchRows = [];
+    } finally {
+      batchLoading = false;
+    }
+  }
+
+  async function handleBatchImageUpload(rowIndex: number, file: File | null) {
+    if (!file) return;
+
+    const row = batchRows[rowIndex];
+    row.is_processing = true;
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const dataUrl = e.target?.result as string;
+
+        try {
+          const ocrResult = await ocrReadingImage(dataUrl);
+          row.suggested_amount = ocrResult.suggested_reading_amount;
+          if (ocrResult.suggested_reading_amount) {
+            row.reading_amount = ocrResult.suggested_reading_amount;
+          }
+
+          const timestamp = Date.now();
+          const path = `readings/${timestamp}_${file.name}`;
+          const url = await uploadToStorage(file, path);
+          row.image_url = url;
+        } catch (err) {
+          error = err instanceof Error ? err.message : 'Failed to extract reading or upload image';
+        } finally {
+          row.is_processing = false;
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to process image';
+      row.is_processing = false;
+    }
+  }
+
+  async function handleCreateBatch() {
+    if (!selectedMeterGroup || !batchDate) {
+      error = 'Please select a meter group and reading date';
+      return;
+    }
+
+    const invalidRows = batchRows.filter((r) => r.reading_amount === null || r.reading_amount === undefined);
+    if (invalidRows.length > 0) {
+      error = `Please enter reading amounts for all properties (${invalidRows.length} missing)`;
+      return;
+    }
+
+    batchLoading = true;
+    error = '';
+
+    try {
+      const dateObj = new Date(batchDate);
+      const readingsData = batchRows.map((row) => ({
+        meter_group_id: selectedMeterGroup,
+        reading_amount: row.reading_amount!,
+        reading_date: {
+          _seconds: Math.floor(dateObj.getTime() / 1000),
+          _nanoseconds: 0,
+        },
+        image_url: row.image_url || '',
+      }));
+
+      await createReadingsBatch(readingsData);
+
+      createFormOpen = false;
+      batchRows = [];
+      batchDate = new Date().toISOString().split('T')[0];
+      await handleMeterGroupChange();
+      alert('Readings created successfully!');
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to create readings';
+    } finally {
+      batchLoading = false;
     }
   }
 
@@ -139,6 +247,15 @@
       }
     }
   }
+
+  function canBatchSubmit(): boolean {
+    return (
+      selectedMeterGroup.length > 0 &&
+      batchDate.length > 0 &&
+      batchRows.length > 0 &&
+      batchRows.every((r) => r.reading_amount !== null && r.reading_amount !== undefined)
+    );
+  }
 </script>
 
 <div class="space-y-6">
@@ -159,7 +276,7 @@
         class="rounded px-4 py-2 text-white font-medium"
         style="background-color: var(--color-accent)"
       >
-        + New
+        {createFormOpen ? '✕ Cancel' : '+ New'}
       </button>
     </div>
   </div>
@@ -170,19 +287,22 @@
     </div>
   {/if}
 
+  <!-- Batch Reading Form -->
   {#if createFormOpen}
-    <div class="rounded-lg border border-gray-200 bg-white p-6">
-      <h2 class="font-semibold">New Reading</h2>
-      <form onsubmit={handleCreate} class="mt-4 space-y-4">
+    <div class="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+      <h2 class="font-semibold">Create Readings</h2>
+
+      <div class="grid grid-cols-2 gap-4">
         <div>
-          <label for="meter-group" class="block text-sm font-medium text-gray-700">Meter Group</label>
+          <label for="batch-meter-group" class="block text-sm font-medium text-gray-700">Meter Group *</label>
           <select
-            id="meter-group"
-            bind:value={createFormData.meter_group_id}
-            required
+            id="batch-meter-group"
+            bind:value={selectedMeterGroup}
+            onchange={loadBatchProperties}
+            disabled={batchLoading}
             class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
           >
-            <option value="">Select a meter group</option>
+            <option value="">Select meter group...</option>
             {#each meterGroups as group (group.id)}
               <option value={group.id}>
                 {group.meter_name} ({group.utility_type})
@@ -190,46 +310,97 @@
             {/each}
           </select>
         </div>
+
         <div>
-          <label for="reading-amount" class="block text-sm font-medium text-gray-700">Reading Amount</label>
+          <label for="batch-date" class="block text-sm font-medium text-gray-700">Reading Date (Shared) *</label>
           <input
-            id="reading-amount"
-            type="number"
-            bind:value={createFormData.reading_amount}
-            required
-            step="0.01"
-            min="0"
-            class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
-            placeholder="e.g., 1234.56"
-          />
-        </div>
-        <div>
-          <label for="reading-date" class="block text-sm font-medium text-gray-700">Reading Date</label>
-          <input
-            id="reading-date"
+            id="batch-date"
             type="date"
-            bind:value={createFormData.reading_date}
-            required
+            bind:value={batchDate}
+            disabled={batchLoading}
             class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
           />
         </div>
-        <div class="flex space-x-2">
+      </div>
+
+      {#if batchRows.length === 0 && selectedMeterGroup}
+        <div class="rounded-lg border border-gray-200 p-6">
+          <EmptyState title="No properties" message="No properties found for this meter group" />
+        </div>
+      {:else if batchRows.length > 0}
+        <div class="overflow-x-auto rounded-lg border border-gray-200">
+          <table class="w-full text-sm">
+            <thead class="border-b border-gray-200 bg-gray-50">
+              <tr>
+                <th class="px-6 py-3 text-left font-semibold text-gray-700">Property</th>
+                <th class="px-6 py-3 text-left font-semibold text-gray-700">Reading Amount</th>
+                <th class="px-6 py-3 text-left font-semibold text-gray-700">Image Upload</th>
+                <th class="px-6 py-3 text-left font-semibold text-gray-700">Suggested</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each batchRows as row, i (row.property.id)}
+                <tr class="border-b border-gray-200 hover:bg-gray-50">
+                  <td class="px-6 py-4 font-medium text-gray-900">{row.property.room_name}</td>
+                  <td class="px-6 py-4">
+                    <input
+                      type="number"
+                      bind:value={row.reading_amount}
+                      placeholder="0"
+                      step="0.01"
+                      min="0"
+                      class="w-32 rounded border border-gray-300 px-3 py-2"
+                    />
+                  </td>
+                  <td class="px-6 py-4">
+                    <div class="flex items-center gap-2">
+                      <label class="cursor-pointer">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onchange={(e) => {
+                            const file = (e.target as HTMLInputElement).files?.[0];
+                            if (file) handleBatchImageUpload(i, file);
+                          }}
+                          disabled={row.is_processing}
+                          class="hidden"
+                        />
+                        <span class="rounded bg-blue-100 px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-200">
+                          {row.is_processing ? 'Processing...' : 'Upload'}
+                        </span>
+                      </label>
+                      {#if row.image_url}
+                        <span class="text-xs text-green-600">✓</span>
+                      {/if}
+                    </div>
+                  </td>
+                  <td class="px-6 py-4 text-gray-600">
+                    {row.suggested_amount ? `${row.suggested_amount}` : '—'}
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="flex gap-2">
           <button
-            type="submit"
-            class="rounded px-4 py-2 text-white font-medium"
+            onclick={handleCreateBatch}
+            disabled={!canBatchSubmit() || batchLoading}
+            class="rounded px-4 py-2 text-white font-medium disabled:opacity-50"
             style="background-color: var(--color-accent)"
           >
-            Create
+            {batchLoading ? 'Creating...' : 'Create All Readings'}
           </button>
           <button
-            type="button"
             onclick={() => (createFormOpen = false)}
-            class="rounded px-4 py-2 border border-gray-300 bg-white text-gray-700"
+            disabled={batchLoading}
+            class="rounded px-4 py-2 border border-gray-300 bg-white text-gray-700 font-medium hover:bg-gray-50"
           >
             Cancel
           </button>
         </div>
-      </form>
+      {/if}
     </div>
   {/if}
 
@@ -261,6 +432,7 @@
           <tr>
             <th class="px-6 py-3 text-left font-semibold text-gray-700">Meter Group</th>
             <th class="px-6 py-3 text-right font-semibold text-gray-700">Reading (kWh)</th>
+            <th class="px-6 py-3 text-left font-semibold text-gray-700">Photo</th>
             <th class="px-6 py-3 text-left font-semibold text-gray-700">Date</th>
             <th class="px-6 py-3 text-left font-semibold text-gray-700">Created</th>
             <th class="px-6 py-3 text-left font-semibold text-gray-700">Actions</th>
@@ -274,6 +446,19 @@
               </td>
               <td class="px-6 py-4 text-right font-mono text-gray-700">
                 {item.reading_amount.toLocaleString()}
+              </td>
+              <td class="px-6 py-4">
+                {#if item.image_url}
+                  <a href={item.image_url} target="_blank" rel="noreferrer">
+                    <img
+                      src={item.image_url}
+                      alt="Meter reading"
+                      class="h-12 w-12 rounded object-cover hover:opacity-75"
+                    />
+                  </a>
+                {:else}
+                  <span class="text-gray-400">No image</span>
+                {/if}
               </td>
               <td class="px-6 py-4 text-gray-600">{formatDate(toDate(item.reading_date))}</td>
               <td class="px-6 py-4 text-gray-600">{formatDate(toDate(item.created_at))}</td>

@@ -1,9 +1,8 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import { signInWithEmailAndPassword } from 'firebase/auth';
+  import { auth } from '$lib/firebase';
   import { authStore } from '$lib/stores/auth.svelte';
-  import { setTokens } from '$lib/api/client';
-  import { login } from '$lib/api/auth';
-  import type { AuthResponse } from '$lib/types/auth.types';
 
   let email = $state('');
   let password = $state('');
@@ -17,12 +16,18 @@
     error = '';
 
     try {
-      const response: AuthResponse = await login(email, password);
-      setTokens(response.access_token, response.refresh_token);
-      authStore.login({ userId: '', email });
+      await signInWithEmailAndPassword(auth, email, password);
       await goto('/dashboard');
     } catch (err: unknown) {
-      error = err instanceof Error ? err.message : 'Login failed. Please try again.';
+      if (err instanceof Error) {
+        if (err.message.includes('auth/invalid-credential')) {
+          error = 'Invalid email or password';
+        } else {
+          error = err.message;
+        }
+      } else {
+        error = 'Login failed. Please try again.';
+      }
     } finally {
       isLoading = false;
     }
@@ -114,12 +119,6 @@
     Continue with Google
   </button>
 
-  <p class="mt-6 text-center text-sm text-gray-600">
-    No account?
-    <a href="/register" class="font-medium hover:underline" style="color: var(--color-accent)">
-      Sign up →
-    </a>
-  </p>
 </div>
 
 <style>

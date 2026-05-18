@@ -4,6 +4,7 @@
   import { getBillings, createBilling, updateBilling, softDeleteBilling } from '$lib/api/billings';
   import { getReadings } from '$lib/api/readings';
   import { getProperties } from '$lib/api/properties';
+  import { authStore } from '$lib/stores/auth.svelte';
   import type { BillingCycle } from '$lib/types/billing-cycle.types';
   import type { Billing, CreateBillingRequest, UpdateBillingRequest } from '$lib/types/billing.types';
   import type { Reading } from '$lib/types/reading.types';
@@ -13,6 +14,7 @@
   import { toDate } from '$lib/utils/timestamp';
   import EmptyState from '$lib/components/shared/EmptyState.svelte';
   import EditModal from '$lib/components/shared/EditModal.svelte';
+  import StatusPill from '$lib/components/shared/StatusPill.svelte';
 
   let cycles = $state<PaginatedResult<BillingCycle>>({
     data: [],
@@ -45,6 +47,16 @@
 
   let editingBillingId = $state<string | null>(null);
   let deletingBillingId = $state<string | null>(null);
+  let markingAsPaidId = $state<string | null>(null);
+
+  let auth = $state<any>(null);
+
+  $effect(() => {
+    const unsubscribe = authStore.subscribe(value => {
+      auth = value;
+    });
+    return unsubscribe;
+  });
 
   onMount(async () => {
     await loadData();
@@ -86,7 +98,7 @@
 
     const cycle = cycles.data.find(c => c.id === cycleId);
     if (cycle) {
-      const cycleBillings = allBillings.filter(b => cycleId in cycle.billing_ids);
+      const cycleBillings = allBillings.filter(b => b.id in cycle.billing_ids);
       billings.set(cycleId, cycleBillings);
       billings = billings;
     }
@@ -144,6 +156,102 @@
       } finally {
         deletingBillingId = null;
       }
+    }
+  }
+
+  async function handleMarkAsPaid(id: string) {
+    markingAsPaidId = id;
+    try {
+      const paidAt = new Date().toISOString();
+      await updateBilling(id, { payment_status: 'paid', paid_at: paidAt });
+
+      // Update local state
+      const billing = allBillings.find(b => b.id === id);
+      if (billing) {
+        billing.payment_status = 'paid';
+        billing.paid_at = paidAt;
+        allBillings = allBillings;
+
+        // Update cache
+        for (const [key, bills] of billings.entries()) {
+          const idx = bills.findIndex(b => b.id === id);
+          if (idx >= 0) {
+            bills[idx] = billing;
+          }
+        }
+        billings = billings;
+      }
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to mark as paid';
+    } finally {
+      markingAsPaidId = null;
+    }
+  }
+
+  function printReceipts(cycle: BillingCycle) {
+    const cycleBillings = billings.get(cycle.id) || [];
+
+    const receiptHTML = cycleBillings.map(billing => {
+      const property = properties.find(p => p.id === billing.property_id);
+      const consumption = cycle.billing_ids[billing.id] ?? 0;
+      const amount = consumption * cycle.billing_rate;
+
+      return `
+        <div style="page-break-after: always; padding: 40px; font-family: 'Courier New', monospace; background: white; min-height: 100vh;">
+          <div style="text-align: center; margin-bottom: 40px;">
+            <h1 style="margin: 0; font-size: 24px; font-weight: bold;">UTILITY PAYMENT RECEIPT</h1>
+          </div>
+
+          <div style="margin-bottom: 30px; line-height: 1.8;">
+            <p><strong>Property:</strong> ${property?.room_name || 'N/A'}</p>
+            <p><strong>Billing Period:</strong> ${formatDate(toDate(cycle.billing_start_date))} to ${formatDate(toDate(cycle.billing_end_date))}</p>
+            <p><strong>Consumption:</strong> ${consumption.toLocaleString()} kWh</p>
+            <p><strong>Rate:</strong> ₱${cycle.billing_rate.toFixed(2)}/kWh</p>
+          </div>
+
+          <div style="border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 20px 0; margin: 30px 0; font-size: 20px; font-weight: bold;">
+            <p style="margin: 0; text-align: right;">Amount Due: ${formatCurrency(amount)}</p>
+          </div>
+
+          <div style="margin-bottom: 30px; padding: 20px; background: #f5f5f5; border-radius: 4px;">
+            <p style="margin: 0; margin-bottom: 10px;"><strong>Status: <span style="color: ${billing.payment_status === 'paid' ? '#2c6b3a' : '#8b5a3c'};">${billing.payment_status === 'paid' ? 'PAID' : 'PENDING'}</span></strong></p>
+            ${billing.paid_at ? `<p style="margin: 0; font-size: 12px; color: #666;">Paid on: ${new Date(billing.paid_at).toLocaleDateString()}</p>` : ''}
+          </div>
+
+          ${auth?.user?.qr_payment_url ? `
+            <div style="text-align: center; margin: 40px 0;">
+              <p style="margin-bottom: 15px;"><strong>Scan to Pay:</strong></p>
+              <img src="${auth?.user?.qr_payment_url}" alt="Payment QR Code" style="max-width: 200px; height: auto; border: 1px solid #ddd; padding: 10px; background: white;" />
+            </div>
+          ` : ''}
+
+          <div style="margin-top: 40px; text-align: center; font-size: 12px; color: #666;">
+            <p style="margin: 5px 0;">Thank you for your payment!</p>
+            <p style="margin: 5px 0; margin-top: 15px;">For inquiries, please contact your property management.</p>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    const printWindow = window.open('', '', 'width=800,height=600');
+    if (printWindow) {
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Payment Receipts</title>
+        </head>
+        <body style="margin: 0; padding: 0; background: #f9f9f9;">
+          ${receiptHTML}
+        </body>
+        </html>
+      `);
+      printWindow.document.close();
+      setTimeout(() => {
+        printWindow.print();
+      }, 250);
     }
   }
 </script>
@@ -256,52 +364,67 @@
       {#each cycles.data as cycle (cycle.id)}
         <div class="rounded-lg border border-gray-200 bg-white">
           <!-- Cycle Header Row -->
-          <button
-            onclick={() => toggleCycleExpand(cycle.id)}
-            class="w-full px-6 py-4 text-left hover:bg-gray-50 transition"
-          >
-            <div class="flex items-center justify-between">
-              <div class="flex-1">
-                <div class="flex items-center gap-3">
-                  <div
-                    class="text-gray-400 transition {expandedCycleId === cycle.id ? 'rotate-90' : ''}"
-                  >
-                    ▶
+          <div class="px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition">
+            <button
+              onclick={() => toggleCycleExpand(cycle.id)}
+              class="flex-1 text-left"
+            >
+              <div class="flex items-center justify-between">
+                <div class="flex-1">
+                  <div class="flex items-center gap-3">
+                    <div
+                      class="text-gray-400 transition {expandedCycleId === cycle.id ? 'rotate-90' : ''}"
+                    >
+                      ▶
+                    </div>
+                    <div>
+                      <div class="font-medium text-gray-900">
+                        {formatDate(toDate(cycle.billing_start_date))} –
+                        {formatDate(toDate(cycle.billing_end_date))}
+                      </div>
+                      <div class="text-sm text-gray-500">
+                        {Object.keys(cycle.billing_ids).length} billing
+                        {Object.keys(cycle.billing_ids).length === 1 ? 'record' : 'records'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="ml-6 grid grid-cols-3 gap-8 text-right">
+                  <div>
+                    <div class="text-xs font-medium text-gray-600">Consumption</div>
+                    <div class="font-mono font-semibold text-gray-900">
+                      {cycle.billing_consumption.toLocaleString()} kWh
+                    </div>
                   </div>
                   <div>
-                    <div class="font-medium text-gray-900">
-                      {formatDate(toDate(cycle.billing_start_date))} –
-                      {formatDate(toDate(cycle.billing_end_date))}
+                    <div class="text-xs font-medium text-gray-600">Rate</div>
+                    <div class="font-mono font-semibold text-gray-900">
+                      ₱{cycle.billing_rate.toFixed(2)}/kWh
                     </div>
-                    <div class="text-sm text-gray-500">
-                      {Object.keys(cycle.billing_ids).length} billing
-                      {Object.keys(cycle.billing_ids).length === 1 ? 'record' : 'records'}
+                  </div>
+                  <div>
+                    <div class="text-xs font-medium text-gray-600">Total Amount</div>
+                    <div class="font-mono font-semibold text-gray-900">
+                      {formatCurrency(cycle.billing_consumption * cycle.billing_rate)}
                     </div>
                   </div>
                 </div>
               </div>
-              <div class="ml-6 grid grid-cols-3 gap-8 text-right">
-                <div>
-                  <div class="text-xs font-medium text-gray-600">Consumption</div>
-                  <div class="font-mono font-semibold text-gray-900">
-                    {cycle.billing_consumption.toLocaleString()} kWh
-                  </div>
-                </div>
-                <div>
-                  <div class="text-xs font-medium text-gray-600">Rate</div>
-                  <div class="font-mono font-semibold text-gray-900">
-                    ₱{cycle.billing_rate.toFixed(2)}/kWh
-                  </div>
-                </div>
-                <div>
-                  <div class="text-xs font-medium text-gray-600">Total Amount</div>
-                  <div class="font-mono font-semibold text-gray-900">
-                    {formatCurrency(cycle.billing_consumption * cycle.billing_rate)}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </button>
+            </button>
+
+            {#if expandedCycleId === cycle.id && (billings.get(cycle.id)?.length ?? 0) > 0}
+              <button
+                onclick={(e) => {
+                  e.stopPropagation();
+                  printReceipts(cycle);
+                }}
+                class="ml-4 px-4 py-2 rounded text-sm font-medium text-white"
+                style="background-color: var(--color-accent)"
+              >
+                Print Receipts
+              </button>
+            {/if}
+          </div>
 
           <!-- Expanded Billings Table -->
           {#if expandedCycleId === cycle.id}
@@ -322,6 +445,7 @@
                           Consumption
                         </th>
                         <th class="px-6 py-3 text-right font-semibold text-gray-700">Amount</th>
+                        <th class="px-6 py-3 text-left font-semibold text-gray-700">Status</th>
                         <th class="px-6 py-3 text-left font-semibold text-gray-700">Actions</th>
                       </tr>
                     </thead>
@@ -346,7 +470,19 @@
                             )}
                           </td>
                           <td class="px-6 py-3">
-                            <div class="flex gap-2">
+                            <StatusPill status={billing.payment_status} />
+                          </td>
+                          <td class="px-6 py-3">
+                            <div class="flex gap-2 flex-wrap">
+                              {#if billing.payment_status === 'pending'}
+                                <button
+                                  onclick={() => handleMarkAsPaid(billing.id)}
+                                  disabled={isLoading || markingAsPaidId === billing.id}
+                                  class="px-3 py-1 rounded bg-green-100 text-green-700 hover:bg-green-200 font-medium text-sm disabled:opacity-50"
+                                >
+                                  {markingAsPaidId === billing.id ? 'Marking...' : 'Mark Paid'}
+                                </button>
+                              {/if}
                               <button
                                 onclick={() => openEditModal(billing)}
                                 disabled={isLoading || editingBillingId === billing.id}

@@ -1,9 +1,27 @@
 <script lang="ts">
+  import { goto } from '$app/navigation';
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
   import TopBar from '$lib/components/layout/TopBar.svelte';
   import RightPanel from '$lib/components/layout/RightPanel.svelte';
+  import { authStore } from '$lib/stores/auth.svelte';
 
   let { children } = $props();
+
+  // Subscribe to auth store for reactivity
+  let authState = $state<any>(null);
+
+  $effect(() => {
+    const unsubscribe = authStore.subscribe(state => {
+      authState = state;
+    });
+    return unsubscribe;
+  });
+
+  $effect(() => {
+    if (authState && !authState.isLoading && !authState.isAuthenticated) {
+      goto('/login');
+    }
+  });
 </script>
 
 <div class="flex h-screen w-full bg-gray-50">
