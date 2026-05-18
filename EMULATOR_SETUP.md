@@ -1,31 +1,19 @@
 # Firebase Emulator Setup & Testing Guide
 
-## Quick Start
+**Note**: As of 2026-05-17, emulators are NOT used in the standard dev workflow (`docker-compose up`). Dev connects directly to the `utilitool-staging` Firebase project. This guide is for **advanced / manual use only** (integration testing, specific scenarios requiring local Firestore).
 
-### Option 1: Docker (Recommended)
-
-```bash
-# Start Firebase emulator + API in watch mode
-docker-compose up
-
-# In another terminal
-curl http://localhost:5002/health
-
-# Access Emulator UI
-# Browser: http://localhost:4400
-```
-
-Everything is pre-configured. The API auto-connects to the emulator.
+See [Decision: No Emulators in Dev](decisions/20260517_no-emulators-in-dev.md) for why.
 
 ---
 
-### Option 2: Manual (without Docker)
+## Quick Start (Manual Emulator Use Only)
 
-#### Prerequisites
+### Prerequisites
+
 - Node.js 24+
 - Firebase CLI: `npm install -g firebase-tools`
 
-#### Setup
+### Setup
 
 ```bash
 cd api/functions
@@ -41,10 +29,14 @@ npm run serve
 ```
 
 ```bash
-# Terminal 2: Run API tests or shell
-npm test                    # Run tests against emulator
-npm run shell              # Interactive testing shell
-npm run build:watch        # Watch TypeScript compilation
+# Terminal 2: Run API in emulator environment
+# Export emulator env vars before running API code
+export FIRESTORE_EMULATOR_HOST=localhost:8080
+export FIREBASE_AUTH_EMULATOR_HOST=localhost:9099
+export FIREBASE_DATABASE_EMULATOR_HOST=localhost:5000
+export GCLOUD_PROJECT=utilitool-test
+
+npm run dev:watch
 ```
 
 ---
@@ -271,18 +263,25 @@ echo $FIRESTORE_EMULATOR_HOST
 
 ---
 
-## Next Steps
+## Next Steps (Manual Emulator Workflow)
 
-1. **Start emulator**: `docker-compose up` or `npm run serve`
-2. **Run tests**: `npm test`
-3. **Create sample data** via Emulator UI
-4. **Test API endpoints** via curl or Postman
-5. **Inspect data** in Emulator UI (http://localhost:4400)
-6. **Read more**: See `API_SETUP.md` for deployment info
+1. **Start emulator**: `npm run serve`
+2. **Set env vars**: Export emulator hosts (see Setup above)
+3. **Run API**: `npm run dev:watch` in another terminal
+4. **Run tests**: `npm test` (tests are mocked — emulator not needed)
+5. **Create sample data** via Emulator UI: http://localhost:4400
+6. **Test API endpoints** via curl or Postman against `http://localhost:5002`
+
+---
+
+## Standard Dev Workflow (No Emulator)
+
+For normal development, use `docker-compose up` instead. This connects to real `utilitool-staging` Firestore, not the emulator. See `API_SETUP.md` for details.
 
 ---
 
 For issues or questions, check:
 - [Firebase Emulator Docs](https://firebase.google.com/docs/emulator-suite)
+- [No Emulators in Dev Decision](decisions/20260517_no-emulators-in-dev.md)
 - `CLAUDE.md` for project structure
 - `api/functions/CLAUDE.md` for code patterns

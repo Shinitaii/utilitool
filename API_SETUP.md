@@ -1,18 +1,18 @@
 # API Setup & Deployment Guide
 
-## Local Development with Docker & Emulators
+## Local Development with Docker
 
 ### Quick Start
 
 ```bash
-# Start Firebase emulator + API in watch mode
+# Start API + UI in watch mode, connected to utilitool-staging Firebase
 docker-compose up
 
 # In another terminal, test the API
 curl http://localhost:5002/health
 ```
 
-The emulator automatically redirects all Firebase Admin SDK calls to the local emulator instance. You can access the Emulator UI at http://localhost:4400.
+The API connects directly to the `utilitool-staging` Firebase project via service account credentials. No local emulator.
 
 ### Manual Setup (without Docker)
 
@@ -22,14 +22,15 @@ cd api/functions
 # Install dependencies
 npm ci
 
-# Copy environment file for emulator
-cp secrets/.env.example secrets/.env.test
+# Set environment variables
+export APP_ENV=dev
+export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/secrets/utilitool-staging-firebase-adminsdk-fbsvc-6a77170d3f.json
 
-# Start Firebase emulator in one terminal
-npm run serve
+# Start API in watch mode
+npm run dev:watch
 
-# Or use the shell for interactive testing
-npm run shell
+# Or for testing against real Firestore
+npm test
 ```
 
 ## Environment Configuration
@@ -38,8 +39,8 @@ npm run shell
 
 Create these files in `api/functions/secrets/`:
 
-- **`.env.test`** — Local development with Firebase emulator (docker-compose or npm run serve)
-- **`.env.staging`** — Staging Firebase project (utilitool-staging)
+- **`.env.dev`** — Local development (docker-compose or manual npm run dev:watch) — connects to utilitool-staging
+- **`.env.staging`** — Staging Firebase project (utilitool-staging) — for manual testing
 - **`.env.prod`** — Production Firebase project (utilitool-3fe70)
 
 ### Environment Variables
@@ -53,20 +54,26 @@ GOOGLE_CLOUD_PROJECT=<firebase-project-id>
 PROJECT_ID=<firebase-project-id>
 
 # Environment name
-NODE_ENV=staging|production
-APP_ENV=test|staging|prod
+NODE_ENV=development|staging|production
+APP_ENV=dev|staging|prod
+
+# API keys and secrets
+JWT_SECRET=<your-jwt-secret>
+GEMINI_API_KEY=<your-gemini-key>
 
 # Optional: Realtime Database URL (staging/prod only)
 FIREBASE_DATABASE_URL=https://<project>.firebaseio.com
 ```
 
-**Example `.env.test` (emulator):**
+**Example `.env.dev` (local development):**
 ```
-GCLOUD_PROJECT=utilitool-test
-GOOGLE_CLOUD_PROJECT=utilitool-test
-PROJECT_ID=utilitool-test
+GCLOUD_PROJECT=utilitool-staging
+GOOGLE_CLOUD_PROJECT=utilitool-staging
+PROJECT_ID=utilitool-staging
 NODE_ENV=development
-APP_ENV=test
+APP_ENV=dev
+JWT_SECRET=staging-secret-key-change-in-production-minimum-32-chars-required123456
+GEMINI_API_KEY=AIzaSyCW9wqarj2sKwFNgIpjDu_XS3wDWnJbStE
 ```
 
 **Example `.env.staging`:**
@@ -74,16 +81,17 @@ APP_ENV=test
 GCLOUD_PROJECT=utilitool-staging
 GOOGLE_CLOUD_PROJECT=utilitool-staging
 PROJECT_ID=utilitool-staging
-FIREBASE_DATABASE_URL=https://utilitool-staging.firebaseio.com
 NODE_ENV=staging
 APP_ENV=staging
+JWT_SECRET=staging-secret-key-change-in-production-minimum-32-chars-required123456
+GEMINI_API_KEY=AIzaSyCW9wqarj2sKwFNgIpjDu_XS3wDWnJbStE
 ```
 
 ### Environment Detection
 
-- **Local dev (emulator)** → Docker sets `FIRESTORE_EMULATOR_HOST` + `APP_ENV=test` → loads `.env.test`
-- **Staging** → CI/deployment sets `NODE_ENV=staging` → loads `.env.staging`
-- **Production** → Manual deployment with `NODE_ENV=production` → loads `.env.prod`
+- **Local dev** → Docker sets `APP_ENV=dev` + `GOOGLE_APPLICATION_CREDENTIALS` pointing to staging service account → loads `.env.dev` → connects to utilitool-staging
+- **Tests** → `npm test` runs fully-mocked unit tests; no Firebase connection needed
+- **Production** → Manual deployment with `APP_ENV=prod` → loads `.env.prod` → connects to utilitool-3fe70
 
 See `src/config/env.config.ts` for the full logic.
 

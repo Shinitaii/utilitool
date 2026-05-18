@@ -95,12 +95,13 @@ Represents utility type containers (electricity, water).
 |--------|------|---------|
 | POST | `/meter-groups` | Create meter group |
 | POST | `/meter-groups/batch` | Batch create (1–10 items) |
-| GET | `/meter-groups` | List with filters (meterName, utilityType) + pagination |
+| GET | `/meter-groups` | List with filters (meterName, utilityType, **minimal=true** for dropdowns) + pagination |
 | GET | `/meter-groups/:id` | Get single meter group |
-| PUT | `/meter-groups/:id` | Update meter group |
-| PUT | `/meter-groups/batch` | Batch update (1–10 items) |
+| PATCH | `/meter-groups/:id` | Update meter group |
+| PATCH | `/meter-groups/batch` | Batch update (1–10 items) |
 | DELETE | `/meter-groups/:id` | Hard delete |
-| DELETE | `/meter-groups/soft/:id` | Soft delete (set deleted_at) |
+| PATCH | `/meter-groups/:id/delete` | Soft delete (set deleted_at) |
+| PATCH | `/meter-groups/:id/restore` | Restore deleted meter group (clear deleted_at) |
 
 **Business rules**:
 - Unique meter_name per utility_type
@@ -123,10 +124,11 @@ Represents buildings/units that consume utilities.
 | POST | `/properties/batch` | Batch create |
 | GET | `/properties` | List with filters (roomName, meterGroupId) |
 | GET | `/properties/:id` | Get single property |
-| PUT | `/properties/:id` | Update property |
-| PUT | `/properties/batch` | Batch update |
+| PATCH | `/properties/:id` | Update property |
+| PATCH | `/properties/batch` | Batch update |
 | DELETE | `/properties/:id` | Hard delete |
-| DELETE | `/properties/soft/:id` | Soft delete |
+| PATCH | `/properties/:id/delete` | Soft delete |
+| PATCH | `/properties/:id/restore` | Restore property |
 
 **Business rules**:
 - Must reference valid meter_group_id
@@ -147,10 +149,11 @@ Represents individual renters/occupants.
 | POST | `/tenants/batch` | Batch create |
 | GET | `/tenants` | List with filters (tenantName, propertyId) |
 | GET | `/tenants/:id` | Get single tenant |
-| PUT | `/tenants/:id` | Update tenant |
-| PUT | `/tenants/batch` | Batch update |
+| PATCH | `/tenants/:id` | Update tenant |
+| PATCH | `/tenants/batch` | Batch update |
 | DELETE | `/tenants/:id` | Hard delete |
-| DELETE | `/tenants/soft/:id` | Soft delete |
+| PATCH | `/tenants/:id/delete` | Soft delete |
+| PATCH | `/tenants/:id/restore` | Restore tenant |
 
 **Business rules**:
 - Unique tenant_name per property
@@ -171,10 +174,11 @@ Represents snapshots of meter consumption.
 | POST | `/readings/batch` | Batch create |
 | GET | `/readings` | List with filters (meterGroupId) |
 | GET | `/readings/:id` | Get single reading |
-| PUT | `/readings/:id` | Update reading |
-| PUT | `/readings/batch` | Batch update |
+| PATCH | `/readings/:id` | Update reading |
+| PATCH | `/readings/batch` | Batch update |
 | DELETE | `/readings/:id` | Hard delete |
-| DELETE | `/readings/soft/:id` | Soft delete |
+| PATCH | `/readings/:id/delete` | Soft delete |
+| PATCH | `/readings/:id/restore` | Restore reading |
 
 **Business rules**:
 - Must reference valid meter_group_id
@@ -198,10 +202,11 @@ Represents individual bill records.
 | POST | `/billings/batch` | Batch create |
 | GET | `/billings` | List with filters (propertyId) |
 | GET | `/billings/:id` | Get single billing |
-| PUT | `/billings/:id` | Update billing |
-| PUT | `/billings/batch` | Batch update |
+| PATCH | `/billings/:id` | Update billing |
+| PATCH | `/billings/batch` | Batch update |
 | DELETE | `/billings/:id` | Hard delete |
-| DELETE | `/billings/soft/:id` | Soft delete |
+| PATCH | `/billings/:id/delete` | Soft delete |
+| PATCH | `/billings/:id/restore` | Restore billing |
 
 **Business rules**:
 - Must reference valid property_id, previous_reading_id, current_reading_id
@@ -222,10 +227,11 @@ Represents billing periods with validation and rate calculation.
 | POST | `/billing-cycles/batch` | Batch create |
 | GET | `/billing-cycles` | List with filters (billingStartDate, billingEndDate) |
 | GET | `/billing-cycles/:id` | Get single cycle |
-| PUT | `/billing-cycles/:id` | Update cycle |
-| PUT | `/billing-cycles/batch` | Batch update |
+| PATCH | `/billing-cycles/:id` | Update cycle |
+| PATCH | `/billing-cycles/batch` | Batch update |
 | DELETE | `/billing-cycles/:id` | Hard delete |
-| DELETE | `/billing-cycles/soft/:id` | Soft delete |
+| PATCH | `/billing-cycles/:id/delete` | Soft delete |
+| PATCH | `/billing-cycles/:id/restore` | Restore cycle |
 
 **Business rules**:
 - billing_ids: Record<billingId, consumptionAmount> — all IDs must exist + be valid
@@ -240,6 +246,26 @@ Represents billing periods with validation and rate calculation.
 3. Compare to billing_consumption (must be within 3%)
 4. Calculate per-tenant charges: (tenant_consumption × rate)
 5. Store billing_ids with their calculated consumption
+
+---
+
+## HTTP Method Semantics
+
+**Why we use PATCH instead of PUT**:
+
+| Operation | Method | Path | Why |
+|-----------|--------|------|-----|
+| Update | PATCH | `/:id` | Partial modification of a resource |
+| Batch update | PATCH | `/batch` | Multiple partial modifications |
+| Soft delete | PATCH | `/:id/delete` | State change (marking as deleted) |
+| Restore | PATCH | `/:id/restore` | State change (unmarking as deleted) |
+| Hard delete | DELETE | `/:id` | Removal of the entire resource |
+
+**Rationale**: 
+- **PATCH** is for partial, idempotent modifications (updates, state changes)
+- **DELETE** is only for hard removal of documents
+- This keeps soft delete and restore symmetric (both PATCH state operations)
+- Soft delete is not a destructive operation — it's a state change, not a removal
 
 ---
 
@@ -571,16 +597,17 @@ All list endpoints return this. UI uses cursor-based pagination.
 
 Loads from `secrets/.env.{APP_ENV}` based on the `APP_ENV` environment variable.
 
-When Firebase emulator is running (`FUNCTIONS_EMULATOR=true`), `APP_ENV` defaults to `test`.
+Dev environment (`APP_ENV=dev`) connects directly to `utilitool-staging` Firebase project for Firestore/Auth data.
 
-### Required Env Vars
+### Required Env Vars (Development)
 ```
-APP_ENV=test|dev|staging|prod
-GCLOUD_PROJECT=utilitool-test|utilitool-staging|utilitool-3fe70
-JWT_SECRET=<your-secret-key>
-FIREBASE_EMULATOR_HUB=firebase-emulator:4400  (only for local dev)
-FIRESTORE_EMULATOR_HOST=firebase-emulator:8080
+APP_ENV=dev
+GCLOUD_PROJECT=utilitool-staging
+GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/utilitool-staging-firebase-adminsdk-fbsvc-6a77170d3f.json
+JWT_SECRET=<from .env.dev>
 ```
+
+See `secrets/.env.dev` for all dev variables. Production deployments use `APP_ENV=prod` and `secrets/.env.prod`.
 
 ---
 
@@ -589,13 +616,18 @@ FIRESTORE_EMULATOR_HOST=firebase-emulator:8080
 Run from `api/functions/`:
 
 ```bash
-npm run serve              # Start emulator + API watch mode
-npm run build             # Compile TypeScript
+npm run dev:watch        # Watch mode (standard dev, used via docker-compose)
+npm run serve            # Start emulator + API (manual use only, for integration tests)
+npm run build            # Compile TypeScript
 npm run build:watch      # Watch mode
 npm run lint             # ESLint
 npm test                 # Jest (all tests)
 npm run test:watch       # Jest watch mode
 ```
+
+**Standard dev flow**: Use `docker-compose up` from the repo root. This starts the API with `APP_ENV=dev` connected to `utilitool-staging`.
+
+**Manual emulator use**: `npm run serve` still works if you need to run integration tests against a local emulator.
 
 ---
 

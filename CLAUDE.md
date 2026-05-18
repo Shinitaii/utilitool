@@ -82,18 +82,19 @@ docker-compose up
 ```
 
 Starts:
-- **Firebase Emulator** (port 4400) — Firestore, Auth, Realtime DB
-- **API** (port 5002) — Express server, watch mode
+- **API** (port 5002) — Express server connected to utilitool-staging Firebase, watch mode
 - **UI** (port 5173) — SvelteKit dev server
 
 See `docker-compose.yml` for full config.
 
 ### Manual Setup
 ```bash
-# Terminal 1: Start emulator + API
+# Terminal 1: Start API connected to utilitool-staging
 cd api/functions
 npm ci
-npm run serve
+export APP_ENV=dev
+export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/secrets/utilitool-staging-firebase-adminsdk-fbsvc-6a77170d3f.json
+npm run dev:watch
 
 # Terminal 2: Start UI
 cd ui
@@ -108,7 +109,7 @@ npm run dev
 ### API (`api/functions/`)
 | Task | Command |
 |------|---------|
-| Dev (emulator + watch) | `npm run serve` |
+| Dev (watch mode) | `npm run dev:watch` |
 | Type check | `npx tsc --noEmit` |
 | Lint | `npm run lint` |
 | Test | `npm test` |
@@ -229,7 +230,6 @@ docker-compose up
 # Open in browser
 # UI: http://localhost:5173
 # API Docs: http://localhost:5002/docs
-# Emulator: http://localhost:4400
 ```
 
 ### 2. Register a User
@@ -268,7 +268,8 @@ docker-compose up
 - **Deep dive on API**: `api/CLAUDE.md`
 - **Deep dive on UI**: `ui/CLAUDE.md`
 - **API setup & environments**: `API_SETUP.md`
-- **Emulator configuration**: `EMULATOR_SETUP.md`
+- **Emulator configuration** (advanced/manual use): `EMULATOR_SETUP.md`
+- **Dev workflow decision**: `decisions/20260517_no-emulators-in-dev.md`
 
 ---
 
