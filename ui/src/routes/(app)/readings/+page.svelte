@@ -21,6 +21,7 @@
     data_url: string | null;
     suggested_amount: number | null;
     is_processing: boolean;
+    is_uploading: boolean;
   }
 
   let readings = $state<PaginatedResult<Reading>>({
@@ -119,6 +120,7 @@
           data_url: null,
           suggested_amount: null,
           is_processing: false,
+          is_uploading: false,
         }));
       }
     } catch (err) {
@@ -134,6 +136,7 @@
 
     const row = batchRows[rowIndex];
 
+    row.is_uploading = true;
     try {
       // Read file to data URL (needed for OCR later via Suggest button)
       const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -156,6 +159,8 @@
       }
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to process image';
+    } finally {
+      row.is_uploading = false;
     }
   }
 
@@ -165,6 +170,7 @@
 
     row.is_processing = true;
     try {
+      error = '';
       const ocrResult = await ocrReadingImage(row.data_url);
       row.suggested_amount = ocrResult.suggested_reading_amount ?? null;
     } catch (err) {
@@ -371,18 +377,19 @@
                         {:else}
                           <div class="h-12 w-12 rounded border-2 border-dashed border-gray-300 bg-gray-50"></div>
                         {/if}
-                        <label class="cursor-pointer">
+                        <label class={row.is_uploading ? 'cursor-not-allowed' : 'cursor-pointer'}>
                           <input
                             type="file"
                             accept="image/*"
+                            disabled={row.is_uploading}
                             onchange={(e) => {
                               const file = (e.target as HTMLInputElement).files?.[0];
                               if (file) handleBatchImageUpload(i, file);
                             }}
                             class="hidden"
                           />
-                          <span class="rounded bg-blue-100 px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-200">
-                            Upload
+                          <span class="rounded bg-blue-100 px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-200 disabled:opacity-50">
+                            {row.is_uploading ? 'Uploading...' : 'Upload'}
                           </span>
                         </label>
                       </div>
@@ -398,7 +405,7 @@
                         <button
                           type="button"
                           onclick={() => handleBatchSuggest(i)}
-                          disabled={!row.image_url || row.is_processing}
+                          disabled={!row.data_url || row.is_processing}
                           class="rounded bg-blue-100 px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {row.is_processing ? 'Suggesting...' : 'Suggest'}
