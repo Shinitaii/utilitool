@@ -2,6 +2,7 @@ import {CreateBillingCycleDTO} from "./billing-cycle.dto";
 import {AppError} from "../../utils/error.util";
 import {logger} from "../../utils/logger.util";
 import {billingRepository} from "../billing/billing.repository";
+import {readingRepository} from "../reading/reading.repository";
 import {Timestamp} from "firebase-admin/firestore";
 
 const CONSUMPTION_TOLERANCE = 0.03;
@@ -12,6 +13,36 @@ export class BillingCycleValidator {
       const billing = await billingRepository.getById(billingId);
       if (!billing) {
         throw new AppError(404, "Billing not found");
+      }
+    }
+  }
+
+  private async validateBillingConsumptionAmounts(
+    billingIds: Record<string, number>
+  ): Promise<void> {
+    const PER_BILLING_TOLERANCE = 0.05;
+
+    for (const [billingId, providedConsumption] of Object.entries(billingIds)) {
+      const billing = await billingRepository.getById(billingId);
+      if (!billing) continue; // Already caught by validateBillingIdsExist
+
+      const [prevReading, currReading] = await Promise.all([
+        readingRepository.getById(billing.previous_reading_id),
+        readingRepository.getById(billing.current_reading_id),
+      ]);
+
+      if (!prevReading || !currReading) continue; // Shouldn't happen if billings are valid
+
+      const expectedConsumption = currReading.meter_reset
+        ? prevReading.reading_amount + currReading.reading_amount
+        : currReading.reading_amount - prevReading.reading_amount;
+
+      const tolerance = Math.abs(expectedConsumption) * PER_BILLING_TOLERANCE;
+      if (Math.abs(providedConsumption - expectedConsumption) > tolerance) {
+        throw new AppError(
+          400,
+          `Billing ${billingId}: provided consumption ${providedConsumption} deviates more than 5% from expected ${expectedConsumption}`
+        );
       }
     }
   }
@@ -73,6 +104,7 @@ export class BillingCycleValidator {
     }
 
     await this.validateBillingIdsExist(billingIds);
+    await this.validateBillingConsumptionAmounts(data.billing_ids);
 
     this.validateBillingDates(
       data.billing_start_date,
@@ -128,6 +160,7 @@ export class BillingCycleValidator {
       }
 
       await this.validateBillingIdsExist(billingIds);
+      await this.validateBillingConsumptionAmounts(data.billing_ids);
     }
 
     if (data.billing_start_date && data.billing_end_date) {
