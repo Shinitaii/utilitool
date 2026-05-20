@@ -230,9 +230,7 @@
 
         const prevAmount = prevReading?.reading_amount ?? 0;
         const currAmount = currReading.reading_amount;
-        const consumption = currReading.meter_reset
-          ? prevAmount + currAmount
-          : currAmount - prevAmount;
+        const consumption = currAmount - prevAmount;
 
         return {
           billingId: billing.id,

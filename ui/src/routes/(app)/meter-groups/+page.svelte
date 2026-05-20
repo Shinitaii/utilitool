@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { getMeterGroups, createMeterGroup, updateMeterGroup, softDeleteMeterGroup } from '$lib/api/meter-groups';
+  import { getMeterGroups, createMeterGroup, updateMeterGroup, softDeleteMeterGroup, recordMeterGroupReset } from '$lib/api/meter-groups';
   import type { MeterGroup, CreateMeterGroupRequest, UpdateMeterGroupRequest } from '$lib/types/meter-group.types';
   import type { PaginatedResult } from '$lib/types/api.types';
   import { formatDate } from '$lib/utils/format';
@@ -34,6 +34,7 @@
 
   let editingId = $state<string | null>(null);
   let deletingId = $state<string | null>(null);
+  let resettingId = $state<string | null>(null);
 
   onMount(async () => {
     await loadData();
@@ -95,6 +96,20 @@
       } finally {
         deletingId = null;
       }
+    }
+  }
+
+  async function handleRecordReset(item: MeterGroup) {
+    const version = (item.current_version ?? 1) + 1;
+    if (!confirm(`Record a meter reset for "${item.meter_name}"?\n\nThis will start version ${version}. The server will use the latest recorded reading as the previous meter total.\n\nContinue?`)) return;
+    resettingId = item.id;
+    try {
+      await recordMeterGroupReset(item.id);
+      await loadData();
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to record meter reset';
+    } finally {
+      resettingId = null;
     }
   }
 </script>
@@ -186,6 +201,7 @@
             <th class="px-6 py-3 text-left font-semibold text-gray-700">Meter Name</th>
             <th class="px-6 py-3 text-left font-semibold text-gray-700">Utility Type</th>
             <th class="px-6 py-3 text-left font-semibold text-gray-700">Created</th>
+            <th class="px-6 py-3 text-left font-semibold text-gray-700">Version</th>
             <th class="px-6 py-3 text-left font-semibold text-gray-700">Actions</th>
           </tr>
         </thead>
@@ -199,12 +215,22 @@
                 </span>
               </td>
               <td class="px-6 py-4 text-gray-600">{formatDate(toDate(item.created_at))}</td>
+              <td class="px-6 py-4 text-gray-600">v{item.current_version ?? 1}</td>
               <td class="px-6 py-4">
-                <ActionButtons
-                  onEdit={() => openEditModal(item)}
-                  onSoftDelete={() => handleSoftDelete(item.id)}
-                  isLoading={deletingId === item.id}
-                />
+                <div class="flex items-center gap-2">
+                  <button
+                    onclick={() => handleRecordReset(item)}
+                    disabled={resettingId === item.id}
+                    class="rounded border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700 hover:bg-orange-100 disabled:opacity-50"
+                  >
+                    {resettingId === item.id ? 'Resetting...' : 'Reset Meter'}
+                  </button>
+                  <ActionButtons
+                    onEdit={() => openEditModal(item)}
+                    onSoftDelete={() => handleSoftDelete(item.id)}
+                    isLoading={deletingId === item.id}
+                  />
+                </div>
               </td>
             </tr>
           {/each}

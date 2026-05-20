@@ -54,6 +54,16 @@
   let editingId = $state<string | null>(null);
   let deletingId = $state<string | null>(null);
 
+  function getCumulativeOffset(meterGroup: MeterGroup | undefined, version: number): number {
+    if (!meterGroup?.versions) return 0;
+    let offset = 0;
+    for (let v = 1; v < version; v++) {
+      const versionData = meterGroup.versions[String(v)];
+      if (versionData) offset += versionData.last_reading;
+    }
+    return offset;
+  }
+
   onMount(async () => {
     await loadData();
   });
@@ -361,6 +371,13 @@
                       min="0"
                       class="w-32 rounded border border-gray-300 px-3 py-2"
                     />
+                    {#if row.reading_amount !== null}
+                      {@const selectedMg = meterGroups.find((g) => g.id === selectedMeterGroup)}
+                      {@const offset = getCumulativeOffset(selectedMg, selectedMg?.current_version ?? 1)}
+                      <p class="mt-1 text-xs text-gray-400">
+                        True total: {(offset + row.reading_amount).toLocaleString()}
+                      </p>
+                    {/if}
                   </td>
                   <td class="px-6 py-4">
                     <div class="grid grid-cols-2 gap-3">
@@ -468,6 +485,7 @@
           <tr>
             <th class="px-6 py-3 text-left font-semibold text-gray-700">Meter Group</th>
             <th class="px-6 py-3 text-right font-semibold text-gray-700">Reading (kWh)</th>
+            <th class="px-6 py-3 text-right font-semibold text-gray-700">True Total</th>
             <th class="px-6 py-3 text-left font-semibold text-gray-700">Photo</th>
             <th class="px-6 py-3 text-left font-semibold text-gray-700">Date</th>
             <th class="px-6 py-3 text-left font-semibold text-gray-700">Created</th>
@@ -482,6 +500,13 @@
               </td>
               <td class="px-6 py-4 text-right font-mono text-gray-700">
                 {item.reading_amount.toLocaleString()}
+              </td>
+              <td class="px-6 py-4 text-right font-mono text-gray-400 text-xs">
+                {#if true}
+                  {@const mg = meterGroups.find((g) => g.id === item.meter_group_id)}
+                  {@const offset = getCumulativeOffset(mg, item.meter_version ?? 1)}
+                  {(offset + item.reading_amount).toLocaleString()}
+                {/if}
               </td>
               <td class="px-6 py-4">
                 {#if item.image_url}

@@ -55,3 +55,7 @@ export async function softDeleteMeterGroup(id: string): Promise<MeterGroup> {
 export async function restoreMeterGroup(id: string): Promise<MeterGroup> {
   return apiPatch<MeterGroup>(`/meter-groups/${id}/restore`, {});
 }
+
+export async function recordMeterGroupReset(id: string): Promise<MeterGroup> {
+  return apiPost<MeterGroup>(`/meter-groups/${id}/reset`, {});
+}
