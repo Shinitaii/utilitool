@@ -62,3 +62,15 @@ export async function softDeleteBillingCycle(id: string): Promise<BillingCycle> 
 export async function restoreBillingCycle(id: string): Promise<BillingCycle> {
   return apiPatch<BillingCycle>(`/billing-cycles/${id}/restore`, {});
 }
+
+export interface BillingCycleOcrResult {
+  billing_start_date: string;
+  billing_end_date: string;
+  billing_consumption: number;
+  billing_rate: number;
+  raw_amount: number;
+}
+
+export async function ocrBillingCycle(imageUrl: string): Promise<BillingCycleOcrResult> {
+  return apiPost<BillingCycleOcrResult>('/billing-cycles/ocr', { image_url: imageUrl });
+}

@@ -5,8 +5,10 @@ import {
   BillingCycleByIdParamsDTO,
   GetBillingCyclesQueryDTO,
   UpdateBillingCycleDTO,
+  OcrBillingCycleDTO,
 } from "./billing-cycle.dto";
 import {AppError} from "../../utils/error.util";
+import {geminiLib} from "../../lib/gemini.lib";
 
 export const createBillingCycle = async (
   req: Request,
@@ -99,5 +101,17 @@ export const restoreBillingCycle = async (
 ): Promise<void> => {
   const {id} = req.params;
   const result = await billingCycleService.restore(id);
+  res.status(200).json(result);
+};
+
+export const ocrBillingCycle = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const {image_url} = req.body as OcrBillingCycleDTO;
+  const result = await geminiLib.extractBillData(image_url);
+  if (!result) {
+    throw new AppError(422, "Could not extract billing data from the provided image. Please try a clearer photo of the utility bill.");
+  }
   res.status(200).json(result);
 };

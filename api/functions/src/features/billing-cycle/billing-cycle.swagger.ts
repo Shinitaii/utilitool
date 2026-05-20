@@ -160,6 +160,53 @@ export const billingCyclePaths = {
       },
     },
   },
+  '/billing-cycles/ocr': {
+    post: {
+      tags: ['Billing Cycles'],
+      summary: 'Extract billing data from utility bill photo',
+      description: 'Uses Gemini vision to extract billing_start_date, billing_end_date, billing_consumption, billing_rate, and raw_amount from a Philippine utility bill (Meralco/Manila Water).',
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['image_url'],
+              properties: {
+                image_url: {
+                  type: 'string',
+                  description: 'Data URL (data:image/...) or public HTTPS URL of the utility bill photo',
+                },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: 'Extracted billing data',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  billing_start_date: { type: 'string', example: '2026-04-17' },
+                  billing_end_date: { type: 'string', example: '2026-05-17' },
+                  billing_consumption: { type: 'number', example: 350 },
+                  billing_rate: { type: 'number', example: 12.5 },
+                  raw_amount: { type: 'number', example: 4375 },
+                },
+              },
+            },
+          },
+        },
+        422: { description: 'Could not extract data from the image' },
+        401: { description: 'Unauthorized' },
+        500: { description: 'Internal server error' },
+      },
+      security: [{ BearerAuth: [] }],
+    },
+  },
   '/billing-cycles/batch': {
     post: {
       tags: ['Billing Cycles'],

@@ -9,6 +9,7 @@ import {
   restoreBillingCycle,
   createBatchBillingCycles,
   updateBatchBillingCycles,
+  ocrBillingCycle,
 } from "./billing-cycle.controller";
 import {
   CreateBillingCycleBatchDTOSchema,
@@ -17,8 +18,10 @@ import {
   GetBillingCyclesQueryDTOSchema,
   UpdateBillingCycleBatchDTOSchema,
   UpdateBillingCycleDTOSchema,
+  OcrBillingCycleDTOSchema,
 } from "./billing-cycle.dto";
 import {validateRequest} from "../../middlewares/validate-request.middleware";
+import {requireRole} from "../../middlewares/require-role.middleware";
 
 const router = Router();
 
@@ -32,6 +35,12 @@ router.patch(
   "/batch",
   validateRequest({body: UpdateBillingCycleBatchDTOSchema}),
   updateBatchBillingCycles
+);
+
+router.post(
+  "/ocr",
+  validateRequest({body: OcrBillingCycleDTOSchema}),
+  ocrBillingCycle
 );
 
 router.post(
@@ -64,6 +73,7 @@ router.patch(
 router.delete(
   "/:id",
   validateRequest({params: BillingCycleByIdParamsDTOSchema}),
+  requireRole('admin', 'landlord'),
   deleteBillingCycle
 );
 

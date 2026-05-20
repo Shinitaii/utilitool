@@ -90,3 +90,18 @@ export const GetBillingCyclesQueryDTOSchema = z
     }
   });
 export type GetBillingCyclesQueryDTO = z.infer<typeof GetBillingCyclesQueryDTOSchema>;
+
+// OCR DTOs
+export const OcrBillingCycleDTOSchema = z.object({
+  image_url: z.string().min(1),
+});
+export type OcrBillingCycleDTO = z.infer<typeof OcrBillingCycleDTOSchema>;
+
+export const OcrBillingCycleResponseSchema = z.object({
+  billing_start_date: z.string(),
+  billing_end_date: z.string(),
+  billing_consumption: z.number(),
+  billing_rate: z.number(),
+  raw_amount: z.number(),
+});
+export type OcrBillingCycleResponse = z.infer<typeof OcrBillingCycleResponseSchema>;

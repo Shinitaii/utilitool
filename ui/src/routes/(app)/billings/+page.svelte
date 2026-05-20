@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getBillingCycles, createBillingCycle } from '$lib/api/billing-cycles';
+  import { getBillingCycles, createBillingCycle, ocrBillingCycle } from '$lib/api/billing-cycles';
   import { getBillings, createBilling, updateBilling, softDeleteBilling } from '$lib/api/billings';
   import { getReadings } from '$lib/api/readings';
   import { getProperties } from '$lib/api/properties';
@@ -46,6 +46,11 @@
   let cycleFormTotalConsumption = $state(0);
   let cycleFormConsumptionEdited = $state(false);
   let isCreatingCycle = $state(false);
+
+  // OCR state
+  let billPhotoUrl = $state<string | null>(null);
+  let isBillOcrLoading = $state(false);
+  let billOcrRawAmount = $state<number | null>(null);
 
   interface DiscoveredBilling {
     billingId: string;
@@ -261,6 +266,38 @@
     cycleFormDiscoveredBillings = [];
     cycleFormTotalConsumption = 0;
     cycleFormConsumptionEdited = false;
+    billPhotoUrl = null;
+    isBillOcrLoading = false;
+    billOcrRawAmount = null;
+  }
+
+  async function readFileAsDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target?.result as string);
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleBillPhotoOcr(file: File) {
+    isBillOcrLoading = true;
+    error = '';
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      billPhotoUrl = dataUrl;
+      const result = await ocrBillingCycle(dataUrl);
+      cycleFormStartDate = result.billing_start_date;
+      cycleFormEndDate = result.billing_end_date;
+      cycleFormRate = result.billing_rate;
+      cycleFormTotalConsumption = result.billing_consumption;
+      cycleFormConsumptionEdited = true;
+      billOcrRawAmount = result.raw_amount;
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to extract billing data from photo';
+    } finally {
+      isBillOcrLoading = false;
+    }
   }
 
   async function handleCreateCycle() {
@@ -436,6 +473,35 @@
   {#if cycleFormOpen}
     <div class="rounded-lg border border-gray-200 bg-white p-6">
       <h2 class="font-semibold">New Billing Cycle</h2>
+
+      <!-- Bill Photo OCR -->
+      <div class="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-2">
+        <p class="text-sm font-medium text-gray-700">Extract from Bill Photo (optional)</p>
+        <div class="flex items-center gap-3">
+          <label class="cursor-pointer">
+            <input
+              type="file"
+              accept="image/*"
+              class="hidden"
+              onchange={async (e) => {
+                const file = (e.target as HTMLInputElement).files?.[0];
+                if (file) await handleBillPhotoOcr(file);
+              }}
+              disabled={isBillOcrLoading}
+            />
+            <span class="rounded border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">
+              {isBillOcrLoading ? 'Extracting...' : 'Upload Bill Photo'}
+            </span>
+          </label>
+          {#if billPhotoUrl && !isBillOcrLoading}
+            <span class="text-xs text-green-600">✓ Data extracted</span>
+          {/if}
+          {#if billOcrRawAmount !== null}
+            <span class="text-xs text-gray-500">Bill total: ₱{billOcrRawAmount.toLocaleString()}</span>
+          {/if}
+        </div>
+      </div>
+
       <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
           <label for="cycle-meter-group" class="block text-sm font-medium text-gray-700">Meter Group</label>
