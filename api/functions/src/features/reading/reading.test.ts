@@ -1,3 +1,36 @@
+jest.mock('../../config/firebase.config', () => {
+  const makeQueryChain = (getResult: { empty: boolean; docs: any[] }) => ({
+    where: jest.fn().mockReturnThis(),
+    orderBy: jest.fn().mockReturnThis(),
+    limit: jest.fn().mockReturnThis(),
+    get: jest.fn().mockResolvedValue(getResult),
+    doc: jest.fn().mockReturnValue({
+      id: 'new-reading-id',
+      get: jest.fn().mockResolvedValue({
+        id: 'new-reading-id',
+        exists: true,
+        data: () => ({ meter_group_id: 'mg-1', reading_amount: 200, is_deleted: false }),
+      }),
+    }),
+  });
+
+  return {
+    firestore: {
+      collection: jest.fn().mockImplementation(() => makeQueryChain({ empty: true, docs: [] })),
+      runTransaction: jest.fn().mockImplementation(async (fn: Function) => {
+        await fn({ set: jest.fn() });
+      }),
+    },
+  };
+});
+jest.mock('../billing/billing.service', () => ({
+  billingService: {
+    createFromReadings: jest.fn(),
+  },
+}));
+jest.mock('../../utils/firestore.util', () => ({
+  snapshotToModel: jest.fn().mockImplementation((snap: any) => ({ id: snap.id, ...snap.data() })),
+}));
 jest.mock('./reading.repository');
 jest.mock('./reading.validator');
 
@@ -138,6 +171,102 @@ describe('readingService', () => {
           reading_date: Timestamp.now(),
         })
       ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    // Auto-billing behavior tests
+    describe('auto-billing behavior', () => {
+      it('should create reading without billing when no previous-month reading exists', async () => {
+        // firestore.collection default returns { empty: true } → falls back to readingRepository.create
+        jest.mocked(ReadingValidator.prototype.validateCreate).mockResolvedValue(undefined);
+        jest.mocked(readingRepository.create).mockResolvedValue(mockReading());
+
+        const result = await readingService.create({
+          meter_group_id: 'mg-1',
+          reading_amount: 200,
+          reading_date: Timestamp.now(),
+        });
+
+        expect(readingRepository.create).toHaveBeenCalled();
+        expect(result.id).toBe('reading-1');
+
+        // Transaction should NOT have been called
+        const { firestore } = require('../../config/firebase.config');
+        expect(firestore.runTransaction).not.toHaveBeenCalled();
+      });
+
+      it('should run a Firestore transaction when previous-month reading exists', async () => {
+        const { firestore } = require('../../config/firebase.config');
+        const prevReadingDoc = {
+          id: 'prev-reading-id',
+          data: () => ({ meter_group_id: 'mg-1', reading_amount: 100 }),
+        };
+        const propertyDoc = { id: 'prop-1' };
+
+        // First collection() call: READINGS query → has previous reading
+        // Second/third collection() calls: PROPERTIES queries (electricity, water)
+        // Fourth collection() call: READINGS.doc() for new reading
+        jest.mocked(firestore.collection)
+          .mockReturnValueOnce({
+            where: jest.fn().mockReturnThis(),
+            orderBy: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ empty: false, docs: [prevReadingDoc] }),
+          })
+          .mockReturnValueOnce({
+            where: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ docs: [propertyDoc] }),
+          })
+          .mockReturnValueOnce({
+            where: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ docs: [] }),
+          })
+          .mockReturnValueOnce({
+            doc: jest.fn().mockReturnValue({
+              id: 'new-id',
+              get: jest.fn().mockResolvedValue({
+                id: 'new-id',
+                exists: true,
+                data: () => ({ meter_group_id: 'mg-1', reading_amount: 200 }),
+              }),
+            }),
+          });
+
+        jest.mocked(ReadingValidator.prototype.validateCreate).mockResolvedValue(undefined);
+
+        const result = await readingService.create({
+          meter_group_id: 'mg-1',
+          reading_amount: 200,
+          reading_date: Timestamp.now(),
+        });
+
+        expect(firestore.runTransaction).toHaveBeenCalled();
+        expect(result).toBeDefined();
+      });
+
+      it('should accept meter_reset flag in DTO schema', () => {
+        const result = CreateReadingDTOSchema.safeParse({
+          meter_group_id: 'mg-1',
+          reading_amount: 50,
+          reading_date: Timestamp.now(),
+          meter_reset: true,
+        });
+        expect(result.success).toBe(true);
+        expect(result.data?.meter_reset).toBe(true);
+      });
+
+      it('should reject with 409 when a reading for the same meter group already exists this month', async () => {
+        jest.mocked(ReadingValidator.prototype.validateCreate).mockRejectedValue(
+          new AppError(409, 'A reading for this meter group already exists in this month')
+        );
+
+        await expect(
+          readingService.create({
+            meter_group_id: 'mg-1',
+            reading_amount: 200,
+            reading_date: Timestamp.now(),
+          })
+        ).rejects.toMatchObject({ statusCode: 409 });
+      });
     });
   });
 
