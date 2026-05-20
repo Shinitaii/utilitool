@@ -559,6 +559,87 @@ export const meterGroupPaths = {
       },
     },
   },
+  '/meter-groups/{id}/reset': {
+    post: {
+      tags: ['Meter Groups'],
+      summary: 'Record a meter reset',
+      description: 'Increments current_version and records the last reading as the version\'s closing value. Requires admin or landlord role.',
+      security: [{ BearerAuth: [] }],
+      parameters: [
+        {
+          name: 'id',
+          in: 'path',
+          required: true,
+          schema: {
+            type: 'string',
+            minLength: 1,
+          },
+        },
+      ],
+      responses: {
+        '200': {
+          description: 'Meter reset recorded',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/MeterGroup',
+              },
+            },
+          },
+        },
+        '401': {
+          description: 'Unauthorized',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+        '403': {
+          description: 'Forbidden (requires admin or landlord role)',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+        '404': {
+          description: 'Meter group not found',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+        '422': {
+          description: 'No readings found for this meter group',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+        '500': {
+          description: 'Internal server error',
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/ErrorResponse',
+              },
+            },
+          },
+        },
+      },
+    },
+  },
   '/meter-groups/soft/{id}': {
     delete: {
       tags: ['Meter Groups'],

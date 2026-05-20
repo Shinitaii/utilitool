@@ -184,6 +184,25 @@ const swaggerSpec = {
                 type: 'string',
                 enum: ['electricity', 'water'],
               },
+              current_version: {
+                type: 'integer',
+                description: 'Current meter counter version (1-based, increments on each reset)',
+              },
+              versions: {
+                type: 'object',
+                description: 'Reset history keyed by version number',
+                additionalProperties: {
+                  type: 'object',
+                  properties: {
+                    reset_at: {
+                      type: 'object',
+                    },
+                    last_reading: {
+                      type: 'number',
+                    },
+                  },
+                },
+              },
             },
             required: ['meter_name', 'utility_type'],
           },

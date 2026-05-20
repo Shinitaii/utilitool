@@ -15,6 +15,8 @@ import {MeterGroup} from "../meter-group/meter-group.model";
 
 const validator = new ReadingValidator();
 
+type ReadingCreatePayload = CreateReadingDTO & { meter_version: number };
+
 const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;
 
 async function checkAnomalousReading(
@@ -44,10 +46,8 @@ async function checkAnomalousReading(
   for (let i = 0; i < sameVersionReadings.length - 1; i++) {
     const curr = sameVersionReadings[i];
     const prev = sameVersionReadings[i + 1];
-    if ((curr.meter_version ?? 1) === (prev.meter_version ?? 1)) {
-      const delta = curr.reading_amount - prev.reading_amount;
-      if (delta > 0) deltas.push(delta);
-    }
+    const delta = curr.reading_amount - prev.reading_amount;
+    if (delta > 0) deltas.push(delta);
   }
   if (deltas.length === 0) return;
 
@@ -128,7 +128,8 @@ export const readingService = {
     // First-time scenario: no previous-month reading. Fall back to a plain
     // create — no billings to generate.
     if (prevReadingSnap.empty) {
-      return readingRepository.create({ ...data, meter_version } as any);
+      const payload: ReadingCreatePayload = { ...data, meter_version };
+      return readingRepository.create(payload);
     }
 
     const prevReadingDoc = prevReadingSnap.docs[0];
@@ -163,7 +164,8 @@ export const readingService = {
     // No properties consume this meter group — no billings to write. Save the
     // reading normally.
     if (properties.length === 0) {
-      return readingRepository.create({ ...data, meter_version } as any);
+      const payload: ReadingCreatePayload = { ...data, meter_version };
+      return readingRepository.create(payload);
     }
 
     // Build the new reading document up front so we can use it inside the txn.
@@ -222,12 +224,16 @@ export const readingService = {
       if (mg) meterGroupMap.set(mgId, mg);
     }
 
-    const readingsWithVersion = data.map((r) => ({
+    const readingsWithVersion: ReadingCreatePayload[] = data.map((r) => ({
       ...r,
       meter_version: meterGroupMap.get(r.meter_group_id)?.current_version ?? 1,
     }));
 
-    return readingRepository.createBatch(readingsWithVersion as any);
+    for (const r of readingsWithVersion) {
+      await checkAnomalousReading(r.meter_group_id, r.reading_amount, r.meter_version);
+    }
+
+    return readingRepository.createBatch(readingsWithVersion);
   },
 
   async search(options: ReadingSearchOptions): Promise<PaginatedResult<Reading>> {

@@ -123,6 +123,7 @@ export const meterGroupService = {
       limit: 1,
       orderBy: "reading_date",
       orderDirection: "desc",
+      archived: false,
       filters: { meter_group_id: id },
     });
 
@@ -141,9 +142,10 @@ export const meterGroupService = {
       },
     };
 
-    return meterGroupRepository.update(id, {
+    const updatePayload: Partial<MeterGroup> = {
       current_version: currentVersion + 1,
       versions: updatedVersions,
-    } as any);
+    };
+    return meterGroupRepository.update(id, updatePayload);
   },
 };

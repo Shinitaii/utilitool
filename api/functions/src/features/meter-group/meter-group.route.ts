@@ -57,6 +57,7 @@ router.get(
 router.post(
   "/:id/reset",
   validateRequest({params: MeterGroupByIdParamsDTOSchema}),
+  requireRole('admin', 'landlord'),
   recordMeterGroupReset
 );
 
