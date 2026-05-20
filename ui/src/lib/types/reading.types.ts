@@ -5,7 +5,7 @@ export interface Reading extends BaseModel {
   reading_amount: number;
   reading_date: FirestoreTimestamp;
   image_url?: string;
-  meter_version?: number;
+  meter_version: number;
 }
 
 export interface CreateReadingRequest {

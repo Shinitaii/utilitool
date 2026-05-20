@@ -230,6 +230,10 @@
 
         const prevAmount = prevReading?.reading_amount ?? 0;
         const currAmount = currReading.reading_amount;
+        // Cross-version pairs cannot be reduced to a simple diff in the UI (meter was reset between
+        // versions). The billing cycle server validation handles the true value; here we fall back
+        // to the naive diff so the preview is at least a reasonable estimate. The confirmed
+        // consumption value stored in cycle.billing_ids is always authoritative after cycle creation.
         const consumption = currAmount - prevAmount;
 
         return {

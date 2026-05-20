@@ -373,6 +373,7 @@
                     />
                     {#if row.reading_amount !== null}
                       {@const selectedMg = meterGroups.find((g) => g.id === selectedMeterGroup)}
+                      <!-- offset assumes new readings will be assigned current_version -->
                       {@const offset = getCumulativeOffset(selectedMg, selectedMg?.current_version ?? 1)}
                       <p class="mt-1 text-xs text-gray-400">
                         True total: {(offset + row.reading_amount).toLocaleString()}
@@ -502,11 +503,7 @@
                 {item.reading_amount.toLocaleString()}
               </td>
               <td class="px-6 py-4 text-right font-mono text-gray-400 text-xs">
-                {#if true}
-                  {@const mg = meterGroups.find((g) => g.id === item.meter_group_id)}
-                  {@const offset = getCumulativeOffset(mg, item.meter_version ?? 1)}
-                  {(offset + item.reading_amount).toLocaleString()}
-                {/if}
+                {(getCumulativeOffset(meterGroups.find((g) => g.id === item.meter_group_id), item.meter_version ?? 1) + item.reading_amount).toLocaleString()}
               </td>
               <td class="px-6 py-4">
                 {#if item.image_url}
