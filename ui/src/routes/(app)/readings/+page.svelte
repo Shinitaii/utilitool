@@ -18,9 +18,9 @@
     property: Property;
     reading_amount: number | null;
     image_url: string | null;
+    data_url: string | null;
     suggested_amount: number | null;
     is_processing: boolean;
-    meter_reset: boolean;
   }
 
   let readings = $state<PaginatedResult<Reading>>({
@@ -116,9 +116,9 @@
           property,
           reading_amount: null,
           image_url: null,
+          data_url: null,
           suggested_amount: null,
           is_processing: false,
-          meter_reset: false,
         }));
       }
     } catch (err) {
@@ -133,36 +133,43 @@
     if (!file) return;
 
     const row = batchRows[rowIndex];
-    row.is_processing = true;
 
     try {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const dataUrl = e.target?.result as string;
+      // Read file to data URL (needed for OCR later via Suggest button)
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target?.result as string);
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+      });
 
-        try {
-          const ocrResult = await ocrReadingImage(dataUrl);
-          row.suggested_amount = ocrResult.suggested_reading_amount;
-          if (ocrResult.suggested_reading_amount) {
-            row.reading_amount = ocrResult.suggested_reading_amount;
-          }
+      row.data_url = dataUrl;
 
-          try {
-            const timestamp = Date.now();
-            const storagePath = `readings/${timestamp}_${file.name}`;
-            row.image_url = await uploadToStorage(file, storagePath);
-          } catch {
-            // Storage not configured (dev environment) — skip silently
-          }
-        } catch (err) {
-          error = err instanceof Error ? err.message : 'Failed to extract reading from image';
-        } finally {
-          row.is_processing = false;
-        }
-      };
-      reader.readAsDataURL(file);
+      // Upload to Firebase Storage (optional — may be unavailable in dev)
+      try {
+        const timestamp = Date.now();
+        const storagePath = `readings/${timestamp}_${file.name}`;
+        row.image_url = await uploadToStorage(file, storagePath);
+      } catch {
+        // Storage not configured (dev environment) — use data URL as fallback so thumbnail renders
+        row.image_url = dataUrl;
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to process image';
+    }
+  }
+
+  async function handleBatchSuggest(rowIndex: number) {
+    const row = batchRows[rowIndex];
+    if (!row.data_url) return;
+
+    row.is_processing = true;
+    try {
+      const ocrResult = await ocrReadingImage(row.data_url);
+      row.suggested_amount = ocrResult.suggested_reading_amount ?? null;
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to extract reading from image';
+    } finally {
       row.is_processing = false;
     }
   }
@@ -191,7 +198,6 @@
           _seconds: Math.floor(dateObj.getTime() / 1000),
           _nanoseconds: 0,
         },
-        meter_reset: row.meter_reset,
       }));
 
       await createReadingsBatch(readingsData);
@@ -333,9 +339,7 @@
               <tr>
                 <th class="px-6 py-3 text-left font-semibold text-gray-700">Property</th>
                 <th class="px-6 py-3 text-left font-semibold text-gray-700">Reading Amount</th>
-                <th class="px-6 py-3 text-left font-semibold text-gray-700">Meter Reset</th>
-                <th class="px-6 py-3 text-left font-semibold text-gray-700">Image Upload</th>
-                <th class="px-6 py-3 text-left font-semibold text-gray-700">Suggested</th>
+                <th class="px-6 py-3 text-left font-semibold text-gray-700">Photo / Suggest</th>
               </tr>
             </thead>
             <tbody>
@@ -353,39 +357,54 @@
                     />
                   </td>
                   <td class="px-6 py-4">
-                    <label class="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        bind:checked={row.meter_reset}
-                        class="h-4 w-4 rounded border-gray-300"
-                      />
-                      <span class="text-xs text-gray-600">Replaced</span>
-                    </label>
-                  </td>
-                  <td class="px-6 py-4">
-                    <div class="flex items-center gap-2">
-                      <label class="cursor-pointer">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onchange={(e) => {
-                            const file = (e.target as HTMLInputElement).files?.[0];
-                            if (file) handleBatchImageUpload(i, file);
-                          }}
-                          disabled={row.is_processing}
-                          class="hidden"
-                        />
-                        <span class="rounded bg-blue-100 px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-200">
-                          {row.is_processing ? 'Processing...' : 'Upload'}
+                    <div class="grid grid-cols-2 gap-3">
+                      <!-- Left: thumbnail + Upload button -->
+                      <div class="flex flex-col gap-1">
+                        {#if row.image_url}
+                          <a href={row.image_url} target="_blank" rel="noreferrer">
+                            <img
+                              src={row.image_url}
+                              alt="Meter reading"
+                              class="h-12 w-12 rounded object-cover hover:opacity-75"
+                            />
+                          </a>
+                        {:else}
+                          <div class="h-12 w-12 rounded border-2 border-dashed border-gray-300 bg-gray-50"></div>
+                        {/if}
+                        <label class="cursor-pointer">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onchange={(e) => {
+                              const file = (e.target as HTMLInputElement).files?.[0];
+                              if (file) handleBatchImageUpload(i, file);
+                            }}
+                            class="hidden"
+                          />
+                          <span class="rounded bg-blue-100 px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-200">
+                            Upload
+                          </span>
+                        </label>
+                      </div>
+                      <!-- Right: suggested amount + Suggest button -->
+                      <div class="flex flex-col gap-1">
+                        <span class="text-xs text-gray-600">
+                          {#if row.suggested_amount !== null}
+                            Suggested: {row.suggested_amount.toLocaleString()}
+                          {:else}
+                            &mdash;
+                          {/if}
                         </span>
-                      </label>
-                      {#if row.image_url}
-                        <span class="text-xs text-green-600">✓</span>
-                      {/if}
+                        <button
+                          type="button"
+                          onclick={() => handleBatchSuggest(i)}
+                          disabled={!row.image_url || row.is_processing}
+                          class="rounded bg-blue-100 px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {row.is_processing ? 'Suggesting...' : 'Suggest'}
+                        </button>
+                      </div>
                     </div>
-                  </td>
-                  <td class="px-6 py-4 text-gray-600">
-                    {row.suggested_amount ? `${row.suggested_amount}` : '—'}
                   </td>
                 </tr>
               {/each}
