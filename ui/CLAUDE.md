@@ -212,21 +212,27 @@ ui/src/
 - **API calls**:
   - `GET /meter-groups?limit=100` ← `getMeterGroups()` — for filter dropdown
   - `GET /readings?meterGroupId=X&limit=20` ← `getReadings()` — paginated list
+  - `POST /readings/batch` ← `createReadingsBatch()` — batch create (no auto-billing)
 - **Displays**:
-  - Meter group filter dropdown
-  - Table: meter_group (lookup from id), reading_amount, reading_date, created_at
+  - Meter group filter + paginated table (reading_amount, reading_date, meter_reset badge, created_at)
+  - Batch create form: per-property rows with reading_amount, meter_reset checkbox, optional image upload (OCR-assisted)
+- **Note**: `meter_reset` marks a physically replaced meter (consumption = prev + curr). `image_url` is optional; silently skipped when Firebase Storage is not configured.
 - **Status**: ✅ Complete
 
 #### Billings (`/billings`) — Cycle-Centric
 - **Component**: `src/routes/(app)/billings/+page.svelte`
 - **API calls**:
   - `GET /billing-cycles?limit=100` ← `getBillingCycles()` — fetches all cycles
-  - `GET /billings?limit=100` ← `getBillings()` — lazy-loaded per cycle when expanded
+  - `GET /billings?limit=100` ← `getBillings()` — fetches all billings for cycle grouping
+  - `GET /meter-groups?limit=100` ← `getMeterGroups()` — for cycle creation form dropdown
+  - `POST /billing-cycles` ← `createBillingCycle()` — create cycle from discovered billings
 - **Displays**:
-  - Expandable list of billing cycles (period, consumption, rate, total amount, billing count)
-  - On expand: nested table of billings in that cycle with individual amounts calculated from rate × consumption
-  - Each billing shows: property_id, reading pair (previous → current), consumption (from cycle.billing_ids map), amount charged
-- **Status**: ✅ Complete (cycle-centric design with nested billings)
+  - Expandable cycle rows (period, consumption, rate, total amount, billing count)
+  - On expand: nested billing table (property, reading pair, consumption, amount, status, actions)
+  - "New Billing Cycle" form: select meter group + date range → discover auto-created billings → set rate → create
+  - "Manual Billing (Advanced)" collapsed section for corrections
+- **Note**: Billings are auto-created when readings are posted — the cycle form just groups them.
+- **Status**: ✅ Complete (cycle-centric design; auto-billing integration)
 
 #### Bills / OCR Upload (`/bills`)
 - **Component**: `src/routes/(app)/bills/+page.svelte`

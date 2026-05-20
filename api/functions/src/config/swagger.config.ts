@@ -401,6 +401,16 @@ const swaggerSpec = {
               reading_date: {
                 $ref: '#/components/schemas/Timestamp',
               },
+              image_url: {
+                type: 'string',
+                format: 'uri',
+                description: 'Optional photo of the meter (requires Firebase Storage)',
+              },
+              meter_reset: {
+                type: 'boolean',
+                default: false,
+                description: 'True when the physical meter was replaced. Consumption = prev + curr instead of curr - prev.',
+              },
             },
             required: ['meter_group_id', 'reading_amount', 'reading_date'],
           },
@@ -420,6 +430,16 @@ const swaggerSpec = {
           reading_date: {
             $ref: '#/components/schemas/Timestamp',
           },
+          image_url: {
+            type: 'string',
+            format: 'uri',
+            description: 'Optional photo URL (requires Firebase Storage to be configured)',
+          },
+          meter_reset: {
+            type: 'boolean',
+            default: false,
+            description: 'Set true when meter was physically replaced. Changes consumption formula to prev+curr.',
+          },
         },
         required: ['meter_group_id', 'reading_amount', 'reading_date'],
       },
@@ -436,6 +456,13 @@ const swaggerSpec = {
           },
           reading_date: {
             $ref: '#/components/schemas/Timestamp',
+          },
+          image_url: {
+            type: 'string',
+            format: 'uri',
+          },
+          meter_reset: {
+            type: 'boolean',
           },
         },
       },
@@ -734,6 +761,9 @@ const swaggerSpec = {
 };
 
 export function setupSwagger(app: Express): void {
+  if (process.env.APP_ENV === 'prod') {
+    return;
+  }
   app.use('/docs', swaggerUi.serve);
   app.get('/docs', swaggerUi.setup(swaggerSpec));
   app.get('/docs/swagger.json', (_req, res) => {

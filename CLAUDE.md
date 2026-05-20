@@ -198,9 +198,9 @@ Each page/component is organized by:
 - ✅ Meter Groups (CRUD, batch)
 - ✅ Properties (CRUD, batch)
 - ✅ Tenants (CRUD, batch)
-- ✅ Readings (CRUD, batch)
-- ✅ Billings (CRUD, batch)
-- ✅ Billing Cycles (CRUD, batch, validation)
+- ✅ Readings (CRUD, batch; single create auto-creates billings per property on meter group)
+- ✅ Billings (CRUD, batch; normally auto-created by reading service)
+- ✅ Billing Cycles (CRUD, batch, validation; supports meter_reset consumption formula)
 - ✅ Auth (JWT: login, register, refresh, logout)
 
 ### UI Pages (Complete)
@@ -270,6 +270,7 @@ docker-compose up
 - **API setup & environments**: `API_SETUP.md`
 - **Emulator configuration** (advanced/manual use): `EMULATOR_SETUP.md`
 - **Dev workflow decision**: `decisions/20260517_no-emulators-in-dev.md`
+- **Reading auto-billing design**: `decisions/20260520_reading-auto-creates-billing.md`
 
 ---
 

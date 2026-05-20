@@ -41,7 +41,7 @@ Response (controller returns JSON or error handler catches it)
 - **Web Framework**: Express
 - **Validation**: Zod v4
 - **Database**: Firestore (NoSQL)
-- **Auth**: Custom JWT (not Firebase Auth)
+- **Auth**: Firebase Auth (ID tokens issued by Firebase, verified via `admin.auth().verifyIdToken()`)
 - **Logging**: Pino
 - **API Docs**: Swagger UI + OpenAPI 3.0
 
@@ -69,19 +69,22 @@ Every API feature lives in `src/features/<name>/` and follows this 8-layer struc
 
 ## API Endpoints by Feature
 
-### Authentication (`/auth` — public, no JWT required)
+### Authentication (`/auth` — public, no auth required)
 
 Located: `src/features/auth/`
 
-| Method | Path | Purpose | Swagger |
-|--------|------|---------|---------|
-| POST | `/auth/register` | Create account with email + password | Returns access_token + refresh_token |
-| POST | `/auth/login` | Login with email + password | Returns access_token + refresh_token |
-| POST | `/auth/refresh` | Refresh expired access token | Requires refresh_token in body |
-| POST | `/auth/logout` | Logout (invalidate token) | Requires refreshTokenId |
+**Auth model**: Firebase Authentication. The frontend signs in with `signInWithEmailAndPassword()` via the Firebase SDK. The Firebase ID token is then sent as `Authorization: Bearer <token>` on all API requests. The API verifies tokens with `admin.auth().verifyIdToken()`.
 
-**Access token TTL**: 30 minutes  
-**Refresh token TTL**: 60 days
+There are NO custom login/register/logout endpoints. Those flows happen entirely in the Firebase SDK on the client.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/auth/me` | Get current user profile (Firestore `users` document) |
+| PATCH | `/auth/me` | Update user profile (display_name, qr_payment_url) |
+
+The `users` collection document is created automatically on first `GET /auth/me` if it doesn't exist.
+
+**Roles**: `admin`, `landlord` (default for new users), `assistant`. The `requireRole` middleware in `src/middlewares/require-role.middleware.ts` enforces roles on sensitive routes.
 
 ---
 
@@ -166,12 +169,12 @@ Represents individual renters/occupants.
 
 Located: `src/features/reading/`
 
-Represents snapshots of meter consumption.
+Represents snapshots of meter consumption. **Single create has a critical side effect: it auto-creates billings atomically.**
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/readings` | Create reading |
-| POST | `/readings/batch` | Batch create |
+| POST | `/readings` | Create reading + auto-create billings (see below) |
+| POST | `/readings/batch` | Batch create (no auto-billing) |
 | GET | `/readings` | List with filters (meterGroupId) |
 | GET | `/readings/:id` | Get single reading |
 | PATCH | `/readings/:id` | Update reading |
@@ -185,8 +188,19 @@ Represents snapshots of meter consumption.
 - reading_amount must be non-negative
 - reading_date cannot be in the future
 - No duplicate readings per meter group per month (enforced at write time)
+- `image_url` is optional
+- `meter_reset` (optional boolean, default false): when true, meter was physically replaced; consumption = prev + curr instead of curr − prev; rollback check bypassed
 
-**Timestamp handling**: reading_date is a Firestore Timestamp. UI sends ISO strings; validator should accept both.
+**Auto-Billing Behavior** (`POST /readings` only — batch skips this):
+1. System looks for the most recent reading for the same `meter_group_id` in the previous calendar month (Asia/Manila timezone)
+2. If none found → saves reading only (first-time scenario, no billing created)
+3. If found → queries all non-deleted properties whose `meter_groups` map contains this `meter_group_id`
+4. Opens a Firestore transaction: writes the new reading + one `Billing` per property (property_id, prev_reading_id, curr_reading_id, payment_status=pending)
+5. All-or-nothing: if any write fails, the entire transaction rolls back
+
+**See also**: `decisions/20260520_reading-auto-creates-billing.md` for design rationale and all edge cases.
+
+**Timestamp handling**: reading_date is a Firestore Timestamp. UI sends ISO strings; validator accepts both.
 
 ---
 
@@ -194,12 +208,12 @@ Represents snapshots of meter consumption.
 
 Located: `src/features/billing/`
 
-Represents individual bill records.
+Represents individual bill records linking a property to a reading pair. **Billings are normally auto-created by `POST /readings`. Manual creation is an escape hatch for corrections.**
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/billings` | Create billing |
-| POST | `/billings/batch` | Batch create |
+| POST | `/billings` | Create billing (manual — use for corrections only) |
+| POST | `/billings/batch` | Batch create (manual) |
 | GET | `/billings` | List with filters (propertyId) |
 | GET | `/billings/:id` | Get single billing |
 | PATCH | `/billings/:id` | Update billing |
@@ -210,8 +224,12 @@ Represents individual bill records.
 
 **Business rules**:
 - Must reference valid property_id, previous_reading_id, current_reading_id
-- current_reading_amount must be > previous_reading_amount (no rollback)
-- All readings must belong to same meter group
+- current_reading_amount must be > previous_reading_amount (meter rollback not allowed)
+- Exception: rollback check bypassed when current reading has `meter_reset = true`
+- All readings must belong to the same meter group
+
+**Internal method** (not an HTTP endpoint):
+- `billingService.createFromReadings(txn, propertyId, prevReadingId, currReadingId, prevReading, currReading)` — called by the reading service inside its Firestore transaction to write billings without redundant validation
 
 ---
 
@@ -236,16 +254,17 @@ Represents billing periods with validation and rate calculation.
 **Business rules**:
 - billing_ids: Record<billingId, consumptionAmount> — all IDs must exist + be valid
 - billing_start_date < billing_end_date
-- **3% tolerance rule**: Calculated consumption vs. provided consumption must match within ±3%
-- No meter rollback: each billing must have current > previous readings
-- Rate must be reasonable (configurable threshold)
+- billing_rate must be non-negative
+- billing_consumption must be non-negative
 
 **Validation flow**:
-1. Collect all readings for the billings
-2. Calculate total consumption
-3. Compare to billing_consumption (must be within 3%)
-4. Calculate per-tenant charges: (tenant_consumption × rate)
-5. Store billing_ids with their calculated consumption
+1. Validate all billing IDs exist
+2. For each billing, fetch its readings and calculate expected consumption:
+   - Normal: `curr_reading_amount − prev_reading_amount`
+   - Meter reset (`curr_reading.meter_reset = true`): `prev_reading_amount + curr_reading_amount`
+3. Reject if any billing's provided consumption deviates >5% from expected (per-billing tolerance)
+4. Sum all provided consumptions and compare to `billing_consumption` (3% cycle-level tolerance)
+5. Reject if cycle-level total is outside ±3% of `billing_consumption`
 
 ---
 
@@ -604,7 +623,8 @@ Dev environment (`APP_ENV=dev`) connects directly to `utilitool-staging` Firebas
 APP_ENV=dev
 GCLOUD_PROJECT=utilitool-staging
 GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/utilitool-staging-firebase-adminsdk-fbsvc-6a77170d3f.json
-JWT_SECRET=<from .env.dev>
+GEMINI_API_KEY=<optional — OCR returns mock data if absent>
+REDIS_URL=<optional — rate limiting falls back to in-memory store if absent>
 ```
 
 See `secrets/.env.dev` for all dev variables. Production deployments use `APP_ENV=prod` and `secrets/.env.prod`.

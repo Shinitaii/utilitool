@@ -4,7 +4,7 @@ export const billingPaths = {
       tags: ['Billings'],
       summary: 'Create a new billing record',
       description:
-        'Create a single billing record linking a property to two readings (previous and current). Both readings must belong to the same meter group as the property.',
+        'Create a single billing record linking a property to two readings (previous and current). Both readings must belong to the same meter group. NOTE: Billings are normally auto-created when you POST a reading — use this endpoint only for manual corrections and edge cases.',
       security: [{ BearerAuth: [] }],
       requestBody: {
         required: true,
