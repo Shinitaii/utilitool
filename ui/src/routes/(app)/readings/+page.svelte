@@ -147,12 +147,15 @@
             row.reading_amount = ocrResult.suggested_reading_amount;
           }
 
-          const timestamp = Date.now();
-          const path = `readings/${timestamp}_${file.name}`;
-          const url = await uploadToStorage(file, path);
-          row.image_url = url;
+          try {
+            const timestamp = Date.now();
+            const storagePath = `readings/${timestamp}_${file.name}`;
+            row.image_url = await uploadToStorage(file, storagePath);
+          } catch {
+            // Storage not configured (dev environment) — skip silently
+          }
         } catch (err) {
-          error = err instanceof Error ? err.message : 'Failed to extract reading or upload image';
+          error = err instanceof Error ? err.message : 'Failed to extract reading from image';
         } finally {
           row.is_processing = false;
         }
@@ -188,7 +191,6 @@
           _seconds: Math.floor(dateObj.getTime() / 1000),
           _nanoseconds: 0,
         },
-        image_url: row.image_url || '',
         meter_reset: row.meter_reset,
       }));
 

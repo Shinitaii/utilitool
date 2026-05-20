@@ -12,7 +12,7 @@ export interface CreateReadingRequest {
   meter_group_id: string;
   reading_amount: number;
   reading_date: FirestoreTimestamp | string;
-  image_url: string;
+  image_url?: string;
   meter_reset?: boolean;
 }
 
