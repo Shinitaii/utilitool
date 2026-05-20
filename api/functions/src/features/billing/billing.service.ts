@@ -52,7 +52,9 @@ export const billingService = {
       if (prevReading.meter_group_id !== currReading.meter_group_id) {
         throw new AppError(400, "Previous and current readings must belong to the same meter group");
       }
-      if (!currReading.meter_reset && currReading.reading_amount <= prevReading.reading_amount) {
+      const currMeterVersion = (currReading.meter_version ?? 1) as number;
+      const prevMeterVersion = (prevReading.meter_version ?? 1) as number;
+      if (currMeterVersion === prevMeterVersion && currReading.reading_amount <= prevReading.reading_amount) {
         throw new AppError(400, "Current reading must be greater than previous reading (meter rollback not allowed)");
       }
 
@@ -137,8 +139,8 @@ export const billingService = {
    * create/update transaction. Existence checks are skipped because the caller
    * has already verified the documents inside the same transaction.
    *
-   * Applies the meter_reset rollback bypass: if currReading.meter_reset is true
-   * the reading_amount comparison is not enforced.
+   * Applies the meter_version rollback bypass: if currReading.meter_version differs
+   * from prevReading.meter_version the reading_amount comparison is not enforced.
    */
   createFromReadings(
     txn: Transaction,
@@ -151,7 +153,9 @@ export const billingService = {
     if (prevReading.meter_group_id !== currReading.meter_group_id) {
       throw new AppError(400, "Previous and current readings must belong to the same meter group");
     }
-    if (!currReading.meter_reset && currReading.reading_amount <= prevReading.reading_amount) {
+    const currMeterVersion = (currReading.meter_version ?? 1) as number;
+    const prevMeterVersion = (prevReading.meter_version ?? 1) as number;
+    if (currMeterVersion === prevMeterVersion && currReading.reading_amount <= prevReading.reading_amount) {
       throw new AppError(400, "Current reading must be greater than previous reading (meter rollback not allowed)");
     }
 

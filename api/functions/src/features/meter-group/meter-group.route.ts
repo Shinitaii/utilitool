@@ -9,6 +9,7 @@ import {
   restoreMeterGroup,
   createBatchMeterGroups,
   updateBatchMeterGroups,
+  recordMeterGroupReset,
 } from "./meter-group.controller";
 import {
   CreateMeterGroupBatchDTOSchema,
@@ -19,6 +20,7 @@ import {
   UpdateMeterGroupDTOSchema,
 } from "./meter-group.dto";
 import {validateRequest} from "../../middlewares/validate-request.middleware";
+import {requireRole} from "../../middlewares/require-role.middleware";
 
 const router = Router();
 
@@ -52,6 +54,12 @@ router.get(
   getMeterGroupById
 );
 
+router.post(
+  "/:id/reset",
+  validateRequest({params: MeterGroupByIdParamsDTOSchema}),
+  recordMeterGroupReset
+);
+
 router.patch(
   "/:id",
   validateRequest({params: MeterGroupByIdParamsDTOSchema, body: UpdateMeterGroupDTOSchema}),
@@ -61,6 +69,7 @@ router.patch(
 router.delete(
   "/:id",
   validateRequest({params: MeterGroupByIdParamsDTOSchema}),
+  requireRole('admin', 'landlord'),
   deleteMeterGroup
 );
 

@@ -406,13 +406,13 @@ const swaggerSpec = {
                 format: 'uri',
                 description: 'Optional photo of the meter (requires Firebase Storage)',
               },
-              meter_reset: {
-                type: 'boolean',
-                default: false,
-                description: 'True when the physical meter was replaced. Consumption = prev + curr instead of curr - prev.',
+              meter_version: {
+                type: 'integer',
+                minimum: 1,
+                description: 'Server-set version number from the meter group. Incremented on each physical meter reset.',
               },
             },
-            required: ['meter_group_id', 'reading_amount', 'reading_date'],
+            required: ['meter_group_id', 'reading_amount', 'reading_date', 'meter_version'],
           },
         ],
       },
@@ -435,11 +435,6 @@ const swaggerSpec = {
             format: 'uri',
             description: 'Optional photo URL (requires Firebase Storage to be configured)',
           },
-          meter_reset: {
-            type: 'boolean',
-            default: false,
-            description: 'Set true when meter was physically replaced. Changes consumption formula to prev+curr.',
-          },
         },
         required: ['meter_group_id', 'reading_amount', 'reading_date'],
       },
@@ -460,9 +455,6 @@ const swaggerSpec = {
           image_url: {
             type: 'string',
             format: 'uri',
-          },
-          meter_reset: {
-            type: 'boolean',
           },
         },
       },

@@ -4,7 +4,7 @@ export const readingPaths = {
       tags: ['Readings'],
       summary: 'Create a new meter reading',
       description:
-        'Create a single meter reading. If a reading exists for the same meter_group in the previous calendar month, billings are automatically created (atomically, one per property on that meter group). Batch create (/readings/batch) does NOT trigger auto-billing. Set meter_reset=true when the physical meter was replaced; consumption will be calculated as prev+curr instead of curr-prev.',
+        'Create a single meter reading. If a reading exists for the same meter_group in the previous calendar month, billings are automatically created (atomically, one per property on that meter group). Batch create (/readings/batch) does NOT trigger auto-billing. The meter_version field is automatically set from the meter group\'s current_version. To handle a physical meter reset, call POST /meter-groups/:id/reset first.',
       security: [{ BearerAuth: [] }],
       requestBody: {
         required: true,

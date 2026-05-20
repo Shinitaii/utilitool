@@ -3,11 +3,23 @@ import {AppError} from "../../utils/error.util";
 import {logger} from "../../utils/logger.util";
 import {billingRepository} from "../billing/billing.repository";
 import {readingRepository} from "../reading/reading.repository";
+import {meterGroupRepository} from "../meter-group/meter-group.repository";
 import {Timestamp} from "firebase-admin/firestore";
 
 const CONSUMPTION_TOLERANCE = 0.03;
 
 export class BillingCycleValidator {
+  private async getCumulativeOffset(meterGroupId: string, version: number): Promise<number> {
+    const meterGroup = await meterGroupRepository.getById(meterGroupId);
+    if (!meterGroup?.versions) return 0;
+    let offset = 0;
+    for (let v = 1; v < version; v++) {
+      const versionData = meterGroup.versions[String(v)];
+      if (versionData) offset += versionData.last_reading;
+    }
+    return offset;
+  }
+
   private async validateBillingIdsExist(billingIds: string[]): Promise<void> {
     for (const billingId of billingIds) {
       const billing = await billingRepository.getById(billingId);
@@ -33,9 +45,13 @@ export class BillingCycleValidator {
 
       if (!prevReading || !currReading) continue; // Shouldn't happen if billings are valid
 
-      const expectedConsumption = currReading.meter_reset
-        ? prevReading.reading_amount + currReading.reading_amount
-        : currReading.reading_amount - prevReading.reading_amount;
+      const prevVersion = prevReading.meter_version ?? 1;
+      const currVersion = currReading.meter_version ?? 1;
+      const [prevOffset, currOffset] = await Promise.all([
+        this.getCumulativeOffset(currReading.meter_group_id, prevVersion),
+        this.getCumulativeOffset(currReading.meter_group_id, currVersion),
+      ]);
+      const expectedConsumption = (currOffset + currReading.reading_amount) - (prevOffset + prevReading.reading_amount);
 
       const tolerance = Math.abs(expectedConsumption) * PER_BILLING_TOLERANCE;
       if (Math.abs(providedConsumption - expectedConsumption) > tolerance) {

@@ -1,6 +1,17 @@
 jest.mock('./meter-group.repository');
 jest.mock('./meter-group.validator');
 
+// Mock Firestore for cascade delete check in meterGroupService.delete
+jest.mock('../../config/firebase.config', () => ({
+  firestore: {
+    collection: jest.fn(() => ({
+      where: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      get: jest.fn().mockResolvedValue({ empty: true }),
+    })),
+  },
+}));
+
 import { describe, it, expect } from '@jest/globals';
 import { meterGroupService } from './meter-group.service';
 import { meterGroupRepository } from './meter-group.repository';
@@ -34,7 +45,7 @@ describe('meterGroupService', () => {
 
       const result = await meterGroupService.create({ meter_name: 'Main Electric', utility_type: 'electricity' });
 
-      expect(meterGroupRepository.create).toHaveBeenCalledWith({ meter_name: 'Main Electric', utility_type: 'electricity' });
+      expect(meterGroupRepository.create).toHaveBeenCalledWith({ meter_name: 'Main Electric', utility_type: 'electricity', current_version: 1, versions: {} });
       expect(result.id).toBe('mg-1');
     });
 
@@ -85,7 +96,9 @@ describe('meterGroupService', () => {
       ];
       const result = await meterGroupService.createBatch(input);
 
-      expect(meterGroupRepository.createBatch).toHaveBeenCalledWith(input);
+      expect(meterGroupRepository.createBatch).toHaveBeenCalledWith(
+        input.map((item) => ({ ...item, current_version: 1, versions: {} }))
+      );
       expect(result).toHaveLength(2);
     });
 

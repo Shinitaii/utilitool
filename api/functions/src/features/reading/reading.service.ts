@@ -10,10 +10,60 @@ import {firestore} from "../../config/firebase.config";
 import {COLLECTIONS} from "../../constants/collection.constants";
 import {snapshotToModel} from "../../utils/firestore.util";
 import {billingService} from "../billing/billing.service";
+import {meterGroupRepository} from "../meter-group/meter-group.repository";
+import {MeterGroup} from "../meter-group/meter-group.model";
 
 const validator = new ReadingValidator();
 
 const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+async function checkAnomalousReading(
+  meterGroupId: string,
+  newReadingAmount: number,
+  meterVersion: number,
+): Promise<void> {
+  const recentResult = await readingRepository.search({
+    limit: 6,
+    orderBy: "reading_date",
+    orderDirection: "desc",
+    filters: { meter_group_id: meterGroupId },
+  });
+  const recentReadings = recentResult.data;
+
+  if (recentReadings.length < 2) return;
+
+  const sameVersionReadings = recentReadings.filter(
+    (r) => (r.meter_version ?? 1) === meterVersion
+  );
+  if (sameVersionReadings.length < 1) return;
+
+  const mostRecent = sameVersionReadings[0];
+  if (newReadingAmount <= mostRecent.reading_amount) return;
+
+  const deltas: number[] = [];
+  for (let i = 0; i < sameVersionReadings.length - 1; i++) {
+    const curr = sameVersionReadings[i];
+    const prev = sameVersionReadings[i + 1];
+    if ((curr.meter_version ?? 1) === (prev.meter_version ?? 1)) {
+      const delta = curr.reading_amount - prev.reading_amount;
+      if (delta > 0) deltas.push(delta);
+    }
+  }
+  if (deltas.length === 0) return;
+
+  const avgDelta = deltas.reduce((s, d) => s + d, 0) / deltas.length;
+  const newDelta = newReadingAmount - mostRecent.reading_amount;
+
+  if (newDelta > 5 * avgDelta) {
+    throw new AppError(
+      422,
+      `Reading amount ${newReadingAmount} is unusually high. ` +
+        `Average monthly delta for this meter group is ${Math.round(avgDelta)} units; ` +
+        `this reading implies a delta of ${Math.round(newDelta)} units. ` +
+        `If the meter was reset, record a reset on the meter group first.`
+    );
+  }
+}
 
 /**
  * Compute the start (inclusive) / end (exclusive) of the calendar month
@@ -59,6 +109,10 @@ export const readingService = {
   async create(data: CreateReadingDTO): Promise<Reading> {
     await validator.validateCreate(data);
 
+    const meterGroup = await meterGroupRepository.getById(data.meter_group_id);
+    const meter_version = meterGroup!.current_version ?? 1;
+    await checkAnomalousReading(data.meter_group_id, data.reading_amount, meter_version);
+
     // Look up the previous-month reading for the same meter_group.
     const prevWindow = getPreviousMonthWindow(data.reading_date);
     const prevReadingSnap = await firestore
@@ -74,7 +128,7 @@ export const readingService = {
     // First-time scenario: no previous-month reading. Fall back to a plain
     // create — no billings to generate.
     if (prevReadingSnap.empty) {
-      return readingRepository.create(data);
+      return readingRepository.create({ ...data, meter_version } as any);
     }
 
     const prevReadingDoc = prevReadingSnap.docs[0];
@@ -109,7 +163,7 @@ export const readingService = {
     // No properties consume this meter group — no billings to write. Save the
     // reading normally.
     if (properties.length === 0) {
-      return readingRepository.create(data);
+      return readingRepository.create({ ...data, meter_version } as any);
     }
 
     // Build the new reading document up front so we can use it inside the txn.
@@ -117,19 +171,20 @@ export const readingService = {
     const newReadingId = newReadingRef.id;
     const newReadingData = {
       ...data,
+      meter_version,
       created_at: FieldValue.serverTimestamp(),
       is_deleted: false,
       deleted_at: null,
     };
 
     // Data passed to billingService.createFromReadings is the in-memory shape
-    // used for comparisons (meter_group_id, reading_amount, meter_reset). The
+    // used for comparisons (meter_group_id, reading_amount, meter_version). The
     // serverTimestamp sentinel isn't read by that method.
     const newReadingForBilling = {
       meter_group_id: data.meter_group_id,
       reading_amount: data.reading_amount,
       reading_date: data.reading_date,
-      meter_reset: data.meter_reset ?? false,
+      meter_version,
     };
 
     await firestore.runTransaction(async (txn) => {
@@ -159,7 +214,20 @@ export const readingService = {
    */
   async createBatch(data: CreateReadingDTO[]): Promise<Reading[]> {
     await validator.validateBatch(data);
-    return readingRepository.createBatch(data);
+
+    const meterGroupIds = [...new Set(data.map((r) => r.meter_group_id))];
+    const meterGroupMap = new Map<string, MeterGroup>();
+    for (const mgId of meterGroupIds) {
+      const mg = await meterGroupRepository.getById(mgId);
+      if (mg) meterGroupMap.set(mgId, mg);
+    }
+
+    const readingsWithVersion = data.map((r) => ({
+      ...r,
+      meter_version: meterGroupMap.get(r.meter_group_id)?.current_version ?? 1,
+    }));
+
+    return readingRepository.createBatch(readingsWithVersion as any);
   },
 
   async search(options: ReadingSearchOptions): Promise<PaginatedResult<Reading>> {

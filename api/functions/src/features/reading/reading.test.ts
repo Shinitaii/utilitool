@@ -33,6 +33,11 @@ jest.mock('../../utils/firestore.util', () => ({
 }));
 jest.mock('./reading.repository');
 jest.mock('./reading.validator');
+jest.mock('../meter-group/meter-group.repository', () => ({
+  meterGroupRepository: {
+    getById: jest.fn().mockResolvedValue({ id: 'mg-1', meter_name: 'Main Electric', utility_type: 'electricity', current_version: 1, versions: {} }),
+  },
+}));
 
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import { readingService } from './reading.service';
@@ -67,6 +72,11 @@ describe('readingService', () => {
 
   // Create a new reading
   describe('create', () => {
+    beforeEach(() => {
+      // checkAnomalousReading calls readingRepository.search; return empty list so check short-circuits
+      jest.mocked(readingRepository.search).mockResolvedValue({ data: [], hasMore: false, nextCursor: null });
+    });
+
     // It should create a new reading with the given name and return the reading ID.
     it('should create a new reading with the given meter group ID and return the reading ID', async () => {
       jest.mocked(ReadingValidator.prototype.validateCreate).mockResolvedValue(undefined);
@@ -79,7 +89,7 @@ describe('readingService', () => {
       };
       const result = await readingService.create(input);
 
-      expect(readingRepository.create).toHaveBeenCalledWith(input);
+      expect(readingRepository.create).toHaveBeenCalledWith({ ...input, meter_version: 1 });
       expect(result.id).toBe('reading-1');
     });
 
@@ -243,15 +253,14 @@ describe('readingService', () => {
         expect(result).toBeDefined();
       });
 
-      it('should accept meter_reset flag in DTO schema', () => {
+      it('should not include meter_version in DTO schema (server-set field)', () => {
         const result = CreateReadingDTOSchema.safeParse({
           meter_group_id: 'mg-1',
           reading_amount: 50,
           reading_date: Timestamp.now(),
-          meter_reset: true,
         });
         expect(result.success).toBe(true);
-        expect(result.data?.meter_reset).toBe(true);
+        expect((result.data as any)?.meter_version).toBeUndefined();
       });
 
       it('should reject with 409 when a reading for the same meter group already exists this month', async () => {
@@ -295,7 +304,9 @@ describe('readingService', () => {
       ];
       const result = await readingService.createBatch(input);
 
-      expect(readingRepository.createBatch).toHaveBeenCalledWith(input);
+      expect(readingRepository.createBatch).toHaveBeenCalledWith(
+        input.map((r) => ({ ...r, meter_version: 1 }))
+      );
       expect(result).toHaveLength(2);
     });
 

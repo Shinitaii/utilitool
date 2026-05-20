@@ -7,7 +7,6 @@ export const CreateReadingDTOSchema = z.object({
   reading_amount: z.number().int().min(0),
   reading_date: z.instanceof(Timestamp),
   image_url: z.url().optional(),
-  meter_reset: z.boolean().optional().default(false),
 });
 export type CreateReadingDTO = z.infer<typeof CreateReadingDTOSchema>;
 

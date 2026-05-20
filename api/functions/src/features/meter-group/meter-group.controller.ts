@@ -102,3 +102,12 @@ export const restoreMeterGroup = async (
   const result = await meterGroupService.restore(id);
   res.status(200).json(result);
 };
+
+export const recordMeterGroupReset = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const {id} = req.params as unknown as MeterGroupByIdParamsDTO;
+  const result = await meterGroupService.recordReset(id);
+  res.status(200).json(result);
+};
