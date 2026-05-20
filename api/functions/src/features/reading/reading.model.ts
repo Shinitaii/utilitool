@@ -6,4 +6,5 @@ export interface Reading extends BaseModel {
     reading_amount: number;
     reading_date: Timestamp;
     image_url?: string;
+    meter_reset?: boolean;
 }
