@@ -20,6 +20,7 @@
     image_url: string | null;
     suggested_amount: number | null;
     is_processing: boolean;
+    meter_reset: boolean;
   }
 
   let readings = $state<PaginatedResult<Reading>>({
@@ -117,6 +118,7 @@
           image_url: null,
           suggested_amount: null,
           is_processing: false,
+          meter_reset: false,
         }));
       }
     } catch (err) {
@@ -187,6 +189,7 @@
           _nanoseconds: 0,
         },
         image_url: row.image_url || '',
+        meter_reset: row.meter_reset,
       }));
 
       await createReadingsBatch(readingsData);
@@ -195,7 +198,7 @@
       batchRows = [];
       batchDate = new Date().toISOString().split('T')[0];
       await handleMeterGroupChange();
-      alert('Readings created successfully!');
+      alert('Readings created successfully! If a previous-month reading exists for this meter group, billings have been auto-created for each property.');
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to create readings';
     } finally {
@@ -205,13 +208,7 @@
 
   function openEditModal(item: Reading) {
     editingItem = item;
-    const dateValue = item.reading_date as any;
-    let readingDate = '';
-    if (typeof dateValue === 'string') {
-      readingDate = dateValue.split('T')[0];
-    } else {
-      readingDate = toDate(dateValue).toISOString().split('T')[0];
-    }
+    const readingDate = toDate(item.reading_date as any).toISOString().split('T')[0];
     editFormData = {
       reading_amount: item.reading_amount,
       reading_date: readingDate
@@ -334,6 +331,7 @@
               <tr>
                 <th class="px-6 py-3 text-left font-semibold text-gray-700">Property</th>
                 <th class="px-6 py-3 text-left font-semibold text-gray-700">Reading Amount</th>
+                <th class="px-6 py-3 text-left font-semibold text-gray-700">Meter Reset</th>
                 <th class="px-6 py-3 text-left font-semibold text-gray-700">Image Upload</th>
                 <th class="px-6 py-3 text-left font-semibold text-gray-700">Suggested</th>
               </tr>
@@ -351,6 +349,16 @@
                       min="0"
                       class="w-32 rounded border border-gray-300 px-3 py-2"
                     />
+                  </td>
+                  <td class="px-6 py-4">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        bind:checked={row.meter_reset}
+                        class="h-4 w-4 rounded border-gray-300"
+                      />
+                      <span class="text-xs text-gray-600">Replaced</span>
+                    </label>
                   </td>
                   <td class="px-6 py-4">
                     <div class="flex items-center gap-2">
