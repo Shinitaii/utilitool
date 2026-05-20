@@ -176,9 +176,11 @@ ui/src/
 - **API calls**:
   - `GET /meter-groups?limit=20` ← `getMeterGroups()`
   - `POST /meter-groups` ← `createMeterGroup()` (inline form)
+  - `POST /meter-groups/:id/reset` ← `recordMeterGroupReset()` (Reset Meter button)
   - `DELETE /meter-groups/:id` ← `deleteMeterGroup()`
 - **Displays**:
-  - Table: meter_name, utility_type, created_at, delete button
+  - Table: meter_name, utility_type, version (`v{current_version}`), created_at, actions
+  - "Reset Meter" button (orange): confirmation dialog → records reset, bumps version
   - Inline form for creating new meter group
 - **Status**: ✅ Complete
 
@@ -210,13 +212,14 @@ ui/src/
 #### Readings (`/readings`)
 - **Component**: `src/routes/(app)/readings/+page.svelte`
 - **API calls**:
-  - `GET /meter-groups?limit=100` ← `getMeterGroups()` — for filter dropdown
-  - `GET /readings?meterGroupId=X&limit=20` ← `getReadings()` — paginated list
+  - `GET /meter-groups?limit=100` ← `getMeterGroups()` — for filter dropdown + version data
+  - `GET /readings?meterGroupId=X&limit=100` ← `getReadings()` — paginated list
   - `POST /readings/batch` ← `createReadingsBatch()` — batch create (no auto-billing)
+  - `POST /readings/ocr` ← `ocrReadingImage()` — triggered by "Suggest" button per row
 - **Displays**:
-  - Meter group filter + paginated table (reading_amount, reading_date, meter_reset badge, created_at)
-  - Batch create form: per-property rows with reading_amount, meter_reset checkbox, optional image upload (OCR-assisted)
-- **Note**: `meter_reset` marks a physically replaced meter (consumption = prev + curr). `image_url` is optional; silently skipped when Firebase Storage is not configured.
+  - Meter group filter + paginated table: reading_amount, **True Total** (version-aware cumulative), photo, date, created_at
+  - Batch create form: per-property rows with reading_amount input + "True total: X" hint; combined "Photo / Suggest" column (upload image → click Suggest to run OCR separately)
+- **Note**: `meter_version` is server-set from the meter group's `current_version`. To handle a physical meter replacement, record a reset on the Meter Groups page first. `image_url` is optional; silently falls back to local data URL when Firebase Storage is not configured.
 - **Status**: ✅ Complete
 
 #### Billings (`/billings`) — Cycle-Centric
@@ -226,13 +229,14 @@ ui/src/
   - `GET /billings?limit=100` ← `getBillings()` — fetches all billings for cycle grouping
   - `GET /meter-groups?limit=100` ← `getMeterGroups()` — for cycle creation form dropdown
   - `POST /billing-cycles` ← `createBillingCycle()` — create cycle from discovered billings
+  - `POST /billing-cycles/ocr` ← `ocrBillingCycle()` — extract billing data from a utility bill photo
 - **Displays**:
   - Expandable cycle rows (period, consumption, rate, total amount, billing count)
   - On expand: nested billing table (property, reading pair, consumption, amount, status, actions)
-  - "New Billing Cycle" form: select meter group + date range → discover auto-created billings → set rate → create
+  - "New Billing Cycle" form: optional bill photo upload (autofills rate + dates + consumption via OCR) → select meter group + date range → discover billings → create
   - "Manual Billing (Advanced)" collapsed section for corrections
-- **Note**: Billings are auto-created when readings are posted — the cycle form just groups them.
-- **Status**: ✅ Complete (cycle-centric design; auto-billing integration)
+- **Note**: Billings are auto-created when readings are posted — the cycle form just groups them. OCR autofill is optional; all autofilled fields remain editable.
+- **Status**: ✅ Complete (cycle-centric design; auto-billing integration; bill photo OCR)
 
 #### Bills / OCR Upload (`/bills`)
 - **Component**: `src/routes/(app)/bills/+page.svelte`

@@ -102,6 +102,7 @@ Represents utility type containers (electricity, water).
 | GET | `/meter-groups/:id` | Get single meter group |
 | PATCH | `/meter-groups/:id` | Update meter group |
 | PATCH | `/meter-groups/batch` | Batch update (1–10 items) |
+| POST | `/meter-groups/:id/reset` | Record a physical meter reset (bumps version, snapshots last reading) |
 | DELETE | `/meter-groups/:id` | Hard delete |
 | PATCH | `/meter-groups/:id/delete` | Soft delete (set deleted_at) |
 | PATCH | `/meter-groups/:id/restore` | Restore deleted meter group (clear deleted_at) |
@@ -110,6 +111,9 @@ Represents utility type containers (electricity, water).
 - Unique meter_name per utility_type
 - utility_type must be "electricity" or "water"
 - Soft delete sets `deleted_at` timestamp
+- `current_version` starts at 1 and increments on each reset; `versions` Record stores `{ reset_at, last_reading }` per version
+- Reset requires at least one existing reading; uses the latest non-deleted reading as the closing value
+- Requires `admin` or `landlord` role
 
 **Swagger**: http://localhost:5002/docs → look for `/meter-groups` paths
 
@@ -189,7 +193,8 @@ Represents snapshots of meter consumption. **Single create has a critical side e
 - reading_date cannot be in the future
 - No duplicate readings per meter group per month (enforced at write time)
 - `image_url` is optional
-- `meter_reset` (optional boolean, default false): when true, meter was physically replaced; consumption = prev + curr instead of curr − prev; rollback check bypassed
+- `meter_version` is server-set from the meter group's `current_version` at creation time (not provided by client)
+- Anomaly guard: if the reading delta exceeds 5× the rolling average for that meter group, returns 422 with a descriptive message — record a meter group reset first if the meter was physically replaced
 
 **Auto-Billing Behavior** (`POST /readings` only — batch skips this):
 1. System looks for the most recent reading for the same `meter_group_id` in the previous calendar month (Asia/Manila timezone)
@@ -225,7 +230,7 @@ Represents individual bill records linking a property to a reading pair. **Billi
 **Business rules**:
 - Must reference valid property_id, previous_reading_id, current_reading_id
 - current_reading_amount must be > previous_reading_amount (meter rollback not allowed)
-- Exception: rollback check bypassed when current reading has `meter_reset = true`
+- Exception: rollback check is skipped when `curr_reading.meter_version > prev_reading.meter_version` (cross-version pair from a meter reset)
 - All readings must belong to the same meter group
 
 **Internal method** (not an HTTP endpoint):
@@ -243,6 +248,7 @@ Represents billing periods with validation and rate calculation.
 |--------|------|---------|
 | POST | `/billing-cycles` | Create billing cycle + validate |
 | POST | `/billing-cycles/batch` | Batch create |
+| POST | `/billing-cycles/ocr` | Extract billing data from utility bill photo (Gemini vision) |
 | GET | `/billing-cycles` | List with filters (billingStartDate, billingEndDate) |
 | GET | `/billing-cycles/:id` | Get single cycle |
 | PATCH | `/billing-cycles/:id` | Update cycle |
@@ -259,12 +265,19 @@ Represents billing periods with validation and rate calculation.
 
 **Validation flow**:
 1. Validate all billing IDs exist
-2. For each billing, fetch its readings and calculate expected consumption:
-   - Normal: `curr_reading_amount − prev_reading_amount`
-   - Meter reset (`curr_reading.meter_reset = true`): `prev_reading_amount + curr_reading_amount`
+2. For each billing, fetch its readings and calculate expected consumption using version-aware true readings:
+   - `true_reading = cumulative_offset(meter_version) + reading_amount`
+   - `cumulative_offset(v)` = sum of `last_reading` from versions 1..(v-1) on the meter group
+   - `expectedConsumption = true_reading(curr) − true_reading(prev)` — handles N meter resets correctly
 3. Reject if any billing's provided consumption deviates >5% from expected (per-billing tolerance)
 4. Sum all provided consumptions and compare to `billing_consumption` (3% cycle-level tolerance)
 5. Reject if cycle-level total is outside ±3% of `billing_consumption`
+
+**OCR endpoint** (`POST /billing-cycles/ocr`):
+- Accepts `{ image_url: string }` (data URL or HTTPS URL of a utility bill photo)
+- Returns `{ billing_start_date, billing_end_date, billing_consumption, billing_rate, raw_amount }`
+- Returns 422 if Gemini cannot extract the data or any numeric field is invalid
+- Requires `admin` or `landlord` role
 
 ---
 

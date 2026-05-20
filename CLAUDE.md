@@ -195,22 +195,22 @@ Each page/component is organized by:
 ## Feature Status
 
 ### API Features (Complete)
-- ✅ Meter Groups (CRUD, batch)
+- ✅ Meter Groups (CRUD, batch; `POST /:id/reset` records a physical meter reset and bumps version)
 - ✅ Properties (CRUD, batch)
 - ✅ Tenants (CRUD, batch)
-- ✅ Readings (CRUD, batch; single create auto-creates billings per property on meter group)
+- ✅ Readings (CRUD, batch; single create auto-creates billings; anomaly guard rejects suspiciously high reads)
 - ✅ Billings (CRUD, batch; normally auto-created by reading service)
-- ✅ Billing Cycles (CRUD, batch, validation; supports meter_reset consumption formula)
+- ✅ Billing Cycles (CRUD, batch, validation; version-aware consumption formula; `POST /ocr` extracts bill data from photo)
 - ✅ Auth (JWT: login, register, refresh, logout)
 
 ### UI Pages (Complete)
 - ✅ Login / Register
 - ✅ Dashboard (stat cards + properties table)
-- ✅ Meter Groups (full CRUD table)
+- ✅ Meter Groups (full CRUD table; Version column; Reset Meter button)
 - ✅ Properties (list + detail with tabs: Tenants | Readings | Billings | History)
 - ✅ Tenants (searchable list)
-- ✅ Readings (filterable list)
-- ✅ Billings (cycle-centric: expandable cycles with nested billings)
+- ✅ Readings (filterable list; True Total column; batch form with decoupled OCR suggest)
+- ✅ Billings (cycle-centric: expandable cycles with nested billings; bill photo OCR autofill)
 - 🚧 Bills / OCR upload (stub — "to be finished")
 - 🚧 Reports (stub — "to be finished")
 
