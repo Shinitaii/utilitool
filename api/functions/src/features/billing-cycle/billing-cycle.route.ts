@@ -40,6 +40,7 @@ router.patch(
 router.post(
   "/ocr",
   validateRequest({body: OcrBillingCycleDTOSchema}),
+  requireRole('admin', 'landlord'),
   ocrBillingCycle
 );
 

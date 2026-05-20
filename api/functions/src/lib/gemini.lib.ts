@@ -34,7 +34,9 @@ class GeminiLib {
     }
 
     try {
-      const model = this.client.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = this.client.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
+
+      const { buffer, mimeType } = await this.fetchImageAsBuffer(imageUrl);
 
       const response = await model.generateContent([
         {
@@ -42,8 +44,8 @@ class GeminiLib {
         },
         {
           inlineData: {
-            mimeType: 'image/jpeg',
-            data: Buffer.from(await this.fetchImageAsBuffer(imageUrl)).toString('base64'),
+            mimeType,
+            data: buffer.toString('base64'),
           },
         },
       ]);
@@ -74,7 +76,9 @@ class GeminiLib {
     }
 
     try {
-      const model = this.client.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = this.client.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
+
+      const { buffer, mimeType } = await this.fetchImageAsBuffer(imageUrl);
 
       const response = await model.generateContent([
         {
@@ -82,8 +86,8 @@ class GeminiLib {
         },
         {
           inlineData: {
-            mimeType: 'image/jpeg',
-            data: Buffer.from(await this.fetchImageAsBuffer(imageUrl)).toString('base64'),
+            mimeType,
+            data: buffer.toString('base64'),
           },
         },
       ]);
@@ -97,36 +101,71 @@ class GeminiLib {
 
       const parsed = JSON.parse(jsonMatch[0]) as BillOcrResult;
 
-      return {
+      const result = {
         billing_start_date: parsed.billing_start_date,
         billing_end_date: parsed.billing_end_date,
         billing_consumption: Number(parsed.billing_consumption),
         billing_rate: Number(parsed.billing_rate),
         raw_amount: Number(parsed.raw_amount),
       };
+
+      // Return null if any numeric field failed to parse
+      if (
+        Number.isNaN(result.billing_consumption) ||
+        Number.isNaN(result.billing_rate) ||
+        Number.isNaN(result.raw_amount)
+      ) {
+        return null;
+      }
+
+      return result;
     } catch (error) {
       console.error('Error extracting bill data from image:', error);
       return null;
     }
   }
 
-  private async fetchImageAsBuffer(imageUrl: string): Promise<Buffer> {
+  private validateImageUrl(imageUrl: string): void {
+    let parsed: URL;
+    try {
+      parsed = new URL(imageUrl);
+    } catch {
+      throw new Error('Invalid image URL');
+    }
+
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error('Invalid image URL: only http and https are allowed');
+    }
+
+    // Block RFC-1918, loopback, link-local, and GCP metadata service
+    const blockedPattern =
+      /^(10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+|127\.\d+\.\d+\.\d+|169\.254\.\d+\.\d+|::1|localhost|metadata\.google\.internal)/i;
+
+    if (blockedPattern.test(parsed.hostname)) {
+      throw new Error('Invalid image URL: private or reserved addresses are not allowed');
+    }
+  }
+
+  private async fetchImageAsBuffer(imageUrl: string): Promise<{ buffer: Buffer; mimeType: string }> {
     // Handle data URLs (e.g., data:image/jpeg;base64,...)
     if (imageUrl.startsWith('data:')) {
-      const base64Data = imageUrl.split(',')[1];
-      if (!base64Data) {
-        throw new Error('Invalid data URL format');
-      }
-      return Buffer.from(base64Data, 'base64');
+      const [header, base64Data] = imageUrl.split(',');
+      if (!base64Data) throw new Error('Invalid data URL format');
+      // Extract MIME type from "data:image/png;base64" prefix
+      const mimeType = header.split(':')[1]?.split(';')[0] ?? 'image/jpeg';
+      return { buffer: Buffer.from(base64Data, 'base64'), mimeType };
     }
+
+    this.validateImageUrl(imageUrl);
 
     // Handle regular URLs
     const response = await fetch(imageUrl);
     if (!response.ok) {
       throw new Error(`Failed to fetch image: ${response.statusText}`);
     }
-    const arrayBuffer = await response.arrayBuffer();
-    return Buffer.from(arrayBuffer);
+    const contentType = response.headers.get('content-type') ?? 'image/jpeg';
+    const mimeType = contentType.split(';')[0].trim();
+    return { buffer: Buffer.from(await response.arrayBuffer()), mimeType };
   }
 }
 

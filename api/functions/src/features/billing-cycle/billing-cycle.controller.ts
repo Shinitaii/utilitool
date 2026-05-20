@@ -6,6 +6,7 @@ import {
   GetBillingCyclesQueryDTO,
   UpdateBillingCycleDTO,
   OcrBillingCycleDTO,
+  OcrBillingCycleResponseSchema,
 } from "./billing-cycle.dto";
 import {AppError} from "../../utils/error.util";
 import {geminiLib} from "../../lib/gemini.lib";
@@ -113,5 +114,6 @@ export const ocrBillingCycle = async (
   if (!result) {
     throw new AppError(422, "Could not extract billing data from the provided image. Please try a clearer photo of the utility bill.");
   }
-  res.status(200).json(result);
+  const validated = OcrBillingCycleResponseSchema.parse(result);
+  res.status(200).json(validated);
 };

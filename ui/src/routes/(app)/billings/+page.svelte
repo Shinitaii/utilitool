@@ -281,12 +281,17 @@
   }
 
   async function handleBillPhotoOcr(file: File) {
+    if (file.size > 900_000) {
+      error = 'Image must be smaller than 900 KB. Try a compressed or cropped photo.';
+      return;
+    }
     isBillOcrLoading = true;
     error = '';
     try {
       const dataUrl = await readFileAsDataUrl(file);
-      billPhotoUrl = dataUrl;
+      // Don't set billPhotoUrl yet — only after success
       const result = await ocrBillingCycle(dataUrl);
+      billPhotoUrl = dataUrl;  // Set here, after success
       cycleFormStartDate = result.billing_start_date;
       cycleFormEndDate = result.billing_end_date;
       cycleFormRate = result.billing_rate;
@@ -294,6 +299,7 @@
       cycleFormConsumptionEdited = true;
       billOcrRawAmount = result.raw_amount;
     } catch (err) {
+      billPhotoUrl = null;  // Clear on error
       error = err instanceof Error ? err.message : 'Failed to extract billing data from photo';
     } finally {
       isBillOcrLoading = false;
