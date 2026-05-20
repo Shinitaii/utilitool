@@ -431,7 +431,7 @@ const swaggerSpec = {
                 description: 'Server-set version number from the meter group. Incremented on each physical meter reset.',
               },
             },
-            required: ['meter_group_id', 'reading_amount', 'reading_date', 'meter_version'],
+            required: ['meter_group_id', 'reading_amount', 'reading_date'],
           },
         ],
       },
