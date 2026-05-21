@@ -47,7 +47,7 @@ export async function deleteTenant(id: string): Promise<void> {
 }
 
 export async function softDeleteTenant(id: string): Promise<Tenant> {
-  return apiPatch<Tenant>(`/tenants/${id}/delete`);
+  return apiDelete<Tenant>(`/tenants/${id}`);
 }
 
 export async function restoreTenant(id: string): Promise<Tenant> {

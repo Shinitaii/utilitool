@@ -47,7 +47,7 @@ export async function deleteProperty(id: string): Promise<void> {
 }
 
 export async function softDeleteProperty(id: string): Promise<Property> {
-  return apiPatch<Property>(`/properties/${id}/delete`);
+  return apiDelete<Property>(`/properties/${id}`);
 }
 
 export async function restoreProperty(id: string): Promise<Property> {

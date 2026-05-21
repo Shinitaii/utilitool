@@ -48,7 +48,7 @@ export async function deleteReading(id: string): Promise<void> {
 }
 
 export async function softDeleteReading(id: string): Promise<Reading> {
-  return apiPatch<Reading>(`/readings/${id}/delete`);
+  return apiDelete<Reading>(`/readings/${id}`);
 }
 
 export async function restoreReading(id: string): Promise<Reading> {

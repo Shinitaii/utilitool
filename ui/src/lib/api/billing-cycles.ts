@@ -56,7 +56,7 @@ export async function deleteBillingCycle(id: string): Promise<void> {
 }
 
 export async function softDeleteBillingCycle(id: string): Promise<BillingCycle> {
-  return apiPatch<BillingCycle>(`/billing-cycles/${id}/delete`);
+  return apiDelete<BillingCycle>(`/billing-cycles/${id}`);
 }
 
 export async function restoreBillingCycle(id: string): Promise<BillingCycle> {
