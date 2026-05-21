@@ -11,10 +11,12 @@
   import type { Reading } from '$lib/types/reading.types';
   import type { Billing } from '$lib/types/billing.types';
   import type { PaginatedResult } from '$lib/types/api.types';
-  import { formatDate, formatCurrency } from '$lib/utils/format';
+  import { formatDate, formatCurrency, formatReading, getReadingUnit } from '$lib/utils/format';
   import { toDate } from '$lib/utils/timestamp';
   import EmptyState from '$lib/components/shared/EmptyState.svelte';
   import EditModal from '$lib/components/shared/EditModal.svelte';
+  import { Plus, Archive } from 'lucide-svelte';
+  import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
 
   let properties = $state<PaginatedResult<Property>>({
     data: [],
@@ -44,6 +46,8 @@
   let editModalOpen = $state(false);
   let editingProperty = $state<Property | null>(null);
   let deletingPropertyId = $state<string | null>(null);
+  let selectedPropertyIds = $state<Set<string>>(new Set());
+  let isBatchDeleting = $state(false);
 
   let newPropertyForm = $state({
     room_name: '',
@@ -75,14 +79,21 @@
     await loadProperties();
   });
 
+  // Re-fetch tab data whenever active tab or selected property changes
+  $effect(() => {
+    if (selectedProperty && activeTab) {
+      loadPropertyDetails();
+    }
+  });
+
   async function loadProperties() {
     isLoading = true;
     error = '';
     try {
       const [propsResult, electricityResult, waterResult] = await Promise.all([
         getProperties({ limit: 100 }),
-        getMeterGroups({ limit: 100, minimal: true, utilityType: 'electricity' }),
-        getMeterGroups({ limit: 100, minimal: true, utilityType: 'water' })
+        getMeterGroups({ limit: 100, utilityType: 'electricity' }),
+        getMeterGroups({ limit: 100, utilityType: 'water' })
       ]);
 
       properties = propsResult;
@@ -121,7 +132,17 @@
           hasMore: false
         };
       } else if (activeTab === 'billings') {
-        billings = await getBillings({ propertyId: selectedProperty.id, limit: 50 });
+        const [billingsResult, electricityReadings, waterReadings] = await Promise.all([
+          getBillings({ propertyId: selectedProperty.id, limit: 50 }),
+          getReadings({ meterGroupId: selectedProperty.meter_groups.electricity, limit: 100 }),
+          getReadings({ meterGroupId: selectedProperty.meter_groups.water, limit: 100 })
+        ]);
+        billings = billingsResult;
+        readings = {
+          data: [...electricityReadings.data, ...waterReadings.data],
+          nextCursor: null,
+          hasMore: false
+        };
       }
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load details';
@@ -222,6 +243,40 @@
       }
     }
   }
+
+  async function handleBatchDelete() {
+    if (selectedPropertyIds.size === 0) return;
+    if (!confirm(`Archive ${selectedPropertyIds.size} propert(ies)? They can be restored from the archive.`)) return;
+
+    isBatchDeleting = true;
+    try {
+      await Promise.all(Array.from(selectedPropertyIds).map(id => softDeleteProperty(id)));
+      selectedPropertyIds.clear();
+      await loadProperties();
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to archive properties';
+    } finally {
+      isBatchDeleting = false;
+    }
+  }
+
+  function togglePropertySelection(id: string) {
+    if (selectedPropertyIds.has(id)) {
+      selectedPropertyIds.delete(id);
+    } else {
+      selectedPropertyIds.add(id);
+    }
+    selectedPropertyIds = selectedPropertyIds;
+  }
+
+  function toggleSelectAllProperties() {
+    if (selectedPropertyIds.size === filteredProperties.length) {
+      selectedPropertyIds.clear();
+    } else {
+      selectedPropertyIds = new Set(filteredProperties.map(item => item.id));
+    }
+    selectedPropertyIds = selectedPropertyIds;
+  }
 </script>
 
 <div class="flex h-screen flex-col">
@@ -233,9 +288,11 @@
       </div>
       <a
         href="/properties/archive"
-        class="rounded px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium"
+        class="p-2 rounded hover:bg-gray-100 text-gray-700"
+        title="View archive"
+        aria-label="View properties archive"
       >
-        Archive
+        <Archive size={20} />
       </a>
     </div>
 
@@ -250,7 +307,9 @@
     <!-- Left Panel: Property List -->
     <div class="w-64 border-r border-gray-200 bg-gray-50">
       <div class="space-y-3 border-b border-gray-200 p-4">
+        <label class="sr-only" for="search-properties">Search properties</label>
         <input
+          id="search-properties"
           type="text"
           placeholder="Search properties..."
           bind:value={searchQuery}
@@ -258,10 +317,11 @@
         />
         <button
           onclick={() => (showNewPropertyForm = !showNewPropertyForm)}
-          class="w-full rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          class="w-full flex items-center justify-center rounded bg-blue-600 p-2 text-white hover:bg-blue-700"
           disabled={isLoading}
+          title="Create new property"
         >
-          + New Property
+          <Plus size={20} />
         </button>
       </div>
 
@@ -345,6 +405,19 @@
         </div>
       {/if}
 
+      {#if selectedPropertyIds.size > 0}
+        <div class="flex items-center justify-between border-b border-gray-200 bg-blue-50 p-3">
+          <span class="text-xs font-medium text-blue-900">{selectedPropertyIds.size} selected</span>
+          <button
+            onclick={handleBatchDelete}
+            disabled={isBatchDeleting}
+            class="px-2 py-1 rounded text-xs font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
+          >
+            {isBatchDeleting ? 'Archiving...' : 'Archive'}
+          </button>
+        </div>
+      {/if}
+
       <div class="flex-1 overflow-y-auto">
         {#if filteredProperties.length === 0}
           <div class="p-4">
@@ -353,38 +426,33 @@
         {:else}
           {#each filteredProperties as property (property.id)}
             <div class="border-b border-gray-200 p-3">
-              <button
-                onclick={() => handleSelectProperty(property)}
-                class="w-full px-1 py-2 text-left transition {selectedProperty?.id === property.id
-                  ? 'bg-blue-50 rounded'
-                  : 'hover:bg-gray-100 rounded'}"
-              >
-                <div class="font-medium text-gray-900">{property.room_name}</div>
-                <div class="text-xs text-gray-500">
-                  {formatDate(toDate(property.created_at))}
-                </div>
-              </button>
-              <div class="mt-2 flex gap-2">
+              <div class="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={selectedPropertyIds.has(property.id)}
+                  onchange={() => togglePropertySelection(property.id)}
+                  class="mt-2 rounded"
+                />
                 <button
-                  onclick={(e) => {
-                    e.stopPropagation();
+                  onclick={() => handleSelectProperty(property)}
+                  class="flex-1 px-1 py-2 text-left transition {selectedProperty?.id === property.id
+                    ? 'bg-blue-50 rounded'
+                    : 'hover:bg-gray-100 rounded'}"
+                >
+                  <div class="font-medium text-gray-900">{property.room_name}</div>
+                  <div class="text-xs text-gray-500">
+                    {formatDate(toDate(property.created_at))}
+                  </div>
+                </button>
+              </div>
+              <div class="mt-2">
+                <ActionButtons
+                  onEdit={() => {
                     openEditModal(property);
                   }}
-                  disabled={isLoading}
-                  class="flex-1 rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-200 disabled:opacity-50"
-                >
-                  Edit
-                </button>
-                <button
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    handleSoftDeleteProperty(property.id);
-                  }}
-                  disabled={isLoading || deletingPropertyId === property.id}
-                  class="flex-1 rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-200 disabled:opacity-50"
-                >
-                  {deletingPropertyId === property.id ? 'Archiving...' : 'Archive'}
-                </button>
+                  onSoftDelete={() => handleSoftDeleteProperty(property.id)}
+                  isLoading={deletingPropertyId === property.id}
+                />
               </div>
             </div>
           {/each}
@@ -413,9 +481,13 @@
 
           <!-- Tabs -->
           <div class="border-b border-gray-200">
-            <div class="flex">
+            <div class="flex" role="tablist">
               {#each ['tenants', 'readings', 'billings', 'history'] as tab}
                 <button
+                  role="tab"
+                  aria-selected={activeTab === tab}
+                  aria-controls={`tab-panel-${tab}`}
+                  id={`tab-${tab}`}
                   onclick={() => handleTabChange(tab as 'tenants' | 'readings' | 'billings' | 'history')}
                   class="px-6 py-3 font-medium text-sm transition {activeTab === tab
                     ? 'border-b-2 border-blue-600 text-blue-600'
@@ -430,6 +502,7 @@
           <!-- Tab Content -->
           <div class="flex-1 overflow-y-auto">
             {#if activeTab === 'tenants'}
+              <div role="tabpanel" id="tab-panel-tenants" aria-labelledby="tab-tenants">
               {#if tenants.length === 0}
                 <div class="p-6">
                   <EmptyState
@@ -442,11 +515,11 @@
                   <table class="w-full text-sm">
                     <thead class="border-b border-gray-200 bg-gray-50">
                       <tr>
-                        <th class="px-6 py-3 text-left font-semibold text-gray-700"
+                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700"
                           >Tenant Name</th
                         >
-                        <th class="px-6 py-3 text-left font-semibold text-gray-700">Status</th>
-                        <th class="px-6 py-3 text-left font-semibold text-gray-700">Start Date</th>
+                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Status</th>
+                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Start Date</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -467,7 +540,9 @@
                   </table>
                 </div>
               {/if}
+              </div>
             {:else if activeTab === 'readings'}
+              <div role="tabpanel" id="tab-panel-readings" aria-labelledby="tab-readings">
               {#if readings.data.length === 0}
                 <div class="p-6">
                   <EmptyState
@@ -480,22 +555,23 @@
                   <table class="w-full text-sm">
                     <thead class="border-b border-gray-200 bg-gray-50">
                       <tr>
-                        <th class="px-6 py-3 text-left font-semibold text-gray-700">Reading</th>
-                        <th class="px-6 py-3 text-left font-semibold text-gray-700">Date</th>
-                        <th class="px-6 py-3 text-left font-semibold text-gray-700">Created</th>
+                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Meter Group</th>
+                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Reading</th>
+                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Date</th>
                       </tr>
                     </thead>
                     <tbody>
                       {#each readings.data as reading (reading.id)}
+                        {@const meterGroup = electricityMeters.find(m => m.id === reading.meter_group_id) || waterMeters.find(m => m.id === reading.meter_group_id)}
                         <tr class="border-b border-gray-200 hover:bg-gray-50">
+                          <td class="px-6 py-4 text-gray-700">
+                            {meterGroup?.meter_name || 'Unknown'}
+                          </td>
                           <td class="px-6 py-4 font-mono text-gray-700">
-                            {reading.reading_amount.toLocaleString()} kWh
+                            {formatReading(reading.reading_amount, meterGroup?.utility_type || 'electricity')}
                           </td>
                           <td class="px-6 py-4 text-gray-600">
                             {formatDate(toDate(reading.reading_date))}
-                          </td>
-                          <td class="px-6 py-4 text-gray-600">
-                            {formatDate(toDate(reading.created_at))}
                           </td>
                         </tr>
                       {/each}
@@ -503,7 +579,9 @@
                   </table>
                 </div>
               {/if}
+              </div>
             {:else if activeTab === 'billings'}
+              <div role="tabpanel" id="tab-panel-billings" aria-labelledby="tab-billings">
               {#if billings.data.length === 0}
                 <div class="p-6">
                   <EmptyState title="No billings" message="Create a billing cycle to generate bills" />
@@ -513,22 +591,27 @@
                   <table class="w-full text-sm">
                     <thead class="border-b border-gray-200 bg-gray-50">
                       <tr>
-                        <th class="px-6 py-3 text-left font-semibold text-gray-700"
-                          >Billing ID</th
+                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700"
+                          >Previous Reading</th
                         >
-                        <th class="px-6 py-3 text-left font-semibold text-gray-700">Readings</th>
-                        <th class="px-6 py-3 text-left font-semibold text-gray-700">Created</th>
+                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Current Reading</th>
+                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Date Range</th>
                       </tr>
                     </thead>
                     <tbody>
                       {#each billings.data as billing (billing.id)}
+                        {@const prevReading = readings.data.find(r => r.id === billing.previous_reading_id)}
+                        {@const currReading = readings.data.find(r => r.id === billing.current_reading_id)}
+                        {@const meterGroup = prevReading ? (electricityMeters.find(m => m.id === prevReading.meter_group_id) || waterMeters.find(m => m.id === prevReading.meter_group_id)) : null}
                         <tr class="border-b border-gray-200 hover:bg-gray-50">
-                          <td class="px-6 py-4 font-mono text-xs text-gray-600">{billing.id.slice(0, 8)}...</td>
-                          <td class="px-6 py-4 text-gray-700">
-                            {billing.previous_reading_id.slice(0, 8)}... → {billing.current_reading_id.slice(0, 8)}...
+                          <td class="px-6 py-4 font-mono text-gray-700">
+                            {prevReading ? formatReading(prevReading.reading_amount, meterGroup?.utility_type || 'electricity') : 'N/A'}
+                          </td>
+                          <td class="px-6 py-4 font-mono text-gray-700">
+                            {currReading ? formatReading(currReading.reading_amount, meterGroup?.utility_type || 'electricity') : 'N/A'}
                           </td>
                           <td class="px-6 py-4 text-gray-600">
-                            {formatDate(toDate(billing.created_at))}
+                            {prevReading && currReading ? formatDate(toDate(prevReading.reading_date)) + ' - ' + formatDate(toDate(currReading.reading_date)) : 'N/A'}
                           </td>
                         </tr>
                       {/each}
@@ -536,9 +619,12 @@
                   </table>
                 </div>
               {/if}
+              </div>
             {:else if activeTab === 'history'}
-              <div class="p-6">
-                <EmptyState title="History" message="Property history coming soon" />
+              <div role="tabpanel" id="tab-panel-history" aria-labelledby="tab-history">
+                <div class="p-6">
+                  <EmptyState title="History" message="Property history coming soon" />
+                </div>
               </div>
             {/if}
           </div>

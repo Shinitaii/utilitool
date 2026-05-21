@@ -10,6 +10,7 @@
   import EmptyState from '$lib/components/shared/EmptyState.svelte';
   import EditModal from '$lib/components/shared/EditModal.svelte';
   import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
+  import { Archive, Plus } from 'lucide-svelte';
 
   let data = $state<PaginatedResult<Tenant>>({
     data: [],
@@ -47,6 +48,8 @@
 
   let editingId = $state<string | null>(null);
   let deletingId = $state<string | null>(null);
+  let selectedIds = $state<Set<string>>(new Set());
+  let isBatchDeleting = $state(false);
 
   onMount(async () => {
     await loadData();
@@ -95,23 +98,10 @@
 
   function openEditModal(item: Tenant) {
     editingItem = item;
-    const startValue = item.tenant_start_date as any;
-    let startDate = '';
-    if (typeof startValue === 'string') {
-      startDate = startValue.split('T')[0];
-    } else {
-      startDate = toDate(startValue).toISOString().split('T')[0];
-    }
-
-    let endDate: string | undefined = undefined;
-    if (item.tenant_end_date) {
-      const endValue = item.tenant_end_date as any;
-      if (typeof endValue === 'string') {
-        endDate = endValue.split('T')[0];
-      } else {
-        endDate = toDate(endValue).toISOString().split('T')[0];
-      }
-    }
+    const startDate = toDate(item.tenant_start_date as any).toISOString().split('T')[0];
+    const endDate = item.tenant_end_date
+      ? toDate(item.tenant_end_date as any).toISOString().split('T')[0]
+      : undefined;
 
     editFormData = {
       tenant_name: item.tenant_name,
@@ -150,6 +140,40 @@
     }
   }
 
+  async function handleBatchDelete() {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Archive ${selectedIds.size} tenant(s)? They can be restored from the archive.`)) return;
+
+    isBatchDeleting = true;
+    try {
+      await Promise.all(Array.from(selectedIds).map(id => softDeleteTenant(id)));
+      selectedIds.clear();
+      await loadData();
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to archive tenants';
+    } finally {
+      isBatchDeleting = false;
+    }
+  }
+
+  function toggleSelection(id: string) {
+    if (selectedIds.has(id)) {
+      selectedIds.delete(id);
+    } else {
+      selectedIds.add(id);
+    }
+    selectedIds = selectedIds;
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === filteredData.length) {
+      selectedIds.clear();
+    } else {
+      selectedIds = new Set(filteredData.map(item => item.id));
+    }
+    selectedIds = selectedIds;
+  }
+
   const filteredData = $derived(getFilteredData());
 </script>
 
@@ -162,16 +186,20 @@
     <div class="flex gap-3">
       <a
         href="/tenants/archive"
-        class="rounded px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium"
+        class="p-2 rounded hover:bg-gray-100 text-gray-700"
+        title="View archive"
+        aria-label="View tenants archive"
       >
-        Archive
+        <Archive size={20} />
       </a>
       <button
         onclick={() => (createFormOpen = !createFormOpen)}
-        class="rounded px-4 py-2 text-white font-medium"
+        class="p-2 rounded text-white"
         style="background-color: var(--color-accent)"
+        title="Create new tenant"
+        aria-label={createFormOpen ? 'Cancel new tenant' : 'Create new tenant'}
       >
-        + New
+        <Plus size={20} />
       </button>
     </div>
   </div>
@@ -242,7 +270,9 @@
   {/if}
 
   <div class="rounded-lg border border-gray-200 bg-white p-4">
+    <label class="sr-only" for="search-tenants">Search tenants</label>
     <input
+      id="search-tenants"
       type="text"
       bind:value={searchTerm}
       placeholder="Search tenants..."
@@ -256,21 +286,51 @@
         <EmptyState title="No tenants found" message="Create tenants to get started" />
       </div>
     {:else}
+      <div class="space-y-3 mb-4">
+        {#if selectedIds.size > 0}
+          <div class="flex items-center justify-between rounded-lg bg-blue-50 p-3 border border-blue-200">
+            <span class="text-sm font-medium text-blue-900">{selectedIds.size} selected</span>
+            <button
+              onclick={handleBatchDelete}
+              disabled={isBatchDeleting}
+              class="px-3 py-1.5 rounded text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
+            >
+              {isBatchDeleting ? 'Archiving...' : 'Archive Selected'}
+            </button>
+          </div>
+        {/if}
+      </div>
       <table class="w-full text-sm">
         <thead class="border-b border-gray-200 bg-gray-50">
           <tr>
-            <th class="px-6 py-3 text-left font-semibold text-gray-700">Tenant Name</th>
-            <th class="px-6 py-3 text-left font-semibold text-gray-700">Property ID</th>
-            <th class="px-6 py-3 text-left font-semibold text-gray-700">Start Date</th>
-            <th class="px-6 py-3 text-left font-semibold text-gray-700">Status</th>
-            <th class="px-6 py-3 text-left font-semibold text-gray-700">Actions</th>
+            <th scope="col" class="px-4 py-3 w-8">
+              <input
+                type="checkbox"
+                checked={selectedIds.size === filteredData.length && filteredData.length > 0}
+                onchange={toggleSelectAll}
+                class="rounded"
+              />
+            </th>
+            <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Tenant Name</th>
+            <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Property</th>
+            <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Start Date</th>
+            <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Status</th>
+            <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Actions</th>
           </tr>
         </thead>
         <tbody>
           {#each filteredData as item (item.id)}
             <tr class="border-b border-gray-200 hover:bg-gray-50">
+              <td class="px-4 py-4 w-8">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(item.id)}
+                  onchange={() => toggleSelection(item.id)}
+                  class="rounded"
+                />
+              </td>
               <td class="px-6 py-4 font-medium">{item.tenant_name}</td>
-              <td class="px-6 py-4 font-mono text-xs text-gray-600">{item.property_id.slice(0, 8)}</td>
+              <td class="px-6 py-4 text-gray-600">{properties.find(p => p.id === item.property_id)?.room_name || 'Unknown'}</td>
               <td class="px-6 py-4 text-gray-600">{formatDate(toDate(item.tenant_start_date))}</td>
               <td class="px-6 py-4">
                 {#if item.tenant_end_date}

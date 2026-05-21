@@ -6,6 +6,7 @@
     onClose: () => void;
     onSubmit: () => void;
     submitButtonText?: string;
+    children?: import('svelte').Snippet;
   }
 
   const {
@@ -14,20 +15,71 @@
     isLoading,
     onClose,
     onSubmit,
-    submitButtonText = 'Save'
+    submitButtonText = 'Save',
+    children
   } = $props();
+
+  const titleId = `modal-title-${Math.random().toString(36).slice(2)}`;
+  let dialogEl: HTMLDivElement | undefined = $state();
+
+  const FOCUSABLE =
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+  function trapFocus(e: KeyboardEvent) {
+    if (!dialogEl) return;
+    const focusable = Array.from(dialogEl.querySelectorAll<HTMLElement>(FOCUSABLE));
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    if (e.key === 'Tab') {
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    if (e.key === 'Escape') {
+      onClose();
+    }
+  }
+
+  $effect(() => {
+    if (isOpen && dialogEl) {
+      const first = dialogEl.querySelector<HTMLElement>(FOCUSABLE);
+      first?.focus();
+      document.body.classList.add('modal-open');
+    } else {
+      document.body.classList.remove('modal-open');
+    }
+  });
 </script>
 
 {#if isOpen}
-  <div class="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
-    <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    role="presentation"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+    onclick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    onkeydown={trapFocus}
+  >
+    <div
+      bind:this={dialogEl}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      class="mx-4 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg bg-white shadow-xl"
+    >
       <!-- Header -->
-      <div class="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
-        <h2 class="text-xl font-bold text-gray-900">{title}</h2>
+      <div class="sticky top-0 flex items-center justify-between border-b border-gray-200 bg-white p-6">
+        <h2 id={titleId} class="text-xl font-bold text-gray-900">{title}</h2>
         <button
           onclick={onClose}
           disabled={isLoading}
-          class="text-gray-400 hover:text-gray-600 text-2xl leading-none disabled:opacity-50"
+          aria-label="Close dialog"
+          class="text-2xl leading-none text-gray-400 hover:text-gray-600 disabled:opacity-50"
         >
           ×
         </button>
@@ -35,22 +87,24 @@
 
       <!-- Content -->
       <div class="p-6">
-        <slot />
+        {#if children}
+          {@render children()}
+        {/if}
       </div>
 
       <!-- Footer -->
-      <div class="sticky bottom-0 bg-gray-50 border-t border-gray-200 p-6 flex gap-3 justify-end">
+      <div class="sticky bottom-0 flex justify-end gap-3 border-t border-gray-200 bg-gray-50 p-6">
         <button
           onclick={onClose}
           disabled={isLoading}
-          class="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium disabled:opacity-50"
+          class="rounded border border-gray-300 px-4 py-2 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
         >
           Cancel
         </button>
         <button
           onclick={onSubmit}
           disabled={isLoading}
-          class="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 font-medium disabled:opacity-50"
+          class="rounded bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
           {isLoading ? 'Saving...' : submitButtonText}
         </button>
@@ -60,7 +114,6 @@
 {/if}
 
 <style>
-  /* Prevent body scroll when modal is open */
   :global(body.modal-open) {
     overflow: hidden;
   }

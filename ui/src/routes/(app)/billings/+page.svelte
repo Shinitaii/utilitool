@@ -503,6 +503,7 @@
         href="/billings/archive"
         class="p-2 rounded hover:bg-gray-100 text-gray-700"
         title="View archive"
+        aria-label="View billings archive"
       >
         <Archive size={20} />
       </a>
@@ -511,6 +512,7 @@
         class="p-2 rounded text-white"
         style="background-color: var(--color-accent)"
         title="Create new billing cycle"
+        aria-label={cycleFormOpen ? 'Cancel new billing cycle' : 'Create new billing cycle'}
       >
         <Plus size={20} />
       </button>
@@ -616,9 +618,9 @@
           <table class="w-full text-sm">
             <thead class="border-b border-gray-200 bg-gray-50">
               <tr>
-                <th class="px-4 py-2 text-left font-semibold text-gray-700">Property</th>
-                <th class="px-4 py-2 text-right font-semibold text-gray-700">Consumption</th>
-                <th class="px-4 py-2 text-right font-semibold text-gray-700">Amount</th>
+                <th scope="col" class="px-4 py-2 text-left font-semibold text-gray-700">Property</th>
+                <th scope="col" class="px-4 py-2 text-right font-semibold text-gray-700">Consumption</th>
+                <th scope="col" class="px-4 py-2 text-right font-semibold text-gray-700">Amount</th>
               </tr>
             </thead>
             <tbody>
@@ -777,6 +779,8 @@
             <button
               onclick={() => toggleCycleExpand(cycle.id)}
               class="flex-1 text-left"
+              aria-expanded={expandedCycleId === cycle.id}
+              aria-controls={`cycle-detail-${cycle.id}`}
             >
               <div class="flex items-center justify-between">
                 <div class="flex-1">
@@ -837,7 +841,7 @@
 
           <!-- Expanded Billings Table -->
           {#if expandedCycleId === cycle.id}
-            <div class="border-t border-gray-200 bg-gray-50">
+            <div id={`cycle-detail-${cycle.id}`} class="border-t border-gray-200 bg-gray-50">
               {#if billings.get(cycle.id)?.length === 0}
                 <div class="px-6 py-4">
                   <EmptyState title="No billings" message="No billings in this cycle yet" />
@@ -847,15 +851,15 @@
                   <table class="w-full text-sm">
                     <thead class="border-b border-gray-200 bg-gray-50">
                       <tr>
-                        <th class="px-6 py-3 text-left font-semibold text-gray-700">Property</th>
-                        <th class="px-6 py-3 text-left font-semibold text-gray-700">Previous Reading</th>
-                        <th class="px-6 py-3 text-left font-semibold text-gray-700">Current Reading</th>
-                        <th class="px-6 py-3 text-right font-semibold text-gray-700">
+                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Property</th>
+                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Previous Reading</th>
+                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Current Reading</th>
+                        <th scope="col" class="px-6 py-3 text-right font-semibold text-gray-700">
                           Consumption
                         </th>
-                        <th class="px-6 py-3 text-right font-semibold text-gray-700">Amount</th>
-                        <th class="px-6 py-3 text-left font-semibold text-gray-700">Status</th>
-                        <th class="px-6 py-3 text-left font-semibold text-gray-700">Actions</th>
+                        <th scope="col" class="px-6 py-3 text-right font-semibold text-gray-700">Amount</th>
+                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Status</th>
+                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
