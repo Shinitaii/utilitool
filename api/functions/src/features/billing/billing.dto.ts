@@ -37,6 +37,8 @@ export type BillingByIdParamsDTO = z.infer<typeof BillingByIdParamsDTOSchema>;
 export const GetBillingsQueryDTOSchema = z
   .object({
     propertyId: z.string().trim().min(1).optional(),
+    sortBy: z.enum(["created_at", "payment_status"]).optional(),
+    sortOrder: z.enum(["asc", "desc"]).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(20),
     cursor: z.string().trim().min(1).optional(),
     archived: z.enum(["true", "false"]).optional().transform(

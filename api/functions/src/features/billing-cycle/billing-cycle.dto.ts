@@ -1,5 +1,6 @@
 import {z} from "zod";
 import {Timestamp} from "firebase-admin/firestore";
+import {parseTimestamp} from "../../utils/firestore.util";
 
 // Create DTOS
 const BillingCycleBaseSchema = z.object({
@@ -11,8 +12,8 @@ const BillingCycleBaseSchema = z.object({
     ),
   billing_rate: z.number().nonnegative(),
   billing_consumption: z.number().nonnegative(),
-  billing_start_date: z.instanceof(Timestamp),
-  billing_end_date: z.instanceof(Timestamp),
+  billing_start_date: z.unknown().transform((val) => parseTimestamp(val)),
+  billing_end_date: z.unknown().transform((val) => parseTimestamp(val)),
 });
 
 export const CreateBillingCycleDTOSchema = BillingCycleBaseSchema.refine(
@@ -36,8 +37,8 @@ const UpdateBillingCycleBaseSchema = z.object({
     .optional(),
   billing_rate: z.number().nonnegative().optional(),
   billing_consumption: z.number().nonnegative().optional(),
-  billing_start_date: z.instanceof(Timestamp).optional(),
-  billing_end_date: z.instanceof(Timestamp).optional(),
+  billing_start_date: z.unknown().transform((val) => val ? parseTimestamp(val) : undefined).optional(),
+  billing_end_date: z.unknown().transform((val) => val ? parseTimestamp(val) : undefined).optional(),
 });
 
 export const UpdateBillingCycleDTOSchema = UpdateBillingCycleBaseSchema.refine(
@@ -73,6 +74,8 @@ export const GetBillingCyclesQueryDTOSchema = z
   .object({
     billingStartDate: z.string().datetime().optional(),
     billingEndDate: z.string().datetime().optional(),
+    sortBy: z.enum(["created_at", "billing_start_date"]).optional(),
+    sortOrder: z.enum(["asc", "desc"]).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(20),
     cursor: z.string().trim().min(1).optional(),
     archived: z.enum(["true", "false"]).optional().transform(
@@ -93,7 +96,7 @@ export type GetBillingCyclesQueryDTO = z.infer<typeof GetBillingCyclesQueryDTOSc
 
 // OCR DTOs
 export const OcrBillingCycleDTOSchema = z.object({
-  image_url: z.string().min(1),
+  image_url: z.string().url(),
 });
 export type OcrBillingCycleDTO = z.infer<typeof OcrBillingCycleDTOSchema>;
 

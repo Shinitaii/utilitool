@@ -8,11 +8,14 @@ import {BillingValidator} from "./billing.validator";
 import {AppError} from "../../utils/error.util";
 import {COLLECTIONS} from "../../constants/collection.constants";
 import {snapshotToModel} from "../../utils/firestore.util";
+import {validateMeterRollback} from "../reading/reading.util";
 
 const validator = new BillingValidator();
 
 type BillingSearchOptions = {
   propertyId?: string;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
   limit: number;
   cursor?: string | null;
   archived?: boolean;
@@ -54,9 +57,12 @@ export const billingService = {
       }
       const currMeterVersion = (currReading.meter_version ?? 1) as number;
       const prevMeterVersion = (prevReading.meter_version ?? 1) as number;
-      if (currMeterVersion === prevMeterVersion && currReading.reading_amount <= prevReading.reading_amount) {
-        throw new AppError(400, "Current reading must be greater than previous reading (meter rollback not allowed)");
-      }
+      validateMeterRollback(
+        prevReading.reading_amount,
+        prevMeterVersion,
+        currReading.reading_amount,
+        currMeterVersion
+      );
 
       const newRef = firestore.collection(COLLECTIONS.BILLINGS).doc();
       newBillingId = newRef.id;
@@ -87,8 +93,8 @@ export const billingService = {
   async search(options: BillingSearchOptions): Promise<PaginatedResult<Billing>> {
     return billingRepository.search({
       limit: options.limit,
-      orderBy: "created_at",
-      orderDirection: "desc",
+      orderBy: (options.sortBy ?? "created_at") as any,
+      orderDirection: options.sortOrder ?? "desc",
       cursor: options.cursor,
       archived: options.archived,
       filters: {
@@ -155,9 +161,12 @@ export const billingService = {
     }
     const currMeterVersion = (currReading.meter_version ?? 1) as number;
     const prevMeterVersion = (prevReading.meter_version ?? 1) as number;
-    if (currMeterVersion === prevMeterVersion && currReading.reading_amount <= prevReading.reading_amount) {
-      throw new AppError(400, "Current reading must be greater than previous reading (meter rollback not allowed)");
-    }
+    validateMeterRollback(
+      prevReading.reading_amount,
+      prevMeterVersion,
+      currReading.reading_amount,
+      currMeterVersion
+    );
 
     const newRef = firestore.collection(COLLECTIONS.BILLINGS).doc();
     txn.set(newRef, {

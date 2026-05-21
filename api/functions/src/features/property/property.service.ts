@@ -10,6 +10,8 @@ const validator = new PropertyValidator();
 type PropertySearchOptions = {
   roomName?: string;
   meterGroupId?: string;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
   limit: number;
   cursor?: string | null;
   archived?: boolean;
@@ -35,8 +37,8 @@ export const propertyService = {
   ): Promise<PaginatedResult<Property>> {
     const result = await propertyRepository.search({
       limit: options.limit,
-      orderBy: "created_at",
-      orderDirection: "desc",
+      orderBy: (options.sortBy ?? "created_at") as any,
+      orderDirection: options.sortOrder ?? "desc",
       cursor: options.cursor,
       archived: options.archived,
       filters: {

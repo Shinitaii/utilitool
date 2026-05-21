@@ -36,6 +36,8 @@ export const GetMeterGroupsQueryDTOSchema = z
   .object({
     meterName: z.string().trim().min(1).max(255).optional(),
     utilityType: z.enum(Object.values(UTILITY_TYPES)).optional(),
+    sortBy: z.enum(["created_at", "meter_name"]).optional(),
+    sortOrder: z.enum(["asc", "desc"]).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(20),
     cursor: z.string().trim().min(1).optional(),
     minimal: z.enum(["true", "false"]).optional().transform(

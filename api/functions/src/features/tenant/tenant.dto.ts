@@ -29,6 +29,8 @@ export type UpdateTenantBatchDTO = z.infer<typeof UpdateTenantBatchDTOSchema>;
 export const GetTenantsQueryDTOSchema = z.object({
   tenantName: z.string().trim().min(1).max(255).optional(),
   propertyId: z.string().trim().min(1).optional(),
+  sortBy: z.enum(["created_at", "tenant_name"]).optional(),
+  sortOrder: z.enum(["asc", "desc"]).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   cursor: z.string().trim().min(1).optional(),
   archived: z.enum(["true", "false"]).optional().transform(

@@ -10,6 +10,8 @@ const validator = new BillingCycleValidator();
 type BillingCycleSearchOptions = {
   billingStartDate?: string;
   billingEndDate?: string;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
   limit: number;
   cursor?: string | null;
   archived?: boolean;
@@ -29,13 +31,20 @@ export const billingCycleService = {
   async search(
     options: BillingCycleSearchOptions
   ): Promise<PaginatedResult<BillingCycle>> {
+    const filters: Record<string, any> = {};
+    if (options.billingStartDate) {
+      filters.billing_start_date = { gte: new Date(options.billingStartDate) };
+    }
+    if (options.billingEndDate) {
+      filters.billing_end_date = { lte: new Date(options.billingEndDate) };
+    }
     return billingCycleRepository.search({
       limit: options.limit,
-      orderBy: "created_at",
-      orderDirection: "desc",
+      orderBy: (options.sortBy ?? "created_at") as any,
+      orderDirection: options.sortOrder ?? "desc",
       cursor: options.cursor,
       archived: options.archived,
-      filters: {},
+      filters,
     });
   },
 

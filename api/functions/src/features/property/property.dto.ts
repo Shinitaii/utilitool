@@ -65,6 +65,8 @@ export type UpdatePropertyBatchDTO = z.infer<
 export const GetPropertiesQueryDTOSchema = z.object({
   roomName: z.string().trim().min(1).max(255).optional(),
   meterGroupId: z.string().trim().min(1).optional(),
+  sortBy: z.enum(["created_at", "room_name"]).optional(),
+  sortOrder: z.enum(["asc", "desc"]).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   cursor: z.string().trim().min(1).optional(),
   archived: z.enum(["true", "false"]).optional().transform(

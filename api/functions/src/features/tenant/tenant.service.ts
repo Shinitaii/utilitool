@@ -11,6 +11,8 @@ const validator = new TenantValidator();
 type TenantSearchOptions = {
   tenantName?: string;
   propertyId?: string;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
   limit: number;
   cursor?: string | null;
   archived?: boolean;
@@ -44,8 +46,8 @@ export const tenantService = {
   async search(options: TenantSearchOptions): Promise<PaginatedResult<Tenant>> {
     return tenantRepository.search({
       limit: options.limit,
-      orderBy: "created_at",
-      orderDirection: "desc",
+      orderBy: (options.sortBy ?? "created_at") as any,
+      orderDirection: options.sortOrder ?? "desc",
       cursor: options.cursor,
       archived: options.archived,
       filters: {
@@ -68,13 +70,7 @@ export const tenantService = {
 
   async updateBatch(updates: { id: string; data: UpdateTenantDTO }[]): Promise<Tenant[]> {
     await validator.validateBatchUpdate(updates);
-
-    const results: Tenant[] = [];
-    for (const update of updates) {
-      results.push(await tenantRepository.update(update.id, update.data));
-    }
-
-    return results;
+    return tenantRepository.updateBatch(updates);
   },
 
   async delete(id: string): Promise<void> {

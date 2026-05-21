@@ -14,9 +14,12 @@ const validator = new MeterGroupValidator();
 type MeterGroupSearchOptions = {
   meterName?: string;
   utilityType?: MeterGroup["utility_type"];
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
   limit: number;
   cursor?: string | null;
   minimal?: boolean;
+  summary?: boolean;
   archived?: boolean;
 };
 
@@ -24,6 +27,8 @@ type MinimalMeterGroup = {
   id: string;
   meter_name: string;
 };
+
+type SummaryMeterGroup = Omit<MeterGroup, "versions">;
 
 export const meterGroupService = {
   async create(data: CreateMeterGroupDTO): Promise<MeterGroup> {
@@ -48,11 +53,11 @@ export const meterGroupService = {
 
   async search(
     options: MeterGroupSearchOptions
-  ): Promise<PaginatedResult<MeterGroup | MinimalMeterGroup>> {
+  ): Promise<PaginatedResult<MeterGroup | MinimalMeterGroup | SummaryMeterGroup>> {
     const result = await meterGroupRepository.search({
       limit: options.limit,
-      orderBy: "created_at",
-      orderDirection: "desc",
+      orderBy: (options.sortBy ?? "created_at") as any,
+      orderDirection: options.sortOrder ?? "desc",
       cursor: options.cursor,
       archived: options.archived,
       filters: {
@@ -71,6 +76,16 @@ export const meterGroupService = {
       };
     }
 
+    if (options.summary) {
+      return {
+        ...result,
+        data: result.data.map((mg) => {
+          const { versions, ...rest } = mg;
+          return rest;
+        }),
+      };
+    }
+
     return result;
   },
 
@@ -79,6 +94,10 @@ export const meterGroupService = {
   },
 
   async update(id: string, data: Partial<CreateMeterGroupDTO>): Promise<MeterGroup> {
+    const meterGroup = await meterGroupRepository.getById(id);
+    if (!meterGroup) {
+      throw new AppError(404, "Meter group not found");
+    }
     return meterGroupRepository.update(id, data);
   },
 
