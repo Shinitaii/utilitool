@@ -28,21 +28,21 @@ const router = Router();
 router.post(
   "/ocr",
   validateRequest({body: OcrReadingDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole('admin', 'landlord', 'assistant'),
   ocrReading
 );
 
 router.post(
   "/batch",
   validateRequest({body: CreateReadingBatchDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole('admin', 'landlord', 'assistant'),
   createBatchReadings
 );
 
 router.patch(
   "/batch",
   validateRequest({body: UpdateReadingBatchDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole('admin', 'landlord', 'assistant'),
   updateBatchReadings
 );
 
