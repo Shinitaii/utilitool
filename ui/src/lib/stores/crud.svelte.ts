@@ -8,14 +8,14 @@ export interface CrudStore<T extends { id: string }> {
   deletingId: string | null;
   handleSoftDelete(
     id: string,
-    deleteFn: (id: string) => Promise<void>,
+    deleteFn: (id: string) => Promise<unknown>,
     reload: () => Promise<void>,
     confirmFn?: (id: string) => boolean
   ): Promise<void>;
 
   isBatchDeleting: boolean;
   handleBatchDelete(
-    deleteFn: (id: string) => Promise<void>,
+    deleteFn: (id: string) => Promise<unknown>,
     reload: () => Promise<void>,
     confirmFn?: (count: number) => boolean
   ): Promise<void>;

@@ -10,7 +10,11 @@
   import EmptyState from '$lib/components/shared/EmptyState.svelte';
   import EditModal from '$lib/components/shared/EditModal.svelte';
   import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
+  import SelectionToolbar from '$lib/components/shared/SelectionToolbar.svelte';
+  import { createCrudStore } from '$lib/stores/crud.svelte';
   import { Archive, Plus } from 'lucide-svelte';
+
+  const crud = createCrudStore<Tenant>();
 
   let data = $state<PaginatedResult<Tenant>>({
     data: [],
@@ -21,35 +25,14 @@
   let isLoading = $state(false);
   let error = $state('');
   let searchTerm = $state('');
-
   let createFormOpen = $state(false);
-  let editModalOpen = $state(false);
-  let editingItem = $state<Tenant | null>(null);
+  let isUpdating = $state(false);
 
-  let createFormData = $state<{
-    tenant_name: string;
-    property_id: string;
-    tenant_start_date: string;
-  }>({
+  let createFormData = $state<CreateTenantRequest>({
     tenant_name: '',
     property_id: '',
     tenant_start_date: new Date().toISOString().split('T')[0]
   });
-
-  let editFormData = $state<{
-    tenant_name: string;
-    tenant_start_date: string;
-    tenant_end_date?: string;
-  }>({
-    tenant_name: '',
-    tenant_start_date: '',
-    tenant_end_date: undefined
-  });
-
-  let editingId = $state<string | null>(null);
-  let deletingId = $state<string | null>(null);
-  let selectedIds = $state<Set<string>>(new Set());
-  let isBatchDeleting = $state(false);
 
   onMount(async () => {
     await loadData();
@@ -96,85 +79,22 @@
     }
   }
 
-  function openEditModal(item: Tenant) {
-    editingItem = item;
-    const startDate = toDate(item.tenant_start_date as any).toISOString().split('T')[0];
-    const endDate = item.tenant_end_date
-      ? toDate(item.tenant_end_date as any).toISOString().split('T')[0]
-      : undefined;
-
-    editFormData = {
-      tenant_name: item.tenant_name,
-      tenant_start_date: startDate,
-      tenant_end_date: endDate
-    };
-    editModalOpen = true;
-  }
-
   async function handleUpdate() {
-    if (!editingItem) return;
-    editingId = editingItem.id;
+    if (!crud.editingItem) return;
+    isUpdating = true;
     try {
-      await updateTenant(editingItem.id, editFormData);
-      editModalOpen = false;
-      editingItem = null;
+      await updateTenant(crud.editingItem.id, crud.editFormData as UpdateTenantRequest);
+      crud.closeEditModal();
       await loadData();
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to update tenant';
     } finally {
-      editingId = null;
+      isUpdating = false;
     }
-  }
-
-  async function handleSoftDelete(id: string) {
-    if (confirm('Archive this tenant? It can be restored from the archive.')) {
-      deletingId = id;
-      try {
-        await softDeleteTenant(id);
-        await loadData();
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'Failed to archive tenant';
-      } finally {
-        deletingId = null;
-      }
-    }
-  }
-
-  async function handleBatchDelete() {
-    if (selectedIds.size === 0) return;
-    if (!confirm(`Archive ${selectedIds.size} tenant(s)? They can be restored from the archive.`)) return;
-
-    isBatchDeleting = true;
-    try {
-      await Promise.all(Array.from(selectedIds).map(id => softDeleteTenant(id)));
-      selectedIds.clear();
-      await loadData();
-    } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to archive tenants';
-    } finally {
-      isBatchDeleting = false;
-    }
-  }
-
-  function toggleSelection(id: string) {
-    if (selectedIds.has(id)) {
-      selectedIds.delete(id);
-    } else {
-      selectedIds.add(id);
-    }
-    selectedIds = selectedIds;
-  }
-
-  function toggleSelectAll() {
-    if (selectedIds.size === filteredData.length) {
-      selectedIds.clear();
-    } else {
-      selectedIds = new Set(filteredData.map(item => item.id));
-    }
-    selectedIds = selectedIds;
   }
 
   const filteredData = $derived(getFilteredData());
+  const editData = $derived(crud.editFormData as unknown as { tenant_name: string; tenant_start_date: string; tenant_end_date?: string });
 </script>
 
 <div class="space-y-6">
@@ -204,9 +124,9 @@
     </div>
   </div>
 
-  {#if error}
+  {#if error || crud.error}
     <div class="rounded-lg bg-red-50 p-4 text-sm text-red-700">
-      {error}
+      {error || crud.error}
     </div>
   {/if}
 
@@ -287,18 +207,12 @@
       </div>
     {:else}
       <div class="space-y-3 mb-4">
-        {#if selectedIds.size > 0}
-          <div class="flex items-center justify-between rounded-lg bg-blue-50 p-3 border border-blue-200">
-            <span class="text-sm font-medium text-blue-900">{selectedIds.size} selected</span>
-            <button
-              onclick={handleBatchDelete}
-              disabled={isBatchDeleting}
-              class="px-3 py-1.5 rounded text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
-            >
-              {isBatchDeleting ? 'Archiving...' : 'Archive Selected'}
-            </button>
-          </div>
-        {/if}
+        <SelectionToolbar
+          selectedCount={crud.selectedIds.size}
+          isBatchDeleting={crud.isBatchDeleting}
+          onBatchDelete={() => crud.handleBatchDelete(softDeleteTenant, loadData)}
+          entityLabel="tenant"
+        />
       </div>
       <table class="w-full text-sm">
         <thead class="border-b border-gray-200 bg-gray-50">
@@ -306,8 +220,8 @@
             <th scope="col" class="px-4 py-3 w-8">
               <input
                 type="checkbox"
-                checked={selectedIds.size === filteredData.length && filteredData.length > 0}
-                onchange={toggleSelectAll}
+                checked={crud.selectedIds.size === filteredData.length && filteredData.length > 0}
+                onchange={() => crud.toggleSelectAll(filteredData.map(i => i.id), filteredData.map(i => i.id))}
                 class="rounded"
               />
             </th>
@@ -324,8 +238,8 @@
               <td class="px-4 py-4 w-8">
                 <input
                   type="checkbox"
-                  checked={selectedIds.has(item.id)}
-                  onchange={() => toggleSelection(item.id)}
+                  checked={crud.selectedIds.has(item.id)}
+                  onchange={() => crud.toggleSelection(item.id)}
                   class="rounded"
                 />
               </td>
@@ -345,9 +259,15 @@
               </td>
               <td class="px-6 py-4">
                 <ActionButtons
-                  onEdit={() => openEditModal(item)}
-                  onSoftDelete={() => handleSoftDelete(item.id)}
-                  isLoading={deletingId === item.id}
+                  onEdit={() => {
+                    const startDate = toDate(item.tenant_start_date as any).toISOString().split('T')[0];
+                    const endDate = item.tenant_end_date
+                      ? toDate(item.tenant_end_date as any).toISOString().split('T')[0]
+                      : undefined;
+                    crud.openEditModal(item, { tenant_name: item.tenant_name, tenant_start_date: startDate, tenant_end_date: endDate } as any);
+                  }}
+                  onSoftDelete={() => crud.handleSoftDelete(item.id, softDeleteTenant, loadData, () => confirm('Archive this tenant? It can be restored from the archive.'))}
+                  isLoading={crud.deletingId === item.id}
                 />
               </td>
             </tr>
@@ -360,13 +280,10 @@
 
 <!-- Edit Modal -->
 <EditModal
-  bind:isOpen={editModalOpen}
+  bind:isOpen={crud.editModalOpen}
   title="Edit Tenant"
-  isLoading={editingId === editingItem?.id}
-  onClose={() => {
-    editModalOpen = false;
-    editingItem = null;
-  }}
+  isLoading={isUpdating}
+  onClose={crud.closeEditModal}
   onSubmit={handleUpdate}
 >
   <div class="space-y-4">
@@ -375,7 +292,7 @@
       <input
         id="edit-tenant-name"
         type="text"
-        bind:value={editFormData.tenant_name}
+        bind:value={editData.tenant_name}
         class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
       />
     </div>
@@ -384,7 +301,7 @@
       <input
         id="edit-start-date"
         type="date"
-        bind:value={editFormData.tenant_start_date}
+        bind:value={editData.tenant_start_date}
         class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
       />
     </div>
@@ -393,7 +310,7 @@
       <input
         id="edit-end-date"
         type="date"
-        bind:value={editFormData.tenant_end_date}
+        bind:value={editData.tenant_end_date}
         class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
       />
     </div>

@@ -13,7 +13,11 @@
   import EmptyState from '$lib/components/shared/EmptyState.svelte';
   import EditModal from '$lib/components/shared/EditModal.svelte';
   import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
+  import SelectionToolbar from '$lib/components/shared/SelectionToolbar.svelte';
+  import { createCrudStore } from '$lib/stores/crud.svelte';
   import { Archive, Plus, X } from 'lucide-svelte';
+
+  const crud = createCrudStore<Reading>();
 
   interface BatchReadingRow {
     property: Property;
@@ -38,9 +42,6 @@
   let selectedMeterGroup = $state('');
   let createFormOpen = $state(false);
 
-  let editModalOpen = $state(false);
-  let editingItem = $state<Reading | null>(null);
-
   // Batch reading form
   let batchDate = $state(new Date().toISOString().split('T')[0]);
   let batchRows = $state<BatchReadingRow[]>([]);
@@ -55,18 +56,7 @@
   let previewIsDragging = $state(false);
   let previewDragStart = $state({ x: 0, y: 0 });
 
-  let editFormData = $state<{
-    reading_amount: number;
-    reading_date: string;
-  }>({
-    reading_amount: 0,
-    reading_date: ''
-  });
-
-  let editingId = $state<string | null>(null);
-  let deletingId = $state<string | null>(null);
-  let selectedIds = $state<Set<string>>(new Set());
-  let isBatchDeleting = $state(false);
+  let isUpdating = $state(false);
 
   function getCumulativeOffset(meterGroup: MeterGroup | undefined, version: number): number {
     if (!meterGroup?.versions) return 0;
@@ -246,78 +236,21 @@
     }
   }
 
-  function openEditModal(item: Reading) {
-    editingItem = item;
-    const readingDate = toDate(item.reading_date as any).toISOString().split('T')[0];
-    editFormData = {
-      reading_amount: item.reading_amount,
-      reading_date: readingDate
-    };
-    editModalOpen = true;
-  }
-
   async function handleUpdate() {
-    if (!editingItem) return;
-    editingId = editingItem.id;
+    if (!crud.editingItem) return;
+    isUpdating = true;
     try {
-      await updateReading(editingItem.id, editFormData);
-      editModalOpen = false;
-      editingItem = null;
+      await updateReading(crud.editingItem.id, crud.editFormData as UpdateReadingRequest);
+      crud.closeEditModal();
       await handleMeterGroupChange();
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to update reading';
     } finally {
-      editingId = null;
+      isUpdating = false;
     }
   }
 
-  async function handleSoftDelete(id: string) {
-    if (confirm('Archive this reading? It can be restored from the archive.')) {
-      deletingId = id;
-      try {
-        await softDeleteReading(id);
-        await handleMeterGroupChange();
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'Failed to archive reading';
-      } finally {
-        deletingId = null;
-      }
-    }
-  }
-
-  async function handleBatchDelete() {
-    if (selectedIds.size === 0) return;
-    if (!confirm(`Archive ${selectedIds.size} reading(s)? They can be restored from the archive.`)) return;
-
-    isBatchDeleting = true;
-    try {
-      await Promise.all(Array.from(selectedIds).map(id => softDeleteReading(id)));
-      selectedIds.clear();
-      await handleMeterGroupChange();
-    } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to archive readings';
-    } finally {
-      isBatchDeleting = false;
-    }
-  }
-
-  function toggleSelection(id: string) {
-    if (selectedIds.has(id)) {
-      selectedIds.delete(id);
-    } else {
-      selectedIds.add(id);
-    }
-    selectedIds = selectedIds;
-  }
-
-  function toggleSelectAll() {
-    if (selectedIds.size === readings.data.length) {
-      selectedIds.clear();
-    } else {
-      selectedIds = new Set(readings.data.map(item => item.id));
-    }
-    selectedIds = selectedIds;
-  }
+  const editData = $derived(crud.editFormData as unknown as { reading_amount: number; reading_date: string });
 
   function canBatchSubmit(): boolean {
     return (
@@ -555,18 +488,12 @@
       </div>
     {:else}
       <div class="space-y-3 mb-4">
-        {#if selectedIds.size > 0}
-          <div class="flex items-center justify-between rounded-lg bg-blue-50 p-3 border border-blue-200">
-            <span class="text-sm font-medium text-blue-900">{selectedIds.size} selected</span>
-            <button
-              onclick={handleBatchDelete}
-              disabled={isBatchDeleting}
-              class="px-3 py-1.5 rounded text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
-            >
-              {isBatchDeleting ? 'Archiving...' : 'Archive Selected'}
-            </button>
-          </div>
-        {/if}
+        <SelectionToolbar
+          selectedCount={crud.selectedIds.size}
+          isBatchDeleting={crud.isBatchDeleting}
+          onBatchDelete={() => crud.handleBatchDelete(softDeleteReading, handleMeterGroupChange)}
+          entityLabel="reading"
+        />
       </div>
       <table class="w-full text-sm">
         <thead class="border-b border-gray-200 bg-gray-50">
@@ -574,8 +501,8 @@
             <th scope="col" class="px-4 py-3 w-8">
               <input
                 type="checkbox"
-                checked={selectedIds.size === readings.data.length && readings.data.length > 0}
-                onchange={toggleSelectAll}
+                checked={crud.selectedIds.size === readings.data.length && readings.data.length > 0}
+                onchange={() => crud.toggleSelectAll(readings.data.map(i => i.id), readings.data.map(i => i.id))}
                 class="rounded"
               />
             </th>
@@ -595,8 +522,8 @@
               <td class="px-4 py-4 w-8">
                 <input
                   type="checkbox"
-                  checked={selectedIds.has(item.id)}
-                  onchange={() => toggleSelection(item.id)}
+                  checked={crud.selectedIds.has(item.id)}
+                  onchange={() => crud.toggleSelection(item.id)}
                   class="rounded"
                 />
               </td>
@@ -629,9 +556,12 @@
               <td class="px-6 py-4 text-gray-600">{formatDate(toDate(item.created_at))}</td>
               <td class="px-6 py-4">
                 <ActionButtons
-                  onEdit={() => openEditModal(item)}
-                  onSoftDelete={() => handleSoftDelete(item.id)}
-                  isLoading={deletingId === item.id}
+                  onEdit={() => {
+                    const readingDate = toDate(item.reading_date as any).toISOString().split('T')[0];
+                    crud.openEditModal(item, { reading_amount: item.reading_amount, reading_date: readingDate } as any);
+                  }}
+                  onSoftDelete={() => crud.handleSoftDelete(item.id, softDeleteReading, handleMeterGroupChange, () => confirm('Archive this reading? It can be restored from the archive.'))}
+                  isLoading={crud.deletingId === item.id}
                 />
               </td>
             </tr>
@@ -644,13 +574,10 @@
 
 <!-- Edit Modal -->
 <EditModal
-  bind:isOpen={editModalOpen}
+  bind:isOpen={crud.editModalOpen}
   title="Edit Reading"
-  isLoading={editingId === editingItem?.id}
-  onClose={() => {
-    editModalOpen = false;
-    editingItem = null;
-  }}
+  isLoading={isUpdating}
+  onClose={crud.closeEditModal}
   onSubmit={handleUpdate}
 >
   <div class="space-y-4">
@@ -659,7 +586,7 @@
       <input
         id="edit-reading-amount"
         type="number"
-        bind:value={editFormData.reading_amount}
+        bind:value={editData.reading_amount}
         step="0.01"
         min="0"
         class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
@@ -670,7 +597,7 @@
       <input
         id="edit-reading-date"
         type="date"
-        bind:value={editFormData.reading_date}
+        bind:value={editData.reading_date}
         class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
       />
     </div>

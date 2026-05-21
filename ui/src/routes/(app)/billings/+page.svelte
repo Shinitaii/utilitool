@@ -17,7 +17,10 @@
   import EmptyState from '$lib/components/shared/EmptyState.svelte';
   import EditModal from '$lib/components/shared/EditModal.svelte';
   import StatusPill from '$lib/components/shared/StatusPill.svelte';
+  import { createCrudStore } from '$lib/stores/crud.svelte';
   import { CheckCircle2, Pencil, Archive, Printer, Plus } from 'lucide-svelte';
+
+  const crud = createCrudStore<Billing>();
 
   let cycles = $state<PaginatedResult<BillingCycle>>({
     data: [],
@@ -34,8 +37,6 @@
   let expandedCycleId = $state<string | null>(null);
 
   let createFormOpen = $state(false);
-  let editModalOpen = $state(false);
-  let editingBilling = $state<Billing | null>(null);
 
   // Billing cycle form state
   let cycleFormOpen = $state(false);
@@ -66,14 +67,7 @@
     current_reading_id: ''
   });
 
-  let editFormData = $state<UpdateBillingRequest>({
-    property_id: '',
-    previous_reading_id: '',
-    current_reading_id: ''
-  });
-
-  let editingBillingId = $state<string | null>(null);
-  let deletingBillingId = $state<string | null>(null);
+  let isUpdating = $state(false);
   let markingAsPaidId = $state<string | null>(null);
 
   let auth = $state<AuthState>({ isAuthenticated: false, user: null, isLoading: false, error: null });
@@ -163,43 +157,28 @@
   }
 
   function openEditModal(billing: Billing) {
-    editingBilling = billing;
-    editFormData = {
+    crud.openEditModal(billing, {
       property_id: billing.property_id,
       previous_reading_id: billing.previous_reading_id,
       current_reading_id: billing.current_reading_id
-    };
-    editModalOpen = true;
+    } as any);
   }
 
   async function handleUpdate() {
-    if (!editingBilling) return;
-    editingBillingId = editingBilling.id;
+    if (!crud.editingItem) return;
+    isUpdating = true;
     try {
-      await updateBilling(editingBilling.id, editFormData);
-      editModalOpen = false;
-      editingBilling = null;
+      await updateBilling(crud.editingItem.id, crud.editFormData as UpdateBillingRequest);
+      crud.closeEditModal();
       await loadData();
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to update billing';
     } finally {
-      editingBillingId = null;
+      isUpdating = false;
     }
   }
 
-  async function handleSoftDelete(id: string) {
-    if (confirm('Archive this billing? It can be restored from the archive.')) {
-      deletingBillingId = id;
-      try {
-        await softDeleteBilling(id);
-        await loadData();
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'Failed to archive billing';
-      } finally {
-        deletingBillingId = null;
-      }
-    }
-  }
+  const editData = $derived(crud.editFormData as unknown as UpdateBillingRequest);
 
   async function handleMarkAsPaid(id: string) {
     markingAsPaidId = id;
@@ -911,15 +890,15 @@
                               {/if}
                               <button
                                 onclick={() => openEditModal(billing)}
-                                disabled={isLoading || editingBillingId === billing.id}
+                                disabled={isLoading || isUpdating}
                                 class="p-2 rounded hover:bg-blue-100 text-blue-700 disabled:opacity-50"
                                 title="Edit billing"
                               >
                                 <Pencil size={18} />
                               </button>
                               <button
-                                onclick={() => handleSoftDelete(billing.id)}
-                                disabled={isLoading || deletingBillingId === billing.id}
+                                onclick={() => crud.handleSoftDelete(billing.id, softDeleteBilling, loadData, () => confirm('Archive this billing? It can be restored from the archive.'))}
+                                disabled={isLoading || crud.deletingId === billing.id}
                                 class="p-2 rounded hover:bg-red-100 text-red-700 disabled:opacity-50"
                                 title="Archive billing"
                               >
@@ -947,13 +926,10 @@
 
 <!-- Edit Modal -->
 <EditModal
-  bind:isOpen={editModalOpen}
+  bind:isOpen={crud.editModalOpen}
   title="Edit Billing"
-  isLoading={editingBillingId === editingBilling?.id}
-  onClose={() => {
-    editModalOpen = false;
-    editingBilling = null;
-  }}
+  isLoading={isUpdating}
+  onClose={crud.closeEditModal}
   onSubmit={handleUpdate}
 >
   <div class="space-y-4">
@@ -961,7 +937,7 @@
       <label for="edit-property" class="block text-sm font-medium text-gray-700">Property</label>
       <select
         id="edit-property"
-        bind:value={editFormData.property_id}
+        bind:value={editData.property_id}
         class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
       >
         {#each properties as prop (prop.id)}
@@ -973,7 +949,7 @@
       <label for="edit-previous-reading" class="block text-sm font-medium text-gray-700">Previous Reading</label>
       <select
         id="edit-previous-reading"
-        bind:value={editFormData.previous_reading_id}
+        bind:value={editData.previous_reading_id}
         class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
       >
         {#each readings as reading (reading.id)}
@@ -987,7 +963,7 @@
       <label for="edit-current-reading" class="block text-sm font-medium text-gray-700">Current Reading</label>
       <select
         id="edit-current-reading"
-        bind:value={editFormData.current_reading_id}
+        bind:value={editData.current_reading_id}
         class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
       >
         {#each readings as reading (reading.id)}

@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
   import { getMeterGroups, createMeterGroup, updateMeterGroup, softDeleteMeterGroup, recordMeterGroupReset } from '$lib/api/meter-groups';
   import type { MeterGroup, CreateMeterGroupRequest, UpdateMeterGroupRequest } from '$lib/types/meter-group.types';
   import type { PaginatedResult } from '$lib/types/api.types';
@@ -9,7 +8,11 @@
   import EmptyState from '$lib/components/shared/EmptyState.svelte';
   import EditModal from '$lib/components/shared/EditModal.svelte';
   import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
+  import SelectionToolbar from '$lib/components/shared/SelectionToolbar.svelte';
+  import { createCrudStore } from '$lib/stores/crud.svelte';
   import { Archive, Plus, RotateCcw } from 'lucide-svelte';
+
+  const crud = createCrudStore<MeterGroup>();
 
   let data = $state<PaginatedResult<MeterGroup>>({
     data: [],
@@ -18,26 +21,14 @@
   });
   let isLoading = $state(false);
   let error = $state('');
-
   let createFormOpen = $state(false);
-  let editModalOpen = $state(false);
-  let editingItem = $state<MeterGroup | null>(null);
+  let resettingId = $state<string | null>(null);
+  let isUpdating = $state(false);
 
-  let createFormData = $state({
-    meter_name: '',
-    utility_type: 'electricity' as const
-  });
-
-  let editFormData = $state<UpdateMeterGroupRequest>({
+  let createFormData = $state<CreateMeterGroupRequest>({
     meter_name: '',
     utility_type: 'electricity'
   });
-
-  let editingId = $state<string | null>(null);
-  let deletingId = $state<string | null>(null);
-  let resettingId = $state<string | null>(null);
-  let selectedIds = $state<Set<string>>(new Set());
-  let isBatchDeleting = $state(false);
 
   onMount(async () => {
     await loadData();
@@ -67,38 +58,17 @@
     }
   }
 
-  function openEditModal(item: MeterGroup) {
-    editingItem = item;
-    editFormData = { meter_name: item.meter_name, utility_type: item.utility_type };
-    editModalOpen = true;
-  }
-
   async function handleUpdate() {
-    if (!editingItem) return;
-    editingId = editingItem.id;
+    if (!crud.editingItem) return;
+    isUpdating = true;
     try {
-      await updateMeterGroup(editingItem.id, editFormData);
-      editModalOpen = false;
-      editingItem = null;
+      await updateMeterGroup(crud.editingItem.id, crud.editFormData as UpdateMeterGroupRequest);
+      crud.closeEditModal();
       await loadData();
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to update meter group';
     } finally {
-      editingId = null;
-    }
-  }
-
-  async function handleSoftDelete(id: string) {
-    if (confirm('Archive this meter group? It can be restored from the archive.')) {
-      deletingId = id;
-      try {
-        await softDeleteMeterGroup(id);
-        await loadData();
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'Failed to archive meter group';
-      } finally {
-        deletingId = null;
-      }
+      isUpdating = false;
     }
   }
 
@@ -116,39 +86,7 @@
     }
   }
 
-  async function handleBatchDelete() {
-    if (selectedIds.size === 0) return;
-    if (!confirm(`Archive ${selectedIds.size} meter group(s)? They can be restored from the archive.`)) return;
-
-    isBatchDeleting = true;
-    try {
-      await Promise.all(Array.from(selectedIds).map(id => softDeleteMeterGroup(id)));
-      selectedIds.clear();
-      await loadData();
-    } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to archive meter groups';
-    } finally {
-      isBatchDeleting = false;
-    }
-  }
-
-  function toggleSelection(id: string) {
-    if (selectedIds.has(id)) {
-      selectedIds.delete(id);
-    } else {
-      selectedIds.add(id);
-    }
-    selectedIds = selectedIds;
-  }
-
-  function toggleSelectAll() {
-    if (selectedIds.size === data.data.length) {
-      selectedIds.clear();
-    } else {
-      selectedIds = new Set(data.data.map(item => item.id));
-    }
-    selectedIds = selectedIds;
-  }
+  const editData = $derived(crud.editFormData as UpdateMeterGroupRequest);
 </script>
 
 <div class="space-y-6">
@@ -178,9 +116,9 @@
     </div>
   </div>
 
-  {#if error}
+  {#if error || crud.error}
     <div class="rounded-lg bg-red-50 p-4 text-sm text-red-700">
-      {error}
+      {error || crud.error}
     </div>
   {/if}
 
@@ -237,18 +175,12 @@
       </div>
     {:else}
       <div class="space-y-3 mb-4">
-        {#if selectedIds.size > 0}
-          <div class="flex items-center justify-between rounded-lg bg-blue-50 p-3 border border-blue-200">
-            <span class="text-sm font-medium text-blue-900">{selectedIds.size} selected</span>
-            <button
-              onclick={handleBatchDelete}
-              disabled={isBatchDeleting}
-              class="px-3 py-1.5 rounded text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
-            >
-              {isBatchDeleting ? 'Archiving...' : 'Archive Selected'}
-            </button>
-          </div>
-        {/if}
+        <SelectionToolbar
+          selectedCount={crud.selectedIds.size}
+          isBatchDeleting={crud.isBatchDeleting}
+          onBatchDelete={() => crud.handleBatchDelete(softDeleteMeterGroup, loadData)}
+          entityLabel="meter group"
+        />
       </div>
       <table class="w-full text-sm">
         <thead class="border-b border-gray-200 bg-gray-50">
@@ -256,8 +188,8 @@
             <th scope="col" class="px-4 py-3 w-8">
               <input
                 type="checkbox"
-                checked={selectedIds.size === data.data.length && data.data.length > 0}
-                onchange={toggleSelectAll}
+                checked={crud.selectedIds.size === data.data.length && data.data.length > 0}
+                onchange={() => crud.toggleSelectAll(data.data.map(i => i.id), data.data.map(i => i.id))}
                 class="rounded"
               />
             </th>
@@ -274,8 +206,8 @@
               <td class="px-4 py-4 w-8">
                 <input
                   type="checkbox"
-                  checked={selectedIds.has(item.id)}
-                  onchange={() => toggleSelection(item.id)}
+                  checked={crud.selectedIds.has(item.id)}
+                  onchange={() => crud.toggleSelection(item.id)}
                   class="rounded"
                 />
               </td>
@@ -294,13 +226,14 @@
                     disabled={resettingId === item.id}
                     class="p-1.5 rounded hover:bg-orange-100 text-orange-700 disabled:opacity-50"
                     title="Reset meter"
+                    aria-label="Reset meter"
                   >
                     <RotateCcw size={16} />
                   </button>
                   <ActionButtons
-                    onEdit={() => openEditModal(item)}
-                    onSoftDelete={() => handleSoftDelete(item.id)}
-                    isLoading={deletingId === item.id}
+                    onEdit={() => crud.openEditModal(item, { meter_name: item.meter_name, utility_type: item.utility_type })}
+                    onSoftDelete={() => crud.handleSoftDelete(item.id, softDeleteMeterGroup, loadData, () => confirm('Archive this meter group? It can be restored from the archive.'))}
+                    isLoading={crud.deletingId === item.id}
                   />
                 </div>
               </td>
@@ -314,13 +247,10 @@
 
 <!-- Edit Modal -->
 <EditModal
-  bind:isOpen={editModalOpen}
+  bind:isOpen={crud.editModalOpen}
   title="Edit Meter Group"
-  isLoading={editingId === editingItem?.id}
-  onClose={() => {
-    editModalOpen = false;
-    editingItem = null;
-  }}
+  isLoading={isUpdating}
+  onClose={crud.closeEditModal}
   onSubmit={handleUpdate}
 >
   <div class="space-y-4">
@@ -329,7 +259,7 @@
       <input
         id="edit-meter-name"
         type="text"
-        bind:value={editFormData.meter_name}
+        bind:value={editData.meter_name}
         class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
       />
     </div>
@@ -337,7 +267,7 @@
       <label for="edit-utility-type" class="block text-sm font-medium text-gray-700">Utility Type</label>
       <select
         id="edit-utility-type"
-        bind:value={editFormData.utility_type}
+        bind:value={editData.utility_type}
         class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
       >
         <option value="electricity">Electricity</option>

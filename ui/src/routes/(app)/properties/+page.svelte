@@ -17,6 +17,10 @@
   import EditModal from '$lib/components/shared/EditModal.svelte';
   import { Plus, Archive } from 'lucide-svelte';
   import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
+  import SelectionToolbar from '$lib/components/shared/SelectionToolbar.svelte';
+  import { createCrudStore } from '$lib/stores/crud.svelte';
+
+  const crud = createCrudStore<Property>();
 
   let properties = $state<PaginatedResult<Property>>({
     data: [],
@@ -43,11 +47,7 @@
   let searchQuery = $state('');
   let activeTab = $state<'tenants' | 'readings' | 'billings' | 'history'>('tenants');
   let showNewPropertyForm = $state(false);
-  let editModalOpen = $state(false);
-  let editingProperty = $state<Property | null>(null);
-  let deletingPropertyId = $state<string | null>(null);
-  let selectedPropertyIds = $state<Set<string>>(new Set());
-  let isBatchDeleting = $state(false);
+  let isUpdating = $state(false);
 
   let newPropertyForm = $state({
     room_name: '',
@@ -201,7 +201,6 @@
   }
 
   function openEditModal(property: Property) {
-    editingProperty = property;
     editPropertyForm = {
       room_name: property.room_name,
       tenant_amount: property.tenant_amount,
@@ -210,72 +209,22 @@
         water: property.meter_groups.water
       }
     };
-    editModalOpen = true;
+    crud.openEditModal(property, editPropertyForm as any);
   }
 
   async function handleUpdateProperty() {
-    if (!editingProperty) return;
-    isLoading = true;
+    if (!crud.editingItem) return;
+    isUpdating = true;
     error = '';
     try {
-      await updateProperty(editingProperty.id, editPropertyForm);
-      editModalOpen = false;
-      editingProperty = null;
+      await updateProperty(crud.editingItem.id, editPropertyForm);
+      crud.closeEditModal();
       await loadProperties();
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to update property';
     } finally {
-      isLoading = false;
+      isUpdating = false;
     }
-  }
-
-  async function handleSoftDeleteProperty(id: string) {
-    if (confirm('Archive this property? It can be restored from the archive.')) {
-      deletingPropertyId = id;
-      error = '';
-      try {
-        await softDeleteProperty(id);
-        await loadProperties();
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'Failed to archive property';
-      } finally {
-        deletingPropertyId = null;
-      }
-    }
-  }
-
-  async function handleBatchDelete() {
-    if (selectedPropertyIds.size === 0) return;
-    if (!confirm(`Archive ${selectedPropertyIds.size} propert(ies)? They can be restored from the archive.`)) return;
-
-    isBatchDeleting = true;
-    try {
-      await Promise.all(Array.from(selectedPropertyIds).map(id => softDeleteProperty(id)));
-      selectedPropertyIds.clear();
-      await loadProperties();
-    } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to archive properties';
-    } finally {
-      isBatchDeleting = false;
-    }
-  }
-
-  function togglePropertySelection(id: string) {
-    if (selectedPropertyIds.has(id)) {
-      selectedPropertyIds.delete(id);
-    } else {
-      selectedPropertyIds.add(id);
-    }
-    selectedPropertyIds = selectedPropertyIds;
-  }
-
-  function toggleSelectAllProperties() {
-    if (selectedPropertyIds.size === filteredProperties.length) {
-      selectedPropertyIds.clear();
-    } else {
-      selectedPropertyIds = new Set(filteredProperties.map(item => item.id));
-    }
-    selectedPropertyIds = selectedPropertyIds;
   }
 </script>
 
@@ -405,18 +354,12 @@
         </div>
       {/if}
 
-      {#if selectedPropertyIds.size > 0}
-        <div class="flex items-center justify-between border-b border-gray-200 bg-blue-50 p-3">
-          <span class="text-xs font-medium text-blue-900">{selectedPropertyIds.size} selected</span>
-          <button
-            onclick={handleBatchDelete}
-            disabled={isBatchDeleting}
-            class="px-2 py-1 rounded text-xs font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
-          >
-            {isBatchDeleting ? 'Archiving...' : 'Archive'}
-          </button>
-        </div>
-      {/if}
+      <SelectionToolbar
+        selectedCount={crud.selectedIds.size}
+        isBatchDeleting={crud.isBatchDeleting}
+        onBatchDelete={() => crud.handleBatchDelete(softDeleteProperty, loadProperties)}
+        entityLabel="property"
+      />
 
       <div class="flex-1 overflow-y-auto">
         {#if filteredProperties.length === 0}
@@ -429,8 +372,8 @@
               <div class="flex items-start gap-2">
                 <input
                   type="checkbox"
-                  checked={selectedPropertyIds.has(property.id)}
-                  onchange={() => togglePropertySelection(property.id)}
+                  checked={crud.selectedIds.has(property.id)}
+                  onchange={() => crud.toggleSelection(property.id)}
                   class="mt-2 rounded"
                 />
                 <button
@@ -450,8 +393,8 @@
                   onEdit={() => {
                     openEditModal(property);
                   }}
-                  onSoftDelete={() => handleSoftDeleteProperty(property.id)}
-                  isLoading={deletingPropertyId === property.id}
+                  onSoftDelete={() => crud.handleSoftDelete(property.id, softDeleteProperty, loadProperties, () => confirm('Archive this property? It can be restored from the archive.'))}
+                  isLoading={crud.deletingId === property.id}
                 />
               </div>
             </div>
@@ -643,13 +586,10 @@
 
 <!-- Edit Modal -->
 <EditModal
-  bind:isOpen={editModalOpen}
+  bind:isOpen={crud.editModalOpen}
   title="Edit Property"
-  isLoading={isLoading}
-  onClose={() => {
-    editModalOpen = false;
-    editingProperty = null;
-  }}
+  isLoading={isUpdating}
+  onClose={crud.closeEditModal}
   onSubmit={handleUpdateProperty}
 >
   <div class="space-y-4">
