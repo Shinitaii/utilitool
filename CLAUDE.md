@@ -24,6 +24,21 @@ When Claude Code starts work on a task:
 
 Don't read this file (CLAUDE.md) again during the session unless you need context about deployment or setup.
 
+### Before Planning or Brainstorming
+
+Run RAG retrieval on the topic before writing any plan or spec:
+
+```bash
+# From repo root — requires utilitool.db (run python index_claude_md.py first if missing)
+npx tsx -e "
+import { queryRAG } from './api/functions/src/utils/rag-query.js';
+const results = await queryRAG('YOUR TOPIC HERE', 5);
+results.forEach(r => console.log('[' + r.similarity.toFixed(3) + '] ' + r.source + ' / ' + r.section + '\n' + r.text.slice(0, 200) + '\n'));
+"
+```
+
+Replace `YOUR TOPIC HERE` with the feature or question being planned (e.g. `"billing cycle validation"`, `"tenant CRUD"`, `"auth middleware"`). Use the returned chunks as grounding context before proposing approaches.
+
 ---
 
 ## Project Layout
