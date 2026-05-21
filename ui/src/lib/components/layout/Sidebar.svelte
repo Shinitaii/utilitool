@@ -4,7 +4,7 @@
   import { signOut } from 'firebase/auth';
   import { auth } from '$lib/firebase';
   import { getInitials } from '$lib/utils/format';
-  import { authStore } from '$lib/stores/auth.svelte';
+  import { authStore, type AuthState } from '$lib/stores/auth.svelte';
 
   interface NavItem {
     label: string;
@@ -23,16 +23,13 @@
     { label: 'Settings', href: '/settings' }
   ];
 
-  const archiveItems: NavItem[] = [
-    { label: 'Meter Groups', href: '/meter-groups/archive' },
-    { label: 'Properties', href: '/properties/archive' },
-    { label: 'Tenants', href: '/tenants/archive' },
-    { label: 'Readings', href: '/readings/archive' },
-    { label: 'Billings', href: '/billings/archive' }
-  ];
 
   let isLoggingOut = $state(false);
-  const authState = $state(authStore);
+  let authState = $state<AuthState>({ isAuthenticated: false, user: null, isLoading: false, error: null });
+
+  $effect(() => {
+    return authStore.subscribe(value => { authState = value; });
+  });
 
   function isActive(path: string): boolean {
     return $page.url.pathname.startsWith(path);
@@ -48,8 +45,8 @@
       await signOut(auth);
       authStore.logout();
       await goto('/login');
-    } catch (err) {
-      console.error('Logout error:', err);
+    } catch {
+      // logout errors are non-critical
     } finally {
       isLoggingOut = false;
     }
@@ -85,22 +82,6 @@
       {/each}
     </div>
 
-    <div class="space-y-1 pt-4 border-t border-gray-200">
-      <p class="px-3 text-xs font-semibold uppercase text-gray-500">Archives</p>
-      {#each archiveItems as item (item.href)}
-        <a
-          href={item.href}
-          class="flex items-center rounded px-3 py-2 text-xs font-medium transition-colors"
-          class:active={isActive(item.href)}
-          class:bg-gray-900={isActive(item.href)}
-          class:text-white={isActive(item.href)}
-          class:text-gray-600={!isActive(item.href)}
-          class:hover:bg-gray-50={!isActive(item.href)}
-        >
-          {item.label}
-        </a>
-      {/each}
-    </div>
   </nav>
 
   <div class="border-t border-gray-200 pt-4 space-y-3">

@@ -8,8 +8,6 @@
   let password = $state('');
   let isLoading = $state(false);
   let error = $state('');
-  let rememberMe = $state(false);
-
   async function handleLogin(e: SubmitEvent) {
     e.preventDefault();
     isLoading = true;
@@ -19,15 +17,16 @@
       await signInWithEmailAndPassword(auth, email, password);
       await goto('/dashboard');
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        if (err.message.includes('auth/invalid-credential')) {
-          error = 'Invalid email or password';
-        } else {
-          error = err.message;
-        }
-      } else {
-        error = 'Login failed. Please try again.';
-      }
+      const code = (err as { code?: string })?.code ?? '';
+      const firebaseMessages: Record<string, string> = {
+        'auth/invalid-credential': 'Invalid email or password',
+        'auth/wrong-password': 'Invalid email or password',
+        'auth/user-not-found': 'Invalid email or password',
+        'auth/too-many-requests': 'Too many failed attempts. Please try again later.',
+        'auth/user-disabled': 'This account has been disabled. Contact support.',
+        'auth/network-request-failed': 'Network error. Check your connection and try again.',
+      };
+      error = firebaseMessages[code] ?? 'Login failed. Please try again.';
     } finally {
       isLoading = false;
     }
@@ -82,13 +81,9 @@
       />
     </div>
 
-    <div class="flex items-center justify-between">
-      <label class="flex items-center">
-        <input type="checkbox" bind:checked={rememberMe} class="rounded border-gray-300" />
-        <span class="ml-2 text-sm text-gray-600">Remember me</span>
-      </label>
+    <div class="flex justify-end">
       <a href="/forgot-password" class="text-sm hover:text-gray-900" style="color: var(--color-accent)">
-        Forgot?
+        Forgot password?
       </a>
     </div>
 

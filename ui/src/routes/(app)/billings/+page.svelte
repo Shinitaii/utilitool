@@ -12,11 +12,12 @@
   import type { Property } from '$lib/types/property.types';
   import type { MeterGroup } from '$lib/types/meter-group.types';
   import type { PaginatedResult } from '$lib/types/api.types';
-  import { formatDate, formatCurrency } from '$lib/utils/format';
+  import { formatDate, formatCurrency, formatReading, getReadingUnit } from '$lib/utils/format';
   import { toDate } from '$lib/utils/timestamp';
   import EmptyState from '$lib/components/shared/EmptyState.svelte';
   import EditModal from '$lib/components/shared/EditModal.svelte';
   import StatusPill from '$lib/components/shared/StatusPill.svelte';
+  import { CheckCircle2, Pencil, Archive, Printer, Plus } from 'lucide-svelte';
 
   let cycles = $state<PaginatedResult<BillingCycle>>({
     data: [],
@@ -76,6 +77,22 @@
   let markingAsPaidId = $state<string | null>(null);
 
   let auth = $state<AuthState>({ isAuthenticated: false, user: null, isLoading: false, error: null });
+
+  // Filter readings for manual billing form based on selected property's meter groups
+  const manualBillingReadings = $derived.by(() => {
+    if (!readings || !createFormData.property_id) return readings || [];
+    const selectedProp = properties.find(p => p.id === createFormData.property_id);
+    if (!selectedProp) return readings;
+
+    const meterGroupIds = [selectedProp.meter_groups.electricity, selectedProp.meter_groups.water].filter(Boolean);
+    return readings.filter(r => meterGroupIds.includes(r.meter_group_id));
+  });
+
+  // Get utility type for cycle form meter group
+  const cycleFormUtilityType = $derived.by(() => {
+    const selectedMeterGroup = meterGroups.find(m => m.id === cycleFormMeterGroup);
+    return selectedMeterGroup?.utility_type || 'electricity';
+  });
 
   $effect(() => {
     return authStore.subscribe(value => { auth = value; });
@@ -371,8 +388,33 @@
       .replace(/'/g, '&#39;');
   }
 
+  function getCycleUtilityType(cycle: BillingCycle): string {
+    const cycleBillings = billings.get(cycle.id) || [];
+    if (cycleBillings.length > 0) {
+      const firstBilling = cycleBillings[0];
+      const firstReading = readings.find(r => r.id === firstBilling.current_reading_id);
+      if (firstReading) {
+        const meterGroup = meterGroups.find(m => m.id === firstReading.meter_group_id);
+        return meterGroup?.utility_type || 'electricity';
+      }
+    }
+    return 'electricity';
+  }
+
   function printReceipts(cycle: BillingCycle) {
     const cycleBillings = billings.get(cycle.id) || [];
+    // Determine utility type from first billing's reading
+    let utilityType = 'electricity';
+    if (cycleBillings.length > 0) {
+      const firstBilling = cycleBillings[0];
+      const firstReading = readings.find(r => r.id === firstBilling.current_reading_id);
+      if (firstReading) {
+        const meterGroup = meterGroups.find(m => m.id === firstReading.meter_group_id);
+        utilityType = meterGroup?.utility_type || 'electricity';
+      }
+    }
+
+    const unit = getReadingUnit(utilityType);
 
     const receiptHTML = cycleBillings.map(billing => {
       const property = properties.find(p => p.id === billing.property_id);
@@ -401,8 +443,8 @@
           <div style="margin-bottom: 30px; line-height: 1.8;">
             <p><strong>Property:</strong> ${roomName}</p>
             <p><strong>Billing Period:</strong> ${escHtml(formatDate(toDate(cycle.billing_start_date)))} to ${escHtml(formatDate(toDate(cycle.billing_end_date)))}</p>
-            <p><strong>Consumption:</strong> ${escHtml(consumption.toLocaleString())} kWh</p>
-            <p><strong>Rate:</strong> ₱${escHtml(cycle.billing_rate.toFixed(2))}/kWh</p>
+            <p><strong>Consumption:</strong> ${escHtml(consumption.toLocaleString())} ${unit}</p>
+            <p><strong>Rate:</strong> ₱${escHtml(cycle.billing_rate.toFixed(2))}/${unit}</p>
           </div>
 
           <div style="border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 20px 0; margin: 30px 0; font-size: 20px; font-weight: bold;">
@@ -424,25 +466,28 @@
       `;
     }).join('');
 
-    const printWindow = window.open('', '', 'width=800,height=600');
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Payment Receipts</title>
+      </head>
+      <body style="margin: 0; padding: 0; background: #f9f9f9;">
+        ${receiptHTML}
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([htmlContent], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const printWindow = window.open(url, '_blank', 'width=800,height=600');
+
     if (printWindow) {
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Payment Receipts</title>
-        </head>
-        <body style="margin: 0; padding: 0; background: #f9f9f9;">
-          ${receiptHTML}
-        </body>
-        </html>
-      `);
-      printWindow.document.close();
       setTimeout(() => {
         printWindow.print();
-      }, 250);
+      }, 500);
     }
   }
 </script>
@@ -456,16 +501,18 @@
     <div class="flex gap-3">
       <a
         href="/billings/archive"
-        class="rounded px-4 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium"
+        class="p-2 rounded hover:bg-gray-100 text-gray-700"
+        title="View archive"
       >
-        Archive
+        <Archive size={20} />
       </a>
       <button
         onclick={() => (cycleFormOpen = !cycleFormOpen)}
-        class="rounded px-4 py-2 text-white font-medium"
+        class="p-2 rounded text-white"
         style="background-color: var(--color-accent)"
+        title="Create new billing cycle"
       >
-        + New
+        <Plus size={20} />
       </button>
     </div>
   </div>
@@ -523,7 +570,7 @@
           </select>
         </div>
         <div>
-          <label for="cycle-rate" class="block text-sm font-medium text-gray-700">Billing Rate (₱/kWh)</label>
+          <label for="cycle-rate" class="block text-sm font-medium text-gray-700">Billing Rate (₱/{getReadingUnit(cycleFormUtilityType)})</label>
           <input
             id="cycle-rate"
             type="number"
@@ -578,7 +625,7 @@
               {#each cycleFormDiscoveredBillings as d (d.billingId)}
                 <tr class="border-b border-gray-100">
                   <td class="px-4 py-2 text-gray-900">{d.propertyName}</td>
-                  <td class="px-4 py-2 text-right font-mono text-gray-700">{d.consumption.toLocaleString()} kWh</td>
+                  <td class="px-4 py-2 text-right font-mono text-gray-700">{d.consumption.toLocaleString()} {getReadingUnit(cycleFormUtilityType)}</td>
                   <td class="px-4 py-2 text-right font-mono text-gray-900">{formatCurrency(d.amount)}</td>
                 </tr>
               {/each}
@@ -589,7 +636,7 @@
         <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <label for="cycle-total-consumption" class="block text-sm font-medium text-gray-700">
-              Total Consumption (kWh)
+              Total Consumption ({getReadingUnit(cycleFormUtilityType)})
             </label>
             <input
               id="cycle-total-consumption"
@@ -638,80 +685,84 @@
           Cancel
         </button>
       </div>
+
+      <!-- Manual Billing (Advanced) Tab -->
+      <details class="mt-6 rounded-lg border border-gray-200 bg-white">
+        <summary class="px-6 py-4 cursor-pointer font-medium text-sm text-gray-500">
+          Manual Billing (Advanced)
+        </summary>
+        <div class="px-6 pb-6">
+          <form onsubmit={handleCreate} class="space-y-4">
+            <div>
+              <label for="property-id" class="block text-sm font-medium text-gray-700">Property</label>
+              <select
+                id="property-id"
+                bind:value={createFormData.property_id}
+                required
+                class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
+              >
+                <option value="">Select a property</option>
+                {#each properties as prop (prop.id)}
+                  <option value={prop.id}>{prop.room_name}</option>
+                {/each}
+              </select>
+            </div>
+            <div>
+              <label for="previous-reading" class="block text-sm font-medium text-gray-700">Previous Reading</label>
+              <select
+                id="previous-reading"
+                bind:value={createFormData.previous_reading_id}
+                required
+                disabled={!createFormData.property_id}
+                class="mt-1 block w-full rounded border border-gray-300 px-3 py-2 disabled:opacity-50"
+              >
+                <option value="">Select previous reading</option>
+                {#each manualBillingReadings as reading (reading.id)}
+                  <option value={reading.id}>
+                    {formatReading(reading.reading_amount, meterGroups.find(m => m.id === reading.meter_group_id)?.utility_type || 'electricity')} - {formatDate(toDate(reading.reading_date))}
+                  </option>
+                {/each}
+              </select>
+            </div>
+            <div>
+              <label for="current-reading" class="block text-sm font-medium text-gray-700">Current Reading</label>
+              <select
+                id="current-reading"
+                bind:value={createFormData.current_reading_id}
+                required
+                disabled={!createFormData.property_id}
+                class="mt-1 block w-full rounded border border-gray-300 px-3 py-2 disabled:opacity-50"
+              >
+                <option value="">Select current reading</option>
+                {#each manualBillingReadings as reading (reading.id)}
+                  <option value={reading.id}>
+                    {formatReading(reading.reading_amount, meterGroups.find(m => m.id === reading.meter_group_id)?.utility_type || 'electricity')} - {formatDate(toDate(reading.reading_date))}
+                  </option>
+                {/each}
+              </select>
+            </div>
+            <div class="flex space-x-2">
+              <button
+                type="submit"
+                class="rounded px-4 py-2 text-white font-medium"
+                style="background-color: var(--color-accent)"
+              >
+                Create
+              </button>
+              <button
+                type="button"
+                onclick={() => (createFormOpen = false)}
+                class="rounded px-4 py-2 border border-gray-300 bg-white text-gray-700"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </details>
     </div>
   {/if}
 
-  <details class="rounded-lg border border-gray-200 bg-white" bind:open={createFormOpen}>
-    <summary class="px-6 py-4 cursor-pointer font-medium text-sm text-gray-500">
-      Manual Billing (Advanced)
-    </summary>
-    <div class="px-6 pb-6">
-      <form onsubmit={handleCreate} class="space-y-4">
-        <div>
-          <label for="property-id" class="block text-sm font-medium text-gray-700">Property</label>
-          <select
-            id="property-id"
-            bind:value={createFormData.property_id}
-            required
-            class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
-          >
-            <option value="">Select a property</option>
-            {#each properties as prop (prop.id)}
-              <option value={prop.id}>{prop.room_name}</option>
-            {/each}
-          </select>
-        </div>
-        <div>
-          <label for="previous-reading" class="block text-sm font-medium text-gray-700">Previous Reading</label>
-          <select
-            id="previous-reading"
-            bind:value={createFormData.previous_reading_id}
-            required
-            class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
-          >
-            <option value="">Select previous reading</option>
-            {#each readings as reading (reading.id)}
-              <option value={reading.id}>
-                {reading.reading_amount.toLocaleString()} kWh - {formatDate(toDate(reading.reading_date))}
-              </option>
-            {/each}
-          </select>
-        </div>
-        <div>
-          <label for="current-reading" class="block text-sm font-medium text-gray-700">Current Reading</label>
-          <select
-            id="current-reading"
-            bind:value={createFormData.current_reading_id}
-            required
-            class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
-          >
-            <option value="">Select current reading</option>
-            {#each readings as reading (reading.id)}
-              <option value={reading.id}>
-                {reading.reading_amount.toLocaleString()} kWh - {formatDate(toDate(reading.reading_date))}
-              </option>
-            {/each}
-          </select>
-        </div>
-        <div class="flex space-x-2">
-          <button
-            type="submit"
-            class="rounded px-4 py-2 text-white font-medium"
-            style="background-color: var(--color-accent)"
-          >
-            Create
-          </button>
-          <button
-            type="button"
-            onclick={() => (createFormOpen = false)}
-            class="rounded px-4 py-2 border border-gray-300 bg-white text-gray-700"
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
-    </div>
-  </details>
 
   <div class="space-y-4">
     {#if cycles.data.length === 0}
@@ -751,13 +802,13 @@
                   <div>
                     <div class="text-xs font-medium text-gray-600">Consumption</div>
                     <div class="font-mono font-semibold text-gray-900">
-                      {cycle.billing_consumption.toLocaleString()} kWh
+                      {cycle.billing_consumption.toLocaleString()} {getReadingUnit(getCycleUtilityType(cycle))}
                     </div>
                   </div>
                   <div>
                     <div class="text-xs font-medium text-gray-600">Rate</div>
                     <div class="font-mono font-semibold text-gray-900">
-                      ₱{cycle.billing_rate.toFixed(2)}/kWh
+                      ₱{cycle.billing_rate.toFixed(2)}/{getReadingUnit(getCycleUtilityType(cycle))}
                     </div>
                   </div>
                   <div>
@@ -776,10 +827,10 @@
                   e.stopPropagation();
                   printReceipts(cycle);
                 }}
-                class="ml-4 px-4 py-2 rounded text-sm font-medium text-white"
-                style="background-color: var(--color-accent)"
+                class="ml-4 p-2 rounded hover:bg-gray-100 text-gray-700"
+                title="Print receipts"
               >
-                Print Receipts
+                <Printer size={20} />
               </button>
             {/if}
           </div>
@@ -810,17 +861,29 @@
                     <tbody>
                       {#each billings.get(cycle.id) || [] as billing (billing.id)}
                         <tr class="border-b border-gray-100 hover:bg-white">
-                          <td class="px-6 py-3 font-mono text-xs text-gray-600">
-                            {billing.property_id.slice(0, 8)}...
+                          <td class="px-6 py-3 text-gray-900">
+                            {properties.find(p => p.id === billing.property_id)?.room_name ?? 'Unknown Property'}
                           </td>
-                          <td class="px-6 py-3 font-mono text-xs text-gray-600">
-                            {billing.previous_reading_id.slice(0, 8)}...
+                          <td class="px-6 py-3 font-mono text-gray-700">
+                            {#if readings.find(r => r.id === billing.previous_reading_id)}
+                              {formatReading(readings.find(r => r.id === billing.previous_reading_id)?.reading_amount || 0, meterGroups.find(m => m.id === readings.find(r => r.id === billing.previous_reading_id)?.meter_group_id)?.utility_type || 'electricity')}
+                            {:else}
+                              N/A
+                            {/if}
                           </td>
-                          <td class="px-6 py-3 font-mono text-xs text-gray-600">
-                            {billing.current_reading_id.slice(0, 8)}...
+                          <td class="px-6 py-3 font-mono text-gray-700">
+                            {#if readings.find(r => r.id === billing.current_reading_id)}
+                              {formatReading(readings.find(r => r.id === billing.current_reading_id)?.reading_amount || 0, meterGroups.find(m => m.id === readings.find(r => r.id === billing.current_reading_id)?.meter_group_id)?.utility_type || 'electricity')}
+                            {:else}
+                              N/A
+                            {/if}
                           </td>
                           <td class="px-6 py-3 text-right font-mono text-gray-700">
-                            {(cycle.billing_ids[billing.id] ?? 0).toLocaleString()} kWh
+                            {#if readings.find(r => r.id === billing.current_reading_id)}
+                              {(cycle.billing_ids[billing.id] ?? 0).toLocaleString()} {getReadingUnit(meterGroups.find(m => m.id === readings.find(r => r.id === billing.current_reading_id)?.meter_group_id)?.utility_type || 'electricity')}
+                            {:else}
+                              N/A
+                            {/if}
                           </td>
                           <td class="px-6 py-3 text-right font-semibold text-gray-900">
                             {formatCurrency(
@@ -831,29 +894,32 @@
                             <StatusPill status={billing.payment_status} />
                           </td>
                           <td class="px-6 py-3">
-                            <div class="flex gap-2 flex-wrap">
+                            <div class="flex gap-1">
                               {#if billing.payment_status === 'pending'}
                                 <button
                                   onclick={() => handleMarkAsPaid(billing.id)}
                                   disabled={isLoading || markingAsPaidId === billing.id}
-                                  class="px-3 py-1 rounded bg-green-100 text-green-700 hover:bg-green-200 font-medium text-sm disabled:opacity-50"
+                                  class="p-2 rounded hover:bg-green-100 text-green-700 disabled:opacity-50"
+                                  title="Mark as paid"
                                 >
-                                  {markingAsPaidId === billing.id ? 'Marking...' : 'Mark Paid'}
+                                  <CheckCircle2 size={18} />
                                 </button>
                               {/if}
                               <button
                                 onclick={() => openEditModal(billing)}
                                 disabled={isLoading || editingBillingId === billing.id}
-                                class="px-3 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200 font-medium text-sm disabled:opacity-50"
+                                class="p-2 rounded hover:bg-blue-100 text-blue-700 disabled:opacity-50"
+                                title="Edit billing"
                               >
-                                Edit
+                                <Pencil size={18} />
                               </button>
                               <button
                                 onclick={() => handleSoftDelete(billing.id)}
                                 disabled={isLoading || deletingBillingId === billing.id}
-                                class="px-3 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200 font-medium text-sm disabled:opacity-50"
+                                class="p-2 rounded hover:bg-red-100 text-red-700 disabled:opacity-50"
+                                title="Archive billing"
                               >
-                                {deletingBillingId === billing.id ? 'Archiving...' : 'Archive'}
+                                <Archive size={18} />
                               </button>
                             </div>
                           </td>
@@ -908,7 +974,7 @@
       >
         {#each readings as reading (reading.id)}
           <option value={reading.id}>
-            {reading.reading_amount.toLocaleString()} kWh - {formatDate(toDate(reading.reading_date))}
+            {formatReading(reading.reading_amount, meterGroups.find(m => m.id === reading.meter_group_id)?.utility_type || 'electricity')} - {formatDate(toDate(reading.reading_date))}
           </option>
         {/each}
       </select>
@@ -922,7 +988,7 @@
       >
         {#each readings as reading (reading.id)}
           <option value={reading.id}>
-            {reading.reading_amount.toLocaleString()} kWh - {formatDate(toDate(reading.reading_date))}
+            {formatReading(reading.reading_amount, meterGroups.find(m => m.id === reading.meter_group_id)?.utility_type || 'electricity')} - {formatDate(toDate(reading.reading_date))}
           </option>
         {/each}
       </select>

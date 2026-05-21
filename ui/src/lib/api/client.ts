@@ -1,7 +1,7 @@
 import { auth } from '$lib/firebase';
 import type { ApiError } from '$lib/types/api.types';
 
-const API_BASE_URL = 'http://localhost:5002';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5002';
 
 interface RequestOptions extends RequestInit {
   skipAuth?: boolean;
@@ -20,8 +20,7 @@ async function refreshAccessToken(): Promise<boolean> {
   try {
     await user.getIdToken(true);
     return true;
-  } catch (error) {
-    console.error('Token refresh failed:', error);
+  } catch {
     return false;
   }
 }
@@ -44,7 +43,16 @@ export async function apiRequest<T>(
   headers.set('Content-Type', 'application/json');
 
   const url = `${API_BASE_URL}${path}`;
-  let response = await fetch(url, { ...fetchOptions, headers });
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 20_000);
+
+  let response: Response;
+  try {
+    response = await fetch(url, { ...fetchOptions, headers, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   // Handle 401 by force-refreshing token and retrying once
   if (response.status === 401 && !skipAuth) {
@@ -54,7 +62,13 @@ export async function apiRequest<T>(
       if (token) {
         headers.set('Authorization', `Bearer ${token}`);
       }
-      response = await fetch(url, { ...fetchOptions, headers });
+      const retryController = new AbortController();
+      const retryTimeoutId = setTimeout(() => retryController.abort(), 20_000);
+      try {
+        response = await fetch(url, { ...fetchOptions, headers, signal: retryController.signal });
+      } finally {
+        clearTimeout(retryTimeoutId);
+      }
     }
   }
 
