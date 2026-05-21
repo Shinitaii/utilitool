@@ -260,7 +260,7 @@ describe('tenantService', () => {
     it('should update multiple tenants in a batch', async () => {
       const mocks = [mockTenant({ id: 'tenant-1' }), mockTenant({ id: 'tenant-2' })];
       jest.mocked(TenantValidator.prototype.validateBatchUpdate).mockResolvedValue(undefined);
-      jest.mocked(tenantRepository.update).mockResolvedValue(mockTenant());
+      jest.mocked(tenantRepository.updateBatch).mockResolvedValue(mocks);
 
       const input = [
         { id: 'tenant-1', data: { tenant_name: 'Updated 1' } },
@@ -268,6 +268,7 @@ describe('tenantService', () => {
       ];
       const result = await tenantService.updateBatch(input);
 
+      expect(tenantRepository.updateBatch).toHaveBeenCalledWith(input);
       expect(result).toHaveLength(2);
     });
 

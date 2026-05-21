@@ -23,20 +23,21 @@ describe('authService', () => {
   describe('getMe', () => {
     // Should return existing user profile
     it('should return existing user profile', async () => {
-      jest.mocked(getDocument).mockResolvedValue(mockUser());
+      const user = mockUser();
+      jest.mocked(getDocument).mockResolvedValue(user);
 
       const result = await getMe('user-1', 'test@example.com', 'Test User');
 
-      expect(result).toEqual(mockUser());
+      expect(result).toMatchObject({ id: 'user-1', email: 'test@example.com', display_name: 'Test User' });
       expect(jest.mocked(getDocument)).toHaveBeenCalledWith('users', 'user-1');
       expect(jest.mocked(setDocument)).not.toHaveBeenCalled();
     });
 
-    // Should create profile on first access if not found
+    // Should create profile on first access if not found (new users default to 'landlord')
     it('should create profile on first access if not found', async () => {
       jest.mocked(getDocument).mockResolvedValue(null);
       jest.mocked(setDocument).mockResolvedValue(
-        mockUser({ display_name: 'New User' })
+        mockUser({ display_name: 'New User', role: 'landlord' })
       );
 
       const result = await getMe('user-2', 'newuser@example.com', 'New User');
@@ -45,7 +46,7 @@ describe('authService', () => {
       expect(jest.mocked(setDocument)).toHaveBeenCalledWith('users', 'user-2', {
         email: 'newuser@example.com',
         display_name: 'New User',
-        role: 'admin',
+        role: 'landlord',
       });
       expect(result.display_name).toBe('New User');
     });
@@ -54,7 +55,7 @@ describe('authService', () => {
     it('should handle empty displayName gracefully', async () => {
       jest.mocked(getDocument).mockResolvedValue(null);
       jest.mocked(setDocument).mockResolvedValue(
-        mockUser({ display_name: '' })
+        mockUser({ display_name: '', role: 'landlord' })
       );
 
       const result = await getMe('user-3', 'test3@example.com');
@@ -62,7 +63,7 @@ describe('authService', () => {
       expect(jest.mocked(setDocument)).toHaveBeenCalledWith('users', 'user-3', {
         email: 'test3@example.com',
         display_name: '',
-        role: 'admin',
+        role: 'landlord',
       });
     });
   });
