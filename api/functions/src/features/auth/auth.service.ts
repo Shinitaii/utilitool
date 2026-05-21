@@ -14,7 +14,7 @@ export async function getMe(userId: string, email: string, displayName?: string)
   return setDocument<User>(COLLECTIONS.USERS, userId, {
     email,
     display_name: displayName || '',
-    role: 'admin',
+    role: 'landlord',
   });
 }
 
