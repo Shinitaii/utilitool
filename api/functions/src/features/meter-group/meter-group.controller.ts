@@ -49,6 +49,8 @@ export const getMeterGroups = async (
   const result = await meterGroupService.search({
     meterName: query.meterName,
     utilityType: query.utilityType,
+    sortBy: query.sortBy,
+    sortOrder: query.sortOrder,
     limit: query.limit,
     cursor: query.cursor ?? null,
     minimal: query.minimal,

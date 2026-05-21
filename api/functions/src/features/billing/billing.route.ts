@@ -19,18 +19,21 @@ import {
   UpdateBillingDTOSchema,
 } from "./billing.dto";
 import {validateRequest} from "../../middlewares/validate-request.middleware";
+import {requireRole} from "../../middlewares/require-role.middleware";
 
 const router = Router();
 
 router.post(
   "/batch",
   validateRequest({body: CreateBillingBatchDTOSchema}),
+  requireRole('admin', 'landlord'),
   createBatchBillings
 );
 
 router.patch(
   "/batch",
   validateRequest({body: UpdateBillingBatchDTOSchema}),
+  requireRole('admin', 'landlord'),
   updateBatchBillings
 );
 
@@ -61,18 +64,14 @@ router.patch(
 router.delete(
   "/:id",
   validateRequest({params: BillingByIdParamsDTOSchema}),
-  deleteBilling
-);
-
-router.patch(
-  "/:id/delete",
-  validateRequest({params: BillingByIdParamsDTOSchema}),
+  requireRole('admin', 'landlord'),
   softDeleteBilling
 );
 
 router.patch(
   "/:id/restore",
   validateRequest({params: BillingByIdParamsDTOSchema}),
+  requireRole('admin', 'landlord'),
   restoreBilling
 );
 

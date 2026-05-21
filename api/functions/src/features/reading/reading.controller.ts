@@ -49,6 +49,9 @@ export const getReadings = async (
 
   const result = await readingService.search({
     meterGroupId: query.meterGroupId,
+    propertyId: query.propertyId,
+    sortBy: query.sortBy,
+    sortOrder: query.sortOrder,
     limit: query.limit,
     cursor: query.cursor ?? null,
     archived: query.archived,

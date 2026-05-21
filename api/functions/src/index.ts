@@ -1,15 +1,15 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import pinoHttp from 'pino-http';
 import 'express-async-errors';
 import {onRequest} from 'firebase-functions/v2/https';
+import {Timestamp} from 'firebase-admin/firestore';
 
-import {logger} from './utils/logger.util';
 import {corsOptions} from './config/cors.config';
 import {authRateLimiter, apiRateLimiter} from './config/rate-limit.config';
 import {errorHandler} from './middlewares/error-handler.middleware';
 import {authMiddleware} from './middlewares/auth.middleware';
+import {requestLogger} from './middlewares/request-logger.middleware';
 import {setupSwagger} from './config/swagger.config';
 
 import authRoutes from './features/auth/auth.route';
@@ -23,15 +23,31 @@ import billsRoutes from './features/bills/bills.route';
 
 const app = express();
 
+// Trust proxy for rate limiting behind Firebase CDN
+app.set('trust proxy', 1);
+
+// JSON serializer: convert Firestore Timestamps to ISO strings and filter internal fields
+app.set('json replacer', (key: string, value: any) => {
+  // Strip internal soft-delete fields from responses
+  if (key === 'is_deleted' || key === 'deleted_at') {
+    return undefined;
+  }
+  // Convert Firestore Timestamps to ISO strings
+  if (value instanceof Timestamp) {
+    return value.toDate().toISOString();
+  }
+  return value;
+});
+
 // CORS & Security
 app.use(cors(corsOptions));
 app.use(helmet());
 
 // Logging
-app.use(pinoHttp({logger}));
+app.use(requestLogger);
 
-// Parsing (increased limit for base64 images in OCR requests)
-app.use(express.json({ limit: '1mb' }));
+// Parsing
+app.use(express.json());
 
 // Rate limiting (auth routes stricter)
 app.use('/auth', authRateLimiter);
@@ -43,8 +59,18 @@ setupSwagger(app);
 // Auth routes (no auth required)
 app.use('/auth', authRoutes);
 
+// Health check (unprotected)
+app.get('/health', (_req, res) => {
+  res.json({status: 'ok'});
+});
+
 // Protected routes (auth required)
 app.use(authMiddleware);
+
+// OCR routes: allow larger payloads (base64 images)
+app.use('/readings/ocr', express.json({limit: '1mb'}));
+app.use('/billing-cycles/ocr', express.json({limit: '1mb'}));
+
 app.use('/meter-groups', meterGroupRoutes);
 app.use('/properties', propertyRoutes);
 app.use('/tenants', tenantRoutes);
@@ -55,11 +81,6 @@ app.use('/bills', billsRoutes);
 
 // Error handling
 app.use(errorHandler);
-
-// Health check
-app.get('/health', (_req, res) => {
-  res.json({status: 'ok'});
-});
 
 export const api = onRequest(app);
 

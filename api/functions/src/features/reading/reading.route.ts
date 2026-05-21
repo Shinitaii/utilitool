@@ -21,24 +21,28 @@ import {
   OcrReadingDTOSchema,
 } from "./reading.dto";
 import {validateRequest} from "../../middlewares/validate-request.middleware";
+import {requireRole} from "../../middlewares/require-role.middleware";
 
 const router = Router();
 
 router.post(
   "/ocr",
   validateRequest({body: OcrReadingDTOSchema}),
+  requireRole('admin', 'landlord'),
   ocrReading
 );
 
 router.post(
   "/batch",
   validateRequest({body: CreateReadingBatchDTOSchema}),
+  requireRole('admin', 'landlord'),
   createBatchReadings
 );
 
 router.patch(
   "/batch",
   validateRequest({body: UpdateReadingBatchDTOSchema}),
+  requireRole('admin', 'landlord'),
   updateBatchReadings
 );
 
@@ -69,18 +73,14 @@ router.patch(
 router.delete(
   "/:id",
   validateRequest({params: ReadingByIdParamsDTOSchema}),
-  deleteReading
-);
-
-router.patch(
-  "/:id/delete",
-  validateRequest({params: ReadingByIdParamsDTOSchema}),
+  requireRole('admin', 'landlord'),
   softDeleteReading
 );
 
 router.patch(
   "/:id/restore",
   validateRequest({params: ReadingByIdParamsDTOSchema}),
+  requireRole('admin', 'landlord'),
   restoreReading
 );
 

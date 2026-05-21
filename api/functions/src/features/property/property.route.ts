@@ -19,18 +19,21 @@ import {
   UpdatePropertyDTOSchema,
 } from "./property.dto";
 import {validateRequest} from "../../middlewares/validate-request.middleware";
+import {requireRole} from "../../middlewares/require-role.middleware";
 
 const router = Router();
 
 router.post(
   "/batch",
   validateRequest({body: CreatePropertyBatchDTOSchema}),
+  requireRole('admin', 'landlord'),
   createBatchProperties
 );
 
 router.patch(
   "/batch",
   validateRequest({body: UpdatePropertyBatchDTOSchema}),
+  requireRole('admin', 'landlord'),
   updateBatchProperties
 );
 
@@ -61,18 +64,14 @@ router.patch(
 router.delete(
   "/:id",
   validateRequest({params: PropertyByIdParamsDTOSchema}),
-  deleteProperty
-);
-
-router.patch(
-  "/:id/delete",
-  validateRequest({params: PropertyByIdParamsDTOSchema}),
+  requireRole('admin', 'landlord'),
   softDeleteProperty
 );
 
 router.patch(
   "/:id/restore",
   validateRequest({params: PropertyByIdParamsDTOSchema}),
+  requireRole('admin', 'landlord'),
   restoreProperty
 );
 

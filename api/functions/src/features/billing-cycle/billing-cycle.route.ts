@@ -28,12 +28,14 @@ const router = Router();
 router.post(
   "/batch",
   validateRequest({body: CreateBillingCycleBatchDTOSchema}),
+  requireRole('admin', 'landlord'),
   createBatchBillingCycles
 );
 
 router.patch(
   "/batch",
   validateRequest({body: UpdateBillingCycleBatchDTOSchema}),
+  requireRole('admin', 'landlord'),
   updateBatchBillingCycles
 );
 
@@ -75,18 +77,13 @@ router.delete(
   "/:id",
   validateRequest({params: BillingCycleByIdParamsDTOSchema}),
   requireRole('admin', 'landlord'),
-  deleteBillingCycle
-);
-
-router.patch(
-  "/:id/delete",
-  validateRequest({params: BillingCycleByIdParamsDTOSchema}),
   softDeleteBillingCycle
 );
 
 router.patch(
   "/:id/restore",
   validateRequest({params: BillingCycleByIdParamsDTOSchema}),
+  requireRole('admin', 'landlord'),
   restoreBillingCycle
 );
 

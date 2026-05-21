@@ -27,12 +27,14 @@ const router = Router();
 router.post(
   "/batch",
   validateRequest({body: CreateMeterGroupBatchDTOSchema}),
+  requireRole('admin', 'landlord'),
   createBatchMeterGroups
 );
 
 router.patch(
   "/batch",
   validateRequest({body: UpdateMeterGroupBatchDTOSchema}),
+  requireRole('admin', 'landlord'),
   updateBatchMeterGroups
 );
 
@@ -71,18 +73,13 @@ router.delete(
   "/:id",
   validateRequest({params: MeterGroupByIdParamsDTOSchema}),
   requireRole('admin', 'landlord'),
-  deleteMeterGroup
-);
-
-router.patch(
-  "/:id/delete",
-  validateRequest({params: MeterGroupByIdParamsDTOSchema}),
   softDeleteMeterGroup
 );
 
 router.patch(
   "/:id/restore",
   validateRequest({params: MeterGroupByIdParamsDTOSchema}),
+  requireRole('admin', 'landlord'),
   restoreMeterGroup
 );
 

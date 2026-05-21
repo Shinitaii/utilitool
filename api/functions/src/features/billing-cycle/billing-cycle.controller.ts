@@ -52,6 +52,8 @@ export const getBillingCycles = async (
   const result = await billingCycleService.search({
     billingStartDate: query.billingStartDate,
     billingEndDate: query.billingEndDate,
+    sortBy: query.sortBy,
+    sortOrder: query.sortOrder,
     limit: query.limit,
     cursor: query.cursor ?? null,
     archived: query.archived,

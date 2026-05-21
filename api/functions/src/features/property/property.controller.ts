@@ -51,6 +51,8 @@ export const getProperties = async (
   const result = await propertyService.search({
     roomName: query.roomName,
     meterGroupId: query.meterGroupId,
+    sortBy: query.sortBy,
+    sortOrder: query.sortOrder,
     limit: query.limit,
     cursor: query.cursor ?? null,
     archived: query.archived,

@@ -48,6 +48,8 @@ export const getBillings = async (
 
   const result = await billingService.search({
     propertyId: query.propertyId,
+    sortBy: query.sortBy,
+    sortOrder: query.sortOrder,
     limit: query.limit,
     cursor: query.cursor ?? null,
     archived: query.archived,

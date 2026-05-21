@@ -51,6 +51,8 @@ export const getTenants = async (
   const result = await tenantService.search({
     tenantName: query.tenantName,
     propertyId: query.propertyId,
+    sortBy: query.sortBy,
+    sortOrder: query.sortOrder,
     limit: query.limit,
     cursor: query.cursor ?? null,
     archived: query.archived,
