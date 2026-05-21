@@ -31,6 +31,7 @@ export class ReadingValidator {
 
   private async validateMeterGroupConstraints(
     meterGroupId: string,
+    propertyId: string,
     readingDate: Timestamp
   ): Promise<void> {
     const {data: readings} = await readingRepository.search({
@@ -52,13 +53,17 @@ export class ReadingValidator {
 
     const existingInMonth = readings.some((r) => {
       const rd = r.reading_date.toDate();
-      return rd.getUTCMonth() === month && rd.getUTCFullYear() === year;
+      return (
+        r.property_id === propertyId &&
+        rd.getUTCMonth() === month &&
+        rd.getUTCFullYear() === year
+      );
     });
 
     if (existingInMonth) {
       throw new AppError(
         409,
-        "A reading for this meter group already exists in this month"
+        "A reading for this property and meter group already exists in this month"
       );
     }
   }
@@ -67,7 +72,7 @@ export class ReadingValidator {
     await this.validateMeterGroupExists(data.meter_group_id);
     this.validateReadingAmount(data.reading_amount);
     this.validateReadingDate(data.reading_date);
-    await this.validateMeterGroupConstraints(data.meter_group_id, data.reading_date);
+    await this.validateMeterGroupConstraints(data.meter_group_id, data.property_id, data.reading_date);
   }
 
   async validateBatch(data: CreateReadingDTO[]): Promise<void> {
@@ -83,7 +88,7 @@ export class ReadingValidator {
     }
 
     for (const item of data) {
-      await this.validateMeterGroupConstraints(item.meter_group_id, item.reading_date);
+      await this.validateMeterGroupConstraints(item.meter_group_id, item.property_id, item.reading_date);
     }
   }
 

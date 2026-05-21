@@ -1,11 +1,12 @@
 import {z} from "zod";
-import {Timestamp} from "firebase-admin/firestore";
+import {parseTimestamp} from "../../utils/firestore.util";
 
 // Create DTOS
 export const CreateReadingDTOSchema = z.object({
   meter_group_id: z.string().trim().min(1),
+  property_id: z.string().trim().min(1),
   reading_amount: z.number().int().min(0),
-  reading_date: z.instanceof(Timestamp),
+  reading_date: z.unknown().transform((val) => parseTimestamp(val)),
   image_url: z.url().optional(),
 });
 export type CreateReadingDTO = z.infer<typeof CreateReadingDTOSchema>;
@@ -47,6 +48,9 @@ export type ReadingByIdParamsDTO = z.infer<typeof ReadingByIdParamsDTOSchema>;
 export const GetReadingsQueryDTOSchema = z
   .object({
     meterGroupId: z.string().trim().min(1).optional(),
+    propertyId: z.string().trim().min(1).optional(),
+    sortBy: z.enum(["created_at", "reading_date"]).optional(),
+    sortOrder: z.enum(["asc", "desc"]).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(20),
     cursor: z.string().trim().min(1).optional(),
     archived: z.enum(["true", "false"]).optional().transform(
@@ -58,6 +62,13 @@ export const GetReadingsQueryDTOSchema = z
       context.addIssue({
         code: "custom",
         message: "cursor cannot be combined with meterGroupId",
+        path: ["cursor"],
+      });
+    }
+    if (value.propertyId && value.cursor) {
+      context.addIssue({
+        code: "custom",
+        message: "cursor cannot be combined with propertyId",
         path: ["cursor"],
       });
     }

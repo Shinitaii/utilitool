@@ -1,27 +1,29 @@
 ﻿import {CreateMeterGroupDTO} from "./meter-group.dto";
 import {MeterGroup} from "./meter-group.model";
-import {meterGroupRepository} from "./meter-group.repository";
 import {AppError} from "../../utils/error.util";
 import {logger} from "../../utils/logger.util";
+import {collectionRef} from "../../lib/firestore.lib";
+import {COLLECTIONS} from "../../constants/collection.constants";
+import {snapshotToModel} from "../../utils/firestore.util";
 
 const normalizeMeterName = (meterName: string) => meterName.trim().toLowerCase();
 
 export class MeterGroupValidator {
   private async findDuplicateMeterGroup(
     utilityType: MeterGroup["utility_type"],
-    meterName: string
+    meterName: string,
+    excludeId?: string
   ): Promise<MeterGroup | undefined> {
-    const {data: candidates} = await meterGroupRepository.search({
-      limit: 1000,
-      orderBy: "created_at",
-      filters: {utility_type: utilityType},
-    });
+    // Use indexed equality query instead of full collection scan
+    const normalizedName = normalizeMeterName(meterName);
+    const snap = await collectionRef(COLLECTIONS.METER_GROUPS)
+      .where("utility_type", "==", utilityType)
+      .where("is_deleted", "==", false)
+      .get();
 
-    const normalizedMeterName = normalizeMeterName(meterName);
-
-    return candidates.find(
-      (meterGroup) => normalizeMeterName(meterGroup.meter_name) === normalizedMeterName
-    );
+    return snap.docs
+      .map((doc) => snapshotToModel<MeterGroup>(doc))
+      .find((mg) => normalizeMeterName(mg.meter_name) === normalizedName && mg.id !== excludeId);
   }
 
   async validateCreate(data: CreateMeterGroupDTO): Promise<void> {
@@ -38,12 +40,15 @@ export class MeterGroupValidator {
 
     for (const item of data) {
       if (!existingByUtilityType.has(item.utility_type)) {
-        const {data: candidates} = await meterGroupRepository.search({
-          limit: 1000,
-          orderBy: "created_at",
-          filters: {utility_type: item.utility_type},
-        });
-        existingByUtilityType.set(item.utility_type, candidates);
+        // Indexed query instead of full collection scan
+        const snap = await collectionRef(COLLECTIONS.METER_GROUPS)
+          .where("utility_type", "==", item.utility_type)
+          .where("is_deleted", "==", false)
+          .get();
+        existingByUtilityType.set(
+          item.utility_type,
+          snap.docs.map((doc) => snapshotToModel<MeterGroup>(doc))
+        );
       }
 
       const normalizedMeterName = normalizeMeterName(item.meter_name);

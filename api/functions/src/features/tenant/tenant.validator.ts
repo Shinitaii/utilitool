@@ -4,6 +4,9 @@ import {propertyRepository} from "../property/property.repository";
 import {tenantRepository} from "./tenant.repository";
 import {CreateTenantDTO, UpdateTenantDTO} from "./tenant.dto";
 import {Tenant} from "./tenant.model";
+import {collectionRef} from "../../lib/firestore.lib";
+import {COLLECTIONS} from "../../constants/collection.constants";
+import {snapshotToModel} from "../../utils/firestore.util";
 
 const normalizeTenantName = (tenantName: string) => tenantName.trim().toLowerCase();
 
@@ -13,40 +16,26 @@ export class TenantValidator {
     tenantName: string,
     excludeId?: string
   ): Promise<Tenant | undefined> {
-    const {data: candidates} = await tenantRepository.search({
-      limit: 1000,
-      orderBy: "created_at",
-      filters: {property_id: propertyId},
-    });
-
+    // Indexed query scoped to one property — avoids full collection scan
     const normalizedTenantName = normalizeTenantName(tenantName);
+    const snap = await collectionRef(COLLECTIONS.TENANTS)
+      .where("property_id", "==", propertyId)
+      .where("is_deleted", "==", false)
+      .get();
 
-    return candidates.find((tenant) => {
-      if (excludeId && tenant.id === excludeId) {
-        return false;
-      }
-
-      return normalizeTenantName(tenant.tenant_name) === normalizedTenantName;
-    });
+    return snap.docs
+      .map((doc) => snapshotToModel<Tenant>(doc))
+      .find((t) => t.id !== excludeId && normalizeTenantName(t.tenant_name) === normalizedTenantName);
   }
 
   private async countTenantsForProperty(propertyId: string): Promise<number> {
-    let cursor: string | null = null;
-    let total = 0;
+    // Indexed count query — no full collection scan
+    const snap = await collectionRef(COLLECTIONS.TENANTS)
+      .where("property_id", "==", propertyId)
+      .where("is_deleted", "==", false)
+      .get();
 
-    do {
-      const {data, hasMore, nextCursor} = await tenantRepository.search({
-        limit: 1000,
-        orderBy: "created_at",
-        cursor,
-        filters: {property_id: propertyId},
-      });
-
-      total += data.length;
-      cursor = hasMore ? nextCursor : null;
-    } while (cursor);
-
-    return total;
+    return snap.size;
   }
 
   private async ensurePropertyExists(propertyId: string): Promise<void> {

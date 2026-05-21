@@ -43,6 +43,16 @@ export class BillingValidator {
         "Previous and current readings must belong to the same meter group"
       );
     }
+
+    // Skip rollback check if meter was reset (indicated by version bump)
+    if (currentReading.meter_version === previousReading.meter_version) {
+      if (currentReading.reading_amount <= previousReading.reading_amount) {
+        throw new AppError(
+          400,
+          "Current reading must be greater than previous reading (meter rollback not allowed)"
+        );
+      }
+    }
   }
 
   async validateCreate(data: CreateBillingDTO): Promise<void> {

@@ -1,31 +1,33 @@
-// NOTE: MemoryStore is per-instance and not shared across Firebase Function
-// instances (maxInstances: 2). For a shared limit, replace with a Redis-backed
-// store once Redis is provisioned. See redis.config.ts.
 import rateLimit from "express-rate-limit";
+import {RedisStore} from "rate-limit-redis";
+import {getRedisClient} from "./redis.config";
 
 const TOO_MANY_REQUESTS_MESSAGE = "Too many requests, please try again later.";
 
-/**
- * Stricter limiter for authentication routes (/auth).
- * Prevents brute-force login and registration abuse.
- * Allows 20 requests per 15-minute window per IP.
- */
+function buildStore(prefix: string) {
+  const redis = getRedisClient();
+  if (!redis) return undefined;
+  return new RedisStore({
+    // rate-limit-redis calls sendCommand with individual string args
+    sendCommand: (...args: string[]) => redis.call(args[0], ...args.slice(1)) as Promise<number>,
+    prefix,
+  });
+}
+
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 20,
   standardHeaders: "draft-8",
   legacyHeaders: false,
   message: {error: TOO_MANY_REQUESTS_MESSAGE},
+  store: buildStore("rl:auth:"),
 });
 
-/**
- * General limiter for all other API routes.
- * Allows 100 requests per 15-minute window per IP.
- */
 export const apiRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 100,
+  windowMs: 60 * 60 * 1000,
+  limit: 1000,
   standardHeaders: "draft-8",
   legacyHeaders: false,
   message: {error: TOO_MANY_REQUESTS_MESSAGE},
+  store: buildStore("rl:api:"),
 });

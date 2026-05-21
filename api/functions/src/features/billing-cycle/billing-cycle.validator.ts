@@ -21,10 +21,12 @@ export class BillingCycleValidator {
   }
 
   private async validateBillingIdsExist(billingIds: string[]): Promise<void> {
-    for (const billingId of billingIds) {
-      const billing = await billingRepository.getById(billingId);
-      if (!billing) {
-        throw new AppError(404, "Billing not found");
+    const billings = await Promise.all(
+      billingIds.map((id) => billingRepository.getById(id))
+    );
+    for (let i = 0; i < billings.length; i++) {
+      if (!billings[i]) {
+        throw new AppError(404, `Billing not found: ${billingIds[i]}`);
       }
     }
   }
