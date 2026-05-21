@@ -47,6 +47,60 @@ Response (controller returns JSON or error handler catches it)
 
 ---
 
+## Recent Improvements (Audit — May 2026)
+
+This section documents key improvements made during the comprehensive codebase audit.
+
+### Soft-Delete Pattern (D1)
+- All deletion endpoints now use `DELETE /:id` for soft deletion (sets `is_deleted` flag)
+- Removed hard delete endpoints entirely — only soft delete is available
+- No destructive operations on production data
+- `PATCH /:id/restore` to restore deleted resources
+
+### Timestamp Serialization (D2)
+- JSON responses now convert Firestore Timestamps to ISO 8601 strings
+- Prevents internal Firestore object structure leakage in API responses
+- Client-side: strings are automatically converted back to Date objects by timestamp utilities
+
+### Composite Firestore Indices (D3)
+- Indices created for efficient soft-delete + filter queries
+- Examples: `(is_deleted, created_at)`, `(is_deleted, property_id, created_at)`
+- Improves performance on archived/filtered list queries
+
+### Meter Rollback Prevention (D4)
+- New utility function: `validateMeterRollback()` in `src/features/reading/reading.util.ts`
+- Prevents meter reading regression (current reading ≥ previous reading when versions match)
+- Exception: rollback check skipped when reading crosses meter reset boundary
+- Applied to: readings and billings services
+
+### Dynamic List Sorting (D5)
+- All list endpoints support `sortBy` and `sortOrder` query parameters
+- Per-entity field enums:
+  - **meter-groups**: `[created_at, meter_name]`
+  - **properties**: `[created_at, room_name]`
+  - **tenants**: `[created_at, tenant_name]`
+  - **readings**: pagination only (no sorting yet)
+  - **billings**: `[created_at, payment_status]`
+  - **billing-cycles**: `[created_at, billing_start_date]`
+
+### Error Handling & Observability (E1–E3)
+- **Request logging**: Structured middleware logs method, path, userId, duration, status
+- **Error context**: Service errors logged with request context for debugging
+- **Query logging**: Repository operations logged with collection, filters, indices
+
+### Code Quality (C1–C3)
+- **Shared utilities**: Extracted `reading.util.ts` with 3 reusable helpers
+- **Type safety**: Added `SummaryMeterGroup` type (omits large `versions` field) for list responses
+- **Query optimization**: Property duplicate check now filters by `room_name` (indexed) instead of scanning all 1000 docs
+
+### API Design Standards (H1–H4)
+- **Pagination**: Cursor-based pagination on all list endpoints (`data[]`, `hasMore`, `nextCursor`)
+- **Batch operations**: Consistent `POST /batch` (create) and `PATCH /batch` (update) endpoints
+- **204 No Content**: No longer used; soft delete returns 200 with resource
+- **Archive/Restore**: Symmetric `DELETE /:id` (soft delete) and `PATCH /:id/restore` (restore)
+
+---
+
 ## Feature Layer Pattern
 
 Every API feature lives in `src/features/<name>/` and follows this 8-layer structure:
@@ -98,14 +152,13 @@ Represents utility type containers (electricity, water).
 |--------|------|---------|
 | POST | `/meter-groups` | Create meter group |
 | POST | `/meter-groups/batch` | Batch create (1–10 items) |
-| GET | `/meter-groups` | List with filters (meterName, utilityType, **minimal=true** for dropdowns) + pagination |
+| GET | `/meter-groups` | List with filters (meterName, utilityType, **minimal=true** for dropdowns) + sorting (sortBy=[created_at,meter_name], sortOrder=[asc,desc]) + pagination |
 | GET | `/meter-groups/:id` | Get single meter group |
 | PATCH | `/meter-groups/:id` | Update meter group |
 | PATCH | `/meter-groups/batch` | Batch update (1–10 items) |
 | POST | `/meter-groups/:id/reset` | Record a physical meter reset (bumps version, snapshots last reading) |
-| DELETE | `/meter-groups/:id` | Hard delete |
-| PATCH | `/meter-groups/:id/delete` | Soft delete (set deleted_at) |
-| PATCH | `/meter-groups/:id/restore` | Restore deleted meter group (clear deleted_at) |
+| DELETE | `/meter-groups/:id` | Soft delete (set is_deleted flag) |
+| PATCH | `/meter-groups/:id/restore` | Restore deleted meter group (clear is_deleted flag) |
 
 **Business rules**:
 - Unique meter_name per utility_type
@@ -129,13 +182,12 @@ Represents buildings/units that consume utilities.
 |--------|------|---------|
 | POST | `/properties` | Create property |
 | POST | `/properties/batch` | Batch create |
-| GET | `/properties` | List with filters (roomName, meterGroupId) |
+| GET | `/properties` | List with filters (roomName, meterGroupId) + sorting (sortBy=[created_at,room_name], sortOrder=[asc,desc]) + pagination |
 | GET | `/properties/:id` | Get single property |
 | PATCH | `/properties/:id` | Update property |
 | PATCH | `/properties/batch` | Batch update |
-| DELETE | `/properties/:id` | Hard delete |
-| PATCH | `/properties/:id/delete` | Soft delete |
-| PATCH | `/properties/:id/restore` | Restore property |
+| DELETE | `/properties/:id` | Soft delete (set is_deleted flag) |
+| PATCH | `/properties/:id/restore` | Restore property (clear is_deleted flag) |
 
 **Business rules**:
 - Must reference valid meter_group_id
@@ -154,13 +206,12 @@ Represents individual renters/occupants.
 |--------|------|---------|
 | POST | `/tenants` | Create tenant |
 | POST | `/tenants/batch` | Batch create |
-| GET | `/tenants` | List with filters (tenantName, propertyId) |
+| GET | `/tenants` | List with filters (tenantName, propertyId) + sorting (sortBy=[created_at,tenant_name], sortOrder=[asc,desc]) + pagination |
 | GET | `/tenants/:id` | Get single tenant |
 | PATCH | `/tenants/:id` | Update tenant |
 | PATCH | `/tenants/batch` | Batch update |
-| DELETE | `/tenants/:id` | Hard delete |
-| PATCH | `/tenants/:id/delete` | Soft delete |
-| PATCH | `/tenants/:id/restore` | Restore tenant |
+| DELETE | `/tenants/:id` | Soft delete (set is_deleted flag) |
+| PATCH | `/tenants/:id/restore` | Restore tenant (clear is_deleted flag) |
 
 **Business rules**:
 - Unique tenant_name per property
@@ -179,13 +230,12 @@ Represents snapshots of meter consumption. **Single create has a critical side e
 |--------|------|---------|
 | POST | `/readings` | Create reading + auto-create billings (see below) |
 | POST | `/readings/batch` | Batch create (no auto-billing) |
-| GET | `/readings` | List with filters (meterGroupId) |
+| GET | `/readings` | List with filters (meterGroupId) + pagination |
 | GET | `/readings/:id` | Get single reading |
 | PATCH | `/readings/:id` | Update reading |
 | PATCH | `/readings/batch` | Batch update |
-| DELETE | `/readings/:id` | Hard delete |
-| PATCH | `/readings/:id/delete` | Soft delete |
-| PATCH | `/readings/:id/restore` | Restore reading |
+| DELETE | `/readings/:id` | Soft delete (set is_deleted flag) |
+| PATCH | `/readings/:id/restore` | Restore reading (clear is_deleted flag) |
 
 **Business rules**:
 - Must reference valid meter_group_id
@@ -219,13 +269,12 @@ Represents individual bill records linking a property to a reading pair. **Billi
 |--------|------|---------|
 | POST | `/billings` | Create billing (manual — use for corrections only) |
 | POST | `/billings/batch` | Batch create (manual) |
-| GET | `/billings` | List with filters (propertyId) |
+| GET | `/billings` | List with filters (propertyId) + sorting (sortBy=[created_at,payment_status], sortOrder=[asc,desc]) + pagination |
 | GET | `/billings/:id` | Get single billing |
 | PATCH | `/billings/:id` | Update billing |
 | PATCH | `/billings/batch` | Batch update |
-| DELETE | `/billings/:id` | Hard delete |
-| PATCH | `/billings/:id/delete` | Soft delete |
-| PATCH | `/billings/:id/restore` | Restore billing |
+| DELETE | `/billings/:id` | Soft delete (set is_deleted flag) |
+| PATCH | `/billings/:id/restore` | Restore billing (clear is_deleted flag) |
 
 **Business rules**:
 - Must reference valid property_id, previous_reading_id, current_reading_id
@@ -249,13 +298,12 @@ Represents billing periods with validation and rate calculation.
 | POST | `/billing-cycles` | Create billing cycle + validate |
 | POST | `/billing-cycles/batch` | Batch create |
 | POST | `/billing-cycles/ocr` | Extract billing data from utility bill photo (Gemini vision) |
-| GET | `/billing-cycles` | List with filters (billingStartDate, billingEndDate) |
+| GET | `/billing-cycles` | List with filters (billingStartDate, billingEndDate) + sorting (sortBy=[created_at,billing_start_date], sortOrder=[asc,desc]) + pagination |
 | GET | `/billing-cycles/:id` | Get single cycle |
 | PATCH | `/billing-cycles/:id` | Update cycle |
 | PATCH | `/billing-cycles/batch` | Batch update |
-| DELETE | `/billing-cycles/:id` | Hard delete |
-| PATCH | `/billing-cycles/:id/delete` | Soft delete |
-| PATCH | `/billing-cycles/:id/restore` | Restore cycle |
+| DELETE | `/billing-cycles/:id` | Soft delete (set is_deleted flag) |
+| PATCH | `/billing-cycles/:id/restore` | Restore cycle (clear is_deleted flag) |
 
 **Business rules**:
 - billing_ids: Record<billingId, consumptionAmount> — all IDs must exist + be valid
@@ -283,21 +331,20 @@ Represents billing periods with validation and rate calculation.
 
 ## HTTP Method Semantics
 
-**Why we use PATCH instead of PUT**:
+**DELETE = Soft Delete (not hard removal)**
 
 | Operation | Method | Path | Why |
 |-----------|--------|------|-----|
 | Update | PATCH | `/:id` | Partial modification of a resource |
 | Batch update | PATCH | `/batch` | Multiple partial modifications |
-| Soft delete | PATCH | `/:id/delete` | State change (marking as deleted) |
-| Restore | PATCH | `/:id/restore` | State change (unmarking as deleted) |
-| Hard delete | DELETE | `/:id` | Removal of the entire resource |
+| Soft delete | DELETE | `/:id` | Semantic: "delete from user view" (mark as deleted) |
+| Restore | PATCH | `/:id/restore` | Restore from deletion (state change) |
 
 **Rationale**: 
-- **PATCH** is for partial, idempotent modifications (updates, state changes)
-- **DELETE** is only for hard removal of documents
-- This keeps soft delete and restore symmetric (both PATCH state operations)
-- Soft delete is not a destructive operation — it's a state change, not a removal
+- **DELETE** is semantically correct for soft deletion — from the user's perspective, the resource is gone (hidden)
+- No hard delete endpoints — soft delete is the only deletion option, ensuring data safety
+- **PATCH** is used for all state modifications (updates, restore)
+- Timestamps are serialized to ISO strings in responses (D2 fix) for proper JSON handling
 
 ---
 

@@ -266,14 +266,16 @@ export async function logout(refreshTokenId: string): Promise<void>
 
 ### meter-groups.ts
 ```ts
-export async function getMeterGroups(params?: { meterName?, utilityType?, limit?, cursor? }): Promise<PaginatedResult<MeterGroup>>
+export async function getMeterGroups(params?: { meterName?, utilityType?, sortBy?, sortOrder?, limit?, cursor? }): Promise<PaginatedResult<MeterGroup>>
 export async function getMeterGroupById(id: string): Promise<MeterGroup>
 export async function createMeterGroup(data: CreateMeterGroupRequest): Promise<MeterGroup>
 export async function updateMeterGroup(id: string, data: UpdateMeterGroupRequest): Promise<MeterGroup>
-export async function deleteMeterGroup(id: string): Promise<void>
-export async function softDeleteMeterGroup(id: string): Promise<MeterGroup>
+export async function softDeleteMeterGroup(id: string): Promise<MeterGroup>  // Uses DELETE /:id
+export async function restoreMeterGroup(id: string): Promise<MeterGroup>    // Uses PATCH /:id/restore
 // + batch methods
 ```
+
+**Note**: `softDeleteMeterGroup()` now uses `apiDelete()` (DELETE method) instead of `apiPatch()`. Hard delete endpoints removed.
 
 (Same pattern for properties, tenants, readings, billings, billing-cycles)
 

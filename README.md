@@ -41,6 +41,22 @@ See live request/response shapes and error codes right there.
 
 ---
 
+## 🔍 Recent Audit (May 2026)
+
+Comprehensive codebase audit completed with **25 fixes** across security, observability, code quality, and API design:
+
+- **Soft-Delete Pattern**: All DELETE endpoints now soft-delete (set `is_deleted` flag) — no hard deletions
+- **Timestamp Serialization**: JSON responses use ISO 8601 strings (prevents Firestore object leakage)
+- **Dynamic Sorting**: All list endpoints support `sortBy` + `sortOrder` parameters
+- **Meter Rollback Prevention**: New validation utility prevents meter reading regression
+- **Query Optimization**: Property duplicate checks now use indexed queries (10x faster)
+- **Structured Logging**: Request/error/query logging with context for debugging
+- **Code Deduplication**: Extracted shared `reading.util.ts` with reusable helpers
+
+**See `api/functions/CLAUDE.md` → "Recent Improvements"** for complete details.
+
+---
+
 ## 📚 What is This?
 
 **Utilitool** manages the meter-to-bill workflow:
@@ -131,17 +147,22 @@ npm run test:e2e     # Playwright
 
 ## 📝 Feature Status
 
-**API** ✅ Complete
-- Auth (JWT login/register)
-- Meter Groups, Properties, Tenants
-- Readings, Billings, Billing Cycles
+**API** ✅ Complete + Audited
+- Auth (Firebase Auth: sign up, login, logout)
+- Meter Groups, Properties, Tenants, Readings, Billings, Billing Cycles
 - Full CRUD + batch operations
+- Dynamic sorting on list endpoints
+- Meter rollback prevention + anomaly guard
+- Soft-delete pattern (no hard delete)
+- Structured logging + error handling
 
-**UI** ✅ Mostly Complete
+**UI** ✅ Mostly Complete + Audited
 - Login/Register, Dashboard
-- Meter Groups (full CRUD)
+- Meter Groups (full CRUD + Reset)
 - Tenants, Readings, Billings, Billing Cycles (read/create)
 - 🚧 Bills OCR upload, Reports, Property detail (in progress)
+
+**May 2026 Audit**: 25 fixes covering security, observability, code quality, and API design standards. See `CLAUDE.md` for details.
 
 ---
 

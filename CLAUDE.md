@@ -209,16 +209,26 @@ Each page/component is organized by:
 
 ## Feature Status
 
-### API Features (Complete)
-- ✅ Meter Groups (CRUD, batch; `POST /:id/reset` records a physical meter reset and bumps version)
-- ✅ Properties (CRUD, batch)
-- ✅ Tenants (CRUD, batch)
-- ✅ Readings (CRUD, batch; single create auto-creates billings; anomaly guard rejects suspiciously high reads)
-- ✅ Billings (CRUD, batch; normally auto-created by reading service)
-- ✅ Billing Cycles (CRUD, batch, validation; version-aware consumption formula; `POST /ocr` extracts bill data from photo)
-- ✅ Auth (JWT: login, register, refresh, logout)
+### API Features (Complete + Audited May 2026)
+- ✅ Meter Groups (CRUD, batch; `POST /:id/reset` records reset + bumps version; dynamic sorting)
+- ✅ Properties (CRUD, batch; dynamic sorting; optimized duplicate detection)
+- ✅ Tenants (CRUD, batch; dynamic sorting)
+- ✅ Readings (CRUD, batch; auto-billing on single create; anomaly guard; meter rollback prevention; utility extraction)
+- ✅ Billings (CRUD, batch; normally auto-created; meter rollback prevention)
+- ✅ Billing Cycles (CRUD, batch, validation; version-aware consumption; `POST /ocr` bill photo extraction; dynamic sorting)
+- ✅ Auth (Firebase Auth: sign up, login, logout)
 
-### UI Pages (Complete)
+**Audit Highlights (25 fixes)**:
+- **D1**: Soft-delete pattern — all DELETE endpoints soft-delete (set `is_deleted` flag), no hard delete
+- **D2**: Timestamp serialization — JSON responses use ISO 8601 strings
+- **D3**: Firestore indices — composite indices for soft-delete + filter queries
+- **D4**: Meter rollback prevention — utility validates no meter regression
+- **D5**: Dynamic sorting — `sortBy`, `sortOrder` on all list endpoints
+- **E1–E3**: Structured logging (requests, errors, queries)
+- **C1–C3**: Code deduplication, type safety, query optimization
+- **H1–H4**: Consistent pagination, batch ops, archive/restore semantics
+
+### UI Pages (Complete + Audited May 2026)
 - ✅ Login / Register
 - ✅ Dashboard (stat cards + properties table)
 - ✅ Meter Groups (full CRUD table; Version column; Reset Meter button)
