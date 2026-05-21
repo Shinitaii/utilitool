@@ -6,8 +6,10 @@ const transport = isTest ? undefined : {
   target: "pino-pretty",
   options: {
     colorize: true,
-    translateTime: "SYS:standard",
-    ignore: "pid,hostname",
+    translateTime: "HH:MM:ss",
+    ignore: "pid,hostname,req,res",
+    singleLine: false,
+    levelFirst: true,
   },
 };
 

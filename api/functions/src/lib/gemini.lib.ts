@@ -1,4 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { isDevelopment } from '../config/env.config';
+import { logger } from '../utils/logger.util';
 
 export interface BillOcrResult {
   billing_start_date: string;
@@ -10,24 +12,22 @@ export interface BillOcrResult {
 
 class GeminiLib {
   private client: GoogleGenerativeAI | null;
-  private isDevelopment: boolean;
 
   constructor(apiKey: string | null) {
-    this.isDevelopment = process.env.NODE_ENV === 'development';
     if (apiKey) {
       this.client = new GoogleGenerativeAI(apiKey);
     } else {
       this.client = null;
-      if (this.isDevelopment) {
-        console.warn('⚠️  GEMINI_API_KEY not set. OCR will return mock responses in development.');
+      if (isDevelopment) {
+        logger.warn('GEMINI_API_KEY not set. OCR will return mock responses in development.');
       }
     }
   }
 
   async extractReadingFromImage(imageUrl: string): Promise<number | null> {
     if (!this.client) {
-      if (this.isDevelopment) {
-        console.debug('OCR: Returning mock reading (dev mode, no API key)');
+      if (isDevelopment) {
+        logger.debug('OCR: Returning mock reading (dev mode, no API key)');
         return 1234; // Mock reading
       }
       throw new Error('GEMINI_API_KEY not configured');
@@ -55,15 +55,15 @@ class GeminiLib {
 
       return Number.isNaN(reading) ? null : reading;
     } catch (error) {
-      console.error('Error extracting reading from image:', error);
+      logger.error({error}, 'Error extracting reading from image');
       return null;
     }
   }
 
   async extractBillData(imageUrl: string): Promise<BillOcrResult | null> {
     if (!this.client) {
-      if (this.isDevelopment) {
-        console.debug('OCR: Returning mock bill data (dev mode, no API key)');
+      if (isDevelopment) {
+        logger.debug('OCR: Returning mock bill data (dev mode, no API key)');
         return {
           billing_start_date: '2026-04-17',
           billing_end_date: '2026-05-17',
@@ -120,7 +120,7 @@ class GeminiLib {
 
       return result;
     } catch (error) {
-      console.error('Error extracting bill data from image:', error);
+      logger.error({error}, 'Error extracting bill data from image');
       return null;
     }
   }

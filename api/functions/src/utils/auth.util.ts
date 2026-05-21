@@ -1,10 +1,14 @@
 import {Request} from "express";
+import type {User} from "../features/auth/auth.model";
+
+export type Role = User["role"];
 
 export interface AuthenticatedRequest extends Request {
   user?: {
     userId: string;
     email: string;
     displayName?: string;
+    role?: Role;
   };
 }
 

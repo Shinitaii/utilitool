@@ -7,19 +7,16 @@ export const requestLogger = pinoHttp({
   autoLogging: {
     ignore: (req: Request) => {
       const url = req.url || "";
-      return url.includes("health") || url.includes("metrics");
+      return url.includes("health") || url.includes("metrics") || url.includes("docs");
     },
   },
   serializers: {
     req: (req: Request) => ({
       method: req.method,
-      url: req.url,
-      query: req.query,
-      params: req.params,
-      body: process.env.NODE_ENV !== "production" ? req.body : undefined,
+      path: req.url?.split("?")[0],
     }),
-    res: (res: Response ) => ({
-      statusCode: res.statusCode,
+    res: (res: Response) => ({
+      status: res.statusCode,
     }),
   },
 });
