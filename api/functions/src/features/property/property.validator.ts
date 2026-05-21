@@ -15,9 +15,9 @@ export class PropertyValidator {
     excludeId?: string
   ): Promise<Property | undefined> {
     const {data: candidates} = await propertyRepository.search({
-      limit: 1000,
+      limit: 100,
       orderBy: "created_at",
-      filters: {},
+      filters: {room_name: roomName},
     });
 
     const normalizedRoomName = normalizeRoomName(roomName);
@@ -94,21 +94,9 @@ export class PropertyValidator {
 
     await this.ensureMeterGroupsExist(Array.from(allMeterGroupIds));
 
-    const {data: existingProperties} = await propertyRepository.search({
-      limit: 1000,
-      orderBy: "created_at",
-      filters: {},
-    });
-
     for (const item of data) {
-      const normalizedRoomName = normalizeRoomName(item.room_name);
-
-      if (
-        existingProperties.some(
-          (property) =>
-            normalizeRoomName(property.room_name) === normalizedRoomName
-        )
-      ) {
+      const duplicate = await this.findDuplicateProperty(item.room_name);
+      if (duplicate) {
         logger.warn({room_name: item.room_name}, "Duplicate property batch creation attempt");
         throw new AppError(409, "Room name already exists");
       }
