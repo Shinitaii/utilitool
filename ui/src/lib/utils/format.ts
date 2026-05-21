@@ -7,6 +7,16 @@ export function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
+export function getReadingUnit(utilityType: string): string {
+  if (utilityType === 'water') return 'm³';
+  return 'kWh';
+}
+
+export function formatReading(amount: number, utilityType: string): string {
+  const unit = getReadingUnit(utilityType);
+  return `${amount.toLocaleString()} ${unit}`;
+}
+
 export function formatKwh(kwh: number): string {
   return `${kwh.toLocaleString()} kWh`;
 }

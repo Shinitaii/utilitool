@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { RotateCcw, Trash2 } from 'lucide-svelte';
   import EmptyState from './EmptyState.svelte';
 
   interface Props {
@@ -64,20 +65,22 @@
                 </td>
               {/each}
               <td class="px-6 py-4">
-                <div class="flex gap-2">
+                <div class="flex gap-1">
                   <button
                     onclick={() => onRestore(item.id)}
                     disabled={isLoading || restoringId === item.id}
-                    class="px-3 py-1 rounded bg-green-100 text-green-700 hover:bg-green-200 font-medium text-sm disabled:opacity-50"
+                    class="p-1.5 rounded hover:bg-green-100 text-green-700 disabled:opacity-50"
+                    title="Restore item"
                   >
-                    {restoringId === item.id ? 'Restoring...' : 'Restore'}
+                    <RotateCcw size={16} />
                   </button>
                   <button
                     onclick={() => onHardDelete(item.id)}
                     disabled={isLoading || deletingId === item.id}
-                    class="px-3 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200 font-medium text-sm disabled:opacity-50"
+                    class="p-1.5 rounded hover:bg-red-100 text-red-700 disabled:opacity-50"
+                    title="Permanently delete"
                   >
-                    {deletingId === item.id ? 'Deleting...' : 'Delete'}
+                    <Trash2 size={16} />
                   </button>
                 </div>
               </td>

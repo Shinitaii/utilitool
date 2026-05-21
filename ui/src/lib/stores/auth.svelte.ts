@@ -35,9 +35,9 @@ function createAuthStore() {
 
 export const authStore = createAuthStore();
 
-export function initAuthListener() {
+export function initAuthListener(): () => void {
   authStore.setLoading(true);
-  onAuthStateChanged(auth, async (firebaseUser) => {
+  const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
     if (firebaseUser) {
       try {
         const user = await getMe();
@@ -50,4 +50,5 @@ export function initAuthListener() {
     }
     authStore.setLoading(false);
   });
+  return unsubscribe;
 }

@@ -3,22 +3,23 @@
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
   import TopBar from '$lib/components/layout/TopBar.svelte';
   import RightPanel from '$lib/components/layout/RightPanel.svelte';
-  import { authStore } from '$lib/stores/auth.svelte';
+  import { authStore, initAuthListener, type AuthState } from '$lib/stores/auth.svelte';
 
   let { children } = $props();
 
-  // Subscribe to auth store for reactivity
-  let authState = $state<any>(null);
+  let authState = $state<AuthState>({ isAuthenticated: false, user: null, isLoading: true, error: null });
 
   $effect(() => {
-    const unsubscribe = authStore.subscribe(state => {
-      authState = state;
-    });
-    return unsubscribe;
+    const unsubscribeAuth = authStore.subscribe(state => { authState = state; });
+    const unsubscribeListener = initAuthListener();
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeListener) unsubscribeListener();
+    };
   });
 
   $effect(() => {
-    if (authState && !authState.isLoading && !authState.isAuthenticated) {
+    if (!authState.isLoading && !authState.isAuthenticated) {
       goto('/login');
     }
   });

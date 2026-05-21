@@ -1,11 +1,10 @@
 <script lang="ts">
-  import { register } from '$lib/api/auth';
-  import type { AuthResponse } from '$lib/types/auth.types';
+  import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+  import { auth } from '$lib/firebase';
 
   let email = $state('');
   let displayName = $state('');
   let password = $state('');
-  let role = $state<'admin' | 'landlord' | 'assistant'>('assistant');
   let isLoading = $state(false);
   let error = $state('');
   let success = $state('');
@@ -23,15 +22,22 @@
     }
 
     try {
-      const response: AuthResponse = await register(email, password, displayName, role);
-      // Discard tokens, admin stays logged in
-      success = `User "${displayName}" created successfully`;
+      const credential = await createUserWithEmailAndPassword(auth, email, password);
+      if (displayName) {
+        await updateProfile(credential.user, { displayName });
+      }
+      success = `User "${displayName || email}" created successfully`;
       email = '';
       displayName = '';
       password = '';
-      role = 'assistant';
     } catch (err: unknown) {
-      error = err instanceof Error ? err.message : 'Failed to create user. Please try again.';
+      const code = (err as { code?: string })?.code ?? '';
+      const messages: Record<string, string> = {
+        'auth/email-already-in-use': 'An account with this email already exists.',
+        'auth/weak-password': 'Password is too weak. Use at least 8 characters.',
+        'auth/invalid-email': 'Invalid email address.',
+      };
+      error = messages[code] ?? 'Failed to create user. Please try again.';
     } finally {
       isLoading = false;
     }
@@ -80,7 +86,6 @@
           id="displayName"
           type="text"
           bind:value={displayName}
-          required
           placeholder="John Doe"
           class="mt-1 block w-full rounded border border-gray-300 px-3 py-2 shadow-sm focus:border-opacity-50 focus:outline-none focus:ring-2"
           style="--tw-ring-color: var(--color-accent)"
@@ -102,21 +107,6 @@
           disabled={isLoading}
         />
         <p class="mt-1 text-xs text-gray-500">Minimum 8 characters</p>
-      </div>
-
-      <div>
-        <label for="role" class="block text-sm font-medium text-gray-700">Role</label>
-        <select
-          id="role"
-          bind:value={role}
-          class="mt-1 block w-full rounded border border-gray-300 px-3 py-2 shadow-sm focus:border-opacity-50 focus:outline-none focus:ring-2"
-          style="--tw-ring-color: var(--color-accent)"
-          disabled={isLoading}
-        >
-          <option value="admin">Admin</option>
-          <option value="landlord">Landlord</option>
-          <option value="assistant">Assistant</option>
-        </select>
       </div>
 
       <button

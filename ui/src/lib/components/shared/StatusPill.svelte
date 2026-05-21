@@ -16,8 +16,8 @@
     'moving-out': { bg: '#f0eee9', fg: '#5b524a' }
   };
 
-  const config = statusConfig[status] || statusConfig.pending;
-  const label = status.charAt(0).toUpperCase() + status.slice(1).replace('-', ' ');
+  const config = $derived(statusConfig[status] || statusConfig.pending);
+  const label = $derived(status.charAt(0).toUpperCase() + status.slice(1).replace('-', ' '));
 </script>
 
 <span
