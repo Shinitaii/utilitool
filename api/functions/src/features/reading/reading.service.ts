@@ -12,12 +12,11 @@ import {snapshotToModel} from "../../utils/firestore.util";
 import {billingService} from "../billing/billing.service";
 import {meterGroupRepository} from "../meter-group/meter-group.repository";
 import {MeterGroup} from "../meter-group/meter-group.model";
+import {getPreviousMonthWindow, findPreviousMonthReading} from "./reading.util";
 
 const validator = new ReadingValidator();
 
 type ReadingCreatePayload = CreateReadingDTO & { meter_version: number };
-
-const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;
 
 async function checkAnomalousReading(
   meterGroupId: string,
@@ -65,30 +64,12 @@ async function checkAnomalousReading(
   }
 }
 
-/**
- * Compute the start (inclusive) / end (exclusive) of the calendar month
- * immediately preceding the supplied reading_date, in Asia/Manila timezone.
- */
-function getPreviousMonthWindow(readingDate: Timestamp): { start: Timestamp; end: Timestamp } {
-  const manilaMs = readingDate.toMillis() + MANILA_OFFSET_MS;
-  const manilaDate = new Date(manilaMs);
-  const year = manilaDate.getUTCFullYear();
-  const month = manilaDate.getUTCMonth(); // 0-indexed, this is current month in Manila
-
-  const prevMonth = month === 0 ? 11 : month - 1;
-  const prevYear = month === 0 ? year - 1 : year;
-
-  const startManilaMs = Date.UTC(prevYear, prevMonth, 1) - MANILA_OFFSET_MS;
-  const endManilaMs = Date.UTC(year, month, 1) - MANILA_OFFSET_MS;
-
-  return {
-    start: Timestamp.fromMillis(startManilaMs),
-    end: Timestamp.fromMillis(endManilaMs),
-  };
-}
 
 type ReadingSearchOptions = {
   meterGroupId?: string;
+  propertyId?: string;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
   limit: number;
   cursor?: string | null;
   archived?: boolean;
@@ -114,59 +95,30 @@ export const readingService = {
     await checkAnomalousReading(data.meter_group_id, data.reading_amount, meter_version);
 
     // Look up the previous-month reading for the same meter_group.
-    const prevWindow = getPreviousMonthWindow(data.reading_date);
-    const prevReadingSnap = await firestore
-      .collection(COLLECTIONS.READINGS)
-      .where("meter_group_id", "==", data.meter_group_id)
-      .where("is_deleted", "==", false)
-      .where("reading_date", ">=", prevWindow.start)
-      .where("reading_date", "<", prevWindow.end)
-      .orderBy("reading_date", "desc")
-      .limit(1)
-      .get();
+    const prevReading = await findPreviousMonthReading(data.meter_group_id, data.reading_date);
 
     // First-time scenario: no previous-month reading. Fall back to a plain
     // create — no billings to generate.
-    if (prevReadingSnap.empty) {
+    if (!prevReading) {
       const payload: ReadingCreatePayload = { ...data, meter_version };
       return readingRepository.create(payload);
     }
 
-    const prevReadingDoc = prevReadingSnap.docs[0];
-    const prevReadingId = prevReadingDoc.id;
-    const prevReadingData = prevReadingDoc.data();
+    const prevReadingId = prevReading.id;
+    const prevReadingData = prevReading.data;
 
-    // Find all non-deleted properties that reference this meter_group.
-    // Properties store meter_groups as a map keyed by utility_type
-    // ({ electricity: <id>, water: <id> }), so we query each known utility
-    // type and merge results.
-    const [electricitySnap, waterSnap] = await Promise.all([
-      firestore
-        .collection(COLLECTIONS.PROPERTIES)
-        .where("meter_groups.electricity", "==", data.meter_group_id)
-        .where("is_deleted", "==", false)
-        .get(),
-      firestore
-        .collection(COLLECTIONS.PROPERTIES)
-        .where("meter_groups.water", "==", data.meter_group_id)
-        .where("is_deleted", "==", false)
-        .get(),
-    ]);
+    // Get the specific property for this reading
+    const propertySnap = await firestore
+      .collection(COLLECTIONS.PROPERTIES)
+      .doc(data.property_id)
+      .get();
 
-    const propertyById = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>();
-    for (const doc of [...electricitySnap.docs, ...waterSnap.docs]) {
-      if (!propertyById.has(doc.id)) {
-        propertyById.set(doc.id, doc);
-      }
-    }
-    const properties = Array.from(propertyById.values());
-
-    // No properties consume this meter group — no billings to write. Save the
-    // reading normally.
-    if (properties.length === 0) {
+    if (!propertySnap.exists || propertySnap.data()?.is_deleted) {
       const payload: ReadingCreatePayload = { ...data, meter_version };
       return readingRepository.create(payload);
     }
+
+    const properties = [propertySnap];
 
     // Build the new reading document up front so we can use it inside the txn.
     const newReadingRef = firestore.collection(COLLECTIONS.READINGS).doc();
@@ -208,11 +160,9 @@ export const readingService = {
   },
 
   /**
-   * Batch create skips auto-billing for simplicity: callers using the batch
-   * endpoint are expected to manage billings themselves, and mixing many
-   * transactional auto-billings into a batch creates fan-out semantics that
-   * are difficult to reason about. Single POST /readings is the supported
-   * entry point for auto-billing.
+   * Batch create with simple auto-billing: for each reading, if a previous-month
+   * reading exists for that meter group, create a billing automatically.
+   * Uses atomic transactions per reading to ensure consistency.
    */
   async createBatch(data: CreateReadingDTO[]): Promise<Reading[]> {
     await validator.validateBatch(data);
@@ -233,18 +183,65 @@ export const readingService = {
       await checkAnomalousReading(r.meter_group_id, r.reading_amount, r.meter_version);
     }
 
-    return readingRepository.createBatch(readingsWithVersion);
+    // Create all readings, attempting auto-billing for each (parallelized)
+    const readingPromises = readingsWithVersion.map(async (readingData) => {
+      // Look for previous-month reading
+      const prevReading = await findPreviousMonthReading(readingData.meter_group_id, readingData.reading_date);
+
+      // If no previous reading, just create the reading
+      if (!prevReading) {
+        return readingRepository.create(readingData);
+      }
+
+      // Previous reading exists; create reading + billing in transaction
+      const prevReadingId = prevReading.id;
+      const prevReadingData = prevReading.data;
+
+      const newReadingRef = firestore.collection(COLLECTIONS.READINGS).doc();
+      const newReadingId = newReadingRef.id;
+      const newReadingDoc = {
+        ...readingData,
+        created_at: FieldValue.serverTimestamp(),
+        is_deleted: false,
+        deleted_at: null,
+      };
+
+      const newReadingForBilling = {
+        meter_group_id: readingData.meter_group_id,
+        reading_amount: readingData.reading_amount,
+        reading_date: readingData.reading_date,
+        meter_version: readingData.meter_version,
+      };
+
+      await firestore.runTransaction(async (txn) => {
+        txn.set(newReadingRef, newReadingDoc);
+        billingService.createFromReadings(
+          txn,
+          readingData.property_id,
+          prevReadingId,
+          newReadingId,
+          prevReadingData,
+          newReadingForBilling,
+        );
+      });
+
+      const snap = await newReadingRef.get();
+      return snapshotToModel<Reading>(snap);
+    });
+
+    return Promise.all(readingPromises);
   },
 
   async search(options: ReadingSearchOptions): Promise<PaginatedResult<Reading>> {
     return readingRepository.search({
       limit: options.limit,
-      orderBy: "created_at",
-      orderDirection: "desc",
+      orderBy: (options.sortBy ?? "created_at") as any,
+      orderDirection: options.sortOrder ?? "desc",
       cursor: options.cursor,
       archived: options.archived,
       filters: {
         ...(options.meterGroupId ? {meter_group_id: options.meterGroupId} : {}),
+        ...(options.propertyId ? {property_id: options.propertyId} : {}),
       },
     });
   },
