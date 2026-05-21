@@ -9,6 +9,9 @@ ui/package-lock.json
 ui/.svelte-kit
 ui/build
 
+# RAG index (generated, do not commit)
+utilitool.db
+
 # OS & IDE
 .DS_Store
 .vscode/launch.json
