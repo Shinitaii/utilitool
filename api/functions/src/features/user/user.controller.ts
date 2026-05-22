@@ -29,8 +29,10 @@ export async function createUser(req: Request<Record<string, never>, {}, CreateU
       email: '',
       display_name: '',
       role,
-      is_deleted: false
-    } as any);
+      is_deleted: false,
+      created_at: new Date(),
+      updated_at: new Date()
+    } as unknown as User);
   }
 
   res.status(201).json(user);
