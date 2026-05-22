@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
-    "target": "ESNext",
+    "target": "ES2020",
     "useDefineForClassFields": true,
-    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -13,11 +13,13 @@
     "isolatedModules": true,
     "noEmit": true,
     "baseUrl": ".",
+    "jsx": "preserve",
+    "jsxImportSource": "svelte",
     "paths": {
       "$lib/*": ["src/lib/*"]
     },
-    "types": ["svelte"],
     "ignoreDeprecations": "6.0"
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.svelte"]
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.svelte"],
+  "exclude": ["node_modules", "build", "dist"]
 }
