@@ -176,9 +176,12 @@
           </h3>
           <div class="space-y-2">
             {#each groupedBillings.pending as billing (billing.id)}
-              <button
+              <div
+                role="button"
+                tabindex="0"
                 onclick={() => toggleBilling(billing.id)}
-                class="w-full bg-white p-4 rounded-lg border border-yellow-200 text-left hover:border-yellow-400 transition"
+                onkeydown={(e) => e.key === 'Enter' && toggleBilling(billing.id)}
+                class="w-full bg-white p-4 rounded-lg border border-yellow-200 text-left hover:border-yellow-400 transition cursor-pointer"
               >
                 <div class="flex justify-between items-start mb-2">
                   <h4 class="font-semibold text-gray-900">
