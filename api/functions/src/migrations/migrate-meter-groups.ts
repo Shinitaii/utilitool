@@ -28,7 +28,8 @@ async function migrate(): Promise<void> {
   let migrated = 0;
   let skipped = 0;
 
-  const batch = db.batch();
+  let batch = db.batch();
+  let opsInBatch = 0;
 
   for (const doc of snapshot.docs) {
     const data = doc.data();
@@ -57,8 +58,15 @@ async function migrate(): Promise<void> {
       continue;
     }
 
-    batch.update(doc.ref, { meter_groups: updated });
+    batch.update(doc.ref, { meter_groups: updated, updated_at: new Date() });
     migrated++;
+    opsInBatch++;
+
+    if (opsInBatch >= 499) {
+      await batch.commit();
+      batch = db.batch();
+      opsInBatch = 0;
+    }
   }
 
   await batch.commit();
