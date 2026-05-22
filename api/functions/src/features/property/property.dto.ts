@@ -1,14 +1,19 @@
-﻿import {z} from "zod";
+import {z} from "zod";
 import {stripHtml} from "../../utils/sanitize.util";
 import {UTILITY_TYPES} from "../../constants/utility.constants";
+
+const MeterGroupEntrySchema = z.object({
+  meter_group_id: z.string().trim().min(1),
+  is_main_meter: z.boolean(),
+});
 
 export const CreatePropertyDTOSchema = z
   .object({
     room_name: z.string().trim().min(1).max(255).transform(stripHtml),
     tenant_amount: z.number().int().min(1),
     meter_groups: z.record(
-      z.enum(Object.values(UTILITY_TYPES)),
-      z.string().trim().min(1)
+      z.enum(Object.values(UTILITY_TYPES) as [string, ...string[]]),
+      MeterGroupEntrySchema
     ),
   })
   .refine(
@@ -16,8 +21,7 @@ export const CreatePropertyDTOSchema = z
       data.meter_groups[UTILITY_TYPES.ELECTRICITY] &&
       data.meter_groups[UTILITY_TYPES.WATER],
     {
-      message:
-        "Property must have both electricity and water meter groups",
+      message: "Property must have both electricity and water meter groups",
       path: ["meter_groups"],
     }
   );
@@ -27,24 +31,21 @@ export const CreatePropertyBatchDTOSchema = z
   .array(CreatePropertyDTOSchema)
   .min(1)
   .max(10);
-export type CreatePropertyBatchDTO = z.infer<
-  typeof CreatePropertyBatchDTOSchema
->;
+export type CreatePropertyBatchDTO = z.infer<typeof CreatePropertyBatchDTOSchema>;
 
 export const PropertyByIdParamsDTOSchema = z.object({
   id: z.string().trim().min(1),
 });
 export type PropertyByIdParamsDTO = z.infer<typeof PropertyByIdParamsDTOSchema>;
 
-const UpdatePropertyBaseDTOSchema = z
-  .object({
-    room_name: z.string().trim().min(1).max(255).transform(stripHtml).optional(),
-    tenant_amount: z.number().int().min(1).optional(),
-    meter_groups: z.record(
-      z.enum(Object.values(UTILITY_TYPES)),
-      z.string().trim().min(1)
-    ).optional(),
-  });
+const UpdatePropertyBaseDTOSchema = z.object({
+  room_name: z.string().trim().min(1).max(255).transform(stripHtml).optional(),
+  tenant_amount: z.number().int().min(1).optional(),
+  meter_groups: z.record(
+    z.enum(Object.values(UTILITY_TYPES) as [string, ...string[]]),
+    MeterGroupEntrySchema
+  ).optional(),
+});
 
 export const UpdatePropertyDTOSchema = UpdatePropertyBaseDTOSchema;
 export type UpdatePropertyDTO = z.infer<typeof UpdatePropertyDTOSchema>;
@@ -58,9 +59,7 @@ export const UpdatePropertyBatchDTOSchema = z
   .array(UpdatePropertyBatchItemSchema)
   .min(1)
   .max(10);
-export type UpdatePropertyBatchDTO = z.infer<
-  typeof UpdatePropertyBatchDTOSchema
->;
+export type UpdatePropertyBatchDTO = z.infer<typeof UpdatePropertyBatchDTOSchema>;
 
 export const GetPropertiesQueryDTOSchema = z.object({
   roomName: z.string().trim().min(1).max(255).optional(),

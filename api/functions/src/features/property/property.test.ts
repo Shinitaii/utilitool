@@ -365,4 +365,48 @@ describe('propertyService', () => {
       });
     });
   });
+
+  describe('Property main meter uniqueness', () => {
+    it('should reject creating a second main meter for the same meter group', async () => {
+      jest.mocked(PropertyValidator.prototype.validateCreate).mockRejectedValue(
+        new AppError(409, 'Meter group mg-elec already has a main meter property')
+      );
+
+      await expect(
+        propertyService.create({
+          room_name: 'Unit 200',
+          tenant_amount: 1,
+          meter_groups: {
+            electricity: { meter_group_id: 'mg-elec', is_main_meter: true },
+            water: { meter_group_id: 'mg-water', is_main_meter: false },
+          },
+        })
+      ).rejects.toMatchObject({ statusCode: 409 });
+    });
+
+    it('should allow creating a property as main meter when none exists for that meter group', async () => {
+      jest.mocked(PropertyValidator.prototype.validateCreate).mockResolvedValue(undefined);
+      jest.mocked(propertyRepository.create).mockResolvedValue(
+        mockProperty({
+          id: 'prop-new',
+          room_name: 'Unit 300',
+          tenant_amount: 1,
+          meter_groups: {
+            electricity: { meter_group_id: 'mg-elec', is_main_meter: true },
+            water: { meter_group_id: 'mg-water', is_main_meter: false },
+          },
+        })
+      );
+
+      const result = await propertyService.create({
+        room_name: 'Unit 300',
+        tenant_amount: 1,
+        meter_groups: {
+          electricity: { meter_group_id: 'mg-elec', is_main_meter: true },
+          water: { meter_group_id: 'mg-water', is_main_meter: false },
+        },
+      });
+      expect(result.room_name).toBe('Unit 300');
+    });
+  });
 });
