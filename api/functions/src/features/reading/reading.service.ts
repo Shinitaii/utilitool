@@ -13,6 +13,7 @@ import {billingService} from "../billing/billing.service";
 import {meterGroupRepository} from "../meter-group/meter-group.repository";
 import {MeterGroup} from "../meter-group/meter-group.model";
 import {getPreviousMonthWindow, findPreviousMonthReading} from "./reading.util";
+import {propertyRepository} from "../property/property.repository";
 
 const validator = new ReadingValidator();
 
@@ -166,6 +167,22 @@ export const readingService = {
    */
   async createBatch(data: CreateReadingDTO[]): Promise<Reading[]> {
     await validator.validateBatch(data);
+
+    // Reject if any reading targets a main meter property — those are derived automatically
+    for (const r of data) {
+      const property = await propertyRepository.getById(r.property_id);
+      if (!property) continue;
+      const entry = Object.values(property.meter_groups).find(
+        (e) => e.meter_group_id === r.meter_group_id
+      );
+      if (entry?.is_main_meter) {
+        throw new AppError(
+          400,
+          `Property ${r.property_id} is the main meter for meter group ${r.meter_group_id}. ` +
+          `Its readings are derived automatically. Use POST /readings/seed for the first-time baseline.`
+        );
+      }
+    }
 
     const meterGroupIds = [...new Set(data.map((r) => r.meter_group_id))];
     const meterGroupMap = new Map<string, MeterGroup>();

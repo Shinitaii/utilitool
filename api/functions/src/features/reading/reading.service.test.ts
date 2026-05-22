@@ -3,6 +3,7 @@ jest.mock('../../lib/gemini.lib');
 jest.mock('../billing/billing.service');
 jest.mock('../meter-group/meter-group.repository');
 jest.mock('./reading.validator');
+jest.mock('../property/property.repository');
 jest.mock('./reading.util', () => ({
   ...jest.requireActual('./reading.util') as object,
   findPreviousMonthReading: jest.fn(),
@@ -12,6 +13,7 @@ import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import { readingService } from './reading.service';
 import { readingRepository } from './reading.repository';
 import { meterGroupRepository } from '../meter-group/meter-group.repository';
+import { propertyRepository } from '../property/property.repository';
 import { billingService } from '../billing/billing.service';
 import { findPreviousMonthReading } from './reading.util';
 import { AppError } from '../../utils/error.util';
@@ -147,6 +149,33 @@ describe('readingService - Business Rules', () => {
       });
 
       expect(result).toBeDefined();
+    });
+  });
+
+  describe('createBatch - main meter exclusion', () => {
+    it('should reject a batch that includes a main meter property', async () => {
+      jest.mocked(readingRepository.search).mockResolvedValue({
+        data: [],
+        hasMore: false,
+        nextCursor: null,
+      });
+      jest.mocked(propertyRepository.getById).mockResolvedValue({
+        id: 'main-prop',
+        meter_groups: {
+          'entry-1': { meter_group_id: 'mg-1', is_main_meter: true },
+        },
+      } as any);
+
+      await expect(
+        readingService.createBatch([
+          {
+            meter_group_id: 'mg-1',
+            property_id: 'main-prop',
+            reading_amount: 100,
+            reading_date: Timestamp.now(),
+          },
+        ])
+      ).rejects.toMatchObject({ statusCode: 400 });
     });
   });
 });
