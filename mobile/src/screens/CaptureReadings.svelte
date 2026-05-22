@@ -251,34 +251,43 @@
   <!-- Step 3: Confirmation -->
   {#if step === 3}
     <div class="p-4 space-y-4">
-      <div class="bg-blue-50 border border-blue-200 p-3 rounded-lg">
-        <p class="text-sm text-blue-900">
+      <div class="card-base">
+        <p class="text-sm" style="color: var(--color-text-primary)">
           <strong>Ready to submit {properties.length} readings</strong>
         </p>
-        <p class="text-xs text-blue-800 mt-1">
+        <p class="text-xs mt-1" style="color: var(--color-text-secondary)">
           Reading date: {readingDate}
         </p>
       </div>
 
       {#each properties as property (property.id)}
-        <div class="bg-white p-3 rounded-lg border border-gray-200">
-          <p class="font-semibold text-gray-900">{property.room_name}</p>
-          <p class="text-sm text-gray-600">
-            Amount: <strong>{propertyReadings[property.id]?.amount}</strong>
+        <div class="card-base">
+          <p class="font-semibold" style="color: var(--color-text-primary)">{property.room_name}</p>
+          <p class="text-sm" style="color: var(--color-text-secondary)">
+            Amount: <strong style="color: var(--color-accent)">{propertyReadings[property.id]?.amount}</strong>
             {#if propertyReadings[property.id]?.image_url}
-              <span class="ml-2 text-green-600">📷 Photo attached</span>
+              <span class="ml-2" style="color: var(--color-status-good)">📷 Photo attached</span>
             {/if}
           </p>
         </div>
       {/each}
 
-      <button
-        onclick={submitReadings}
-        disabled={isLoading}
-        class="w-full px-4 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:bg-gray-400"
-      >
-        {isLoading ? 'Submitting...' : '✓ Submit Readings'}
-      </button>
+      <div class="flex gap-2">
+        <button
+          onclick={() => (step = 2)}
+          disabled={isLoading}
+          class="flex-1 btn-secondary py-3 font-semibold rounded-lg"
+        >
+          Back
+        </button>
+        <button
+          onclick={submitReadings}
+          disabled={isLoading}
+          class="flex-1 btn-primary py-3 text-base font-semibold rounded-lg disabled:opacity-50"
+        >
+          {isLoading ? 'Submitting...' : '✓ Submit'}
+        </button>
+      </div>
     </div>
   {/if}
 
