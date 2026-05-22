@@ -11,6 +11,7 @@ Welcome to the Utilitool project. This document guides you through the repo stru
 - **Understanding the business**: Start with [Business Overview](#business-overview) below
 - **Working on the API**: Read `api/CLAUDE.md` → covers backend architecture, API specs (Swagger), and feature-by-feature file locations
 - **Working on the UI**: Read `ui/CLAUDE.md` → covers frontend architecture, component structure, and which API endpoints each page calls
+- **Working on the Mobile app**: Read `mobile/CLAUDE.md` → covers Capacitor + Svelte SPA, screens, API modules, and navigation
 - **Setting up locally**: See [Docker & Local Development](#docker--local-development) below
 - **Deploying**: See [CI/CD & Deployment](#cicd--deployment) below
 - **Understanding past decisions**: Check `decisions/` folder → read the **title first** to decide relevance before diving into full file
@@ -19,8 +20,9 @@ Welcome to the Utilitool project. This document guides you through the repo stru
 
 When Claude Code starts work on a task:
 - **API task?** Read `api/CLAUDE.md` only
-- **UI task?** Read `ui/CLAUDE.md` only  
-- **Cross-module bug?** Read both, but start with the breaking side first
+- **UI task?** Read `ui/CLAUDE.md` only
+- **Mobile task?** Read `mobile/CLAUDE.md` only
+- **Cross-module bug?** Read the relevant CLAUDEs, but start with the breaking side first
 
 Don't read this file (CLAUDE.md) again during the session unless you need context about deployment or setup.
 
@@ -49,6 +51,8 @@ utilitool/
 │   └── CLAUDE.md           → Read for API architecture & feature file map
 ├── ui/                     → Frontend (SvelteKit + Svelte 5)
 │   └── CLAUDE.md           → Read for UI architecture & component map
+├── mobile/                 → Mobile app (Svelte 5 SPA + Capacitor, Android)
+│   └── CLAUDE.md           → Read for screens, API modules, navigation
 ├── docker-compose.yml      → Local dev orchestration
 ├── CLAUDE.md               → This file (navigation orchestrator)
 ├── API_SETUP.md            → API setup guide
@@ -84,6 +88,7 @@ utilitool/
 |-------|-------|---------|
 | **Backend** | Express + Firebase Cloud Functions | TypeScript, Firestore, Zod validation, custom JWT auth |
 | **Frontend** | SvelteKit 5 + Svelte 5 runes | TypeScript, Tailwind v4, Playwright E2E |
+| **Mobile** | Svelte 5 SPA + Capacitor 6 | TypeScript, Tailwind v4, Android target, Firebase Auth |
 | **Database** | Firestore (emulated locally) | No-SQL, real-time capabilities |
 | **Deployment** | Firebase (API) + Vercel (UI) | Staging & production aliases configured |
 
@@ -239,6 +244,14 @@ Each page/component is organized by:
 - 🚧 Bills / OCR upload (stub — "to be finished")
 - 🚧 Reports (stub — "to be finished")
 
+### Mobile Screens (May 2026)
+- ✅ Login (Firebase Auth)
+- ✅ Home (dashboard + "New Reading Session" CTA)
+- ✅ CaptureReadings (3-step wizard: meter group select → per-property readings + camera → review & batch submit)
+- ✅ ReadingHistory (filterable by utility type + property)
+- ✅ Billings (grouped by status: overdue/pending/paid; mark-as-paid action)
+- ✅ Settings (account info + sign out)
+
 ---
 
 ## Getting Started
@@ -285,6 +298,9 @@ docker-compose up
 | `ui/src/routes/(app)/+layout.ts` | Auth guard for all protected routes |
 | `ui/src/lib/api/client.ts` | JWT token refresh interceptor — handles 401 + retry |
 | `ui/src/lib/stores/auth.svelte.ts` | Authentication state (Svelte writable store) |
+| `mobile/src/App.svelte` | Mobile root: auth guard + hash-based screen router |
+| `mobile/src/lib/api/client.ts` | Mobile fetch client: Bearer token + 401 retry |
+| `mobile/capacitor.config.ts` | Capacitor app ID, webDir, Camera plugin settings |
 
 ---
 
@@ -292,6 +308,8 @@ docker-compose up
 
 - **Deep dive on API**: `api/CLAUDE.md`
 - **Deep dive on UI**: `ui/CLAUDE.md`
+- **Deep dive on Mobile**: `mobile/CLAUDE.md`
+- **Mobile build guide**: `mobile/BUILD.md`
 - **API setup & environments**: `API_SETUP.md`
 - **Emulator configuration** (advanced/manual use): `EMULATOR_SETUP.md`
 - **Dev workflow decision**: `decisions/20260517_no-emulators-in-dev.md`

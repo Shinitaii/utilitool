@@ -1,7 +1,7 @@
 <script lang="ts">
   import { listBillings, updateBillingStatus, type Billing } from '../lib/api/billings';
   import { getProperty } from '../lib/api/properties';
-  import { getProperty as getPropertyForBilling } from '../lib/api/properties';
+  import BottomNav from '../components/BottomNav.svelte';
 
   let billings: Billing[] = $state([]);
   let propertyNames: Record<string, string> = $state({});
@@ -251,9 +251,5 @@
     </div>
   {/if}
 
-  <div class="fixed bottom-0 left-0 right-0 border-t flex justify-around" style="background-color: var(--color-bg-secondary); border-color: var(--color-border)">
-    <button onclick={() => { window.location.hash = '#/home'; }} class="flex-1 py-3 text-center font-semibold border-none cursor-pointer" style="color: var(--color-text-secondary); background-color: transparent">🏠 Home</button>
-    <button onclick={() => { window.location.hash = '#/history'; }} class="flex-1 py-3 text-center font-semibold border-none cursor-pointer" style="color: var(--color-text-secondary); background-color: transparent">📋 History</button>
-    <button onclick={() => { window.location.hash = '#/billings'; }} class="flex-1 py-3 text-center font-semibold border-none cursor-pointer" style="color: var(--color-accent); background-color: transparent">💰 Billings</button>
-  </div>
+  <BottomNav active="billings" />
 </div>

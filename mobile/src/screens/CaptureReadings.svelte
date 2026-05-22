@@ -3,6 +3,7 @@
   import { listMeterGroups, type MeterGroup } from '../lib/api/meter-groups';
   import { listProperties, type Property } from '../lib/api/properties';
   import { createReadingsBatch, type CreateReadingRequest } from '../lib/api/readings';
+  import BottomNav from '../components/BottomNav.svelte';
 
   let step = $state(1);
   let isLoading = $state(false);
@@ -17,6 +18,9 @@
   // Step 2: Property iteration
   let properties: Property[] = $state([]);
   let propertyReadings: Record<string, { amount: number; image_url: string }> = $state({});
+
+  const selectedMeterGroup = $derived(meterGroups.find(g => g.id === selectedMeterGroupId));
+  const readingUnit = $derived(selectedMeterGroup?.utility_type === 'water' ? 'm³' : 'kWh');
 
   // Effects
   $effect.pre(async () => {
@@ -47,7 +51,7 @@
       const res = await listProperties();
       // Filter properties that have the selected meter group
       properties = (res.data || []).filter((p: Property) =>
-        selectedMeterGroupId in p.meter_groups
+        Object.values(p.meter_groups).includes(selectedMeterGroupId)
       );
 
       // Initialize readings object
@@ -225,7 +229,7 @@
 
           <div>
             <label for={`amount-${property.id}`} class="label-base mb-1">
-              Reading Amount (kWh/m³)
+              Reading Amount ({readingUnit})
             </label>
             <input
               id={`amount-${property.id}`}
@@ -291,9 +295,5 @@
     </div>
   {/if}
 
-  <div class="fixed bottom-0 left-0 right-0 flex justify-around border-t" style="background-color: var(--color-bg-secondary); border-color: var(--color-border)">
-    <button onclick={() => { window.location.hash = '#/home'; }} class="flex-1 py-3 text-center font-semibold border-none cursor-pointer" style="background: transparent; color: var(--color-text-secondary)">🏠 Home</button>
-    <button onclick={() => { window.location.hash = '#/history'; }} class="flex-1 py-3 text-center font-semibold border-none cursor-pointer" style="background: transparent; color: var(--color-text-secondary)">📋 History</button>
-    <button onclick={() => { window.location.hash = '#/billings'; }} class="flex-1 py-3 text-center font-semibold border-none cursor-pointer" style="background: transparent; color: var(--color-text-secondary)">💰 Billings</button>
-  </div>
+  <BottomNav active="home" />
 </div>

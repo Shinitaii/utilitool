@@ -1,4 +1,4 @@
-import {FieldValue, Timestamp} from "firebase-admin/firestore";
+import {FieldValue} from "firebase-admin/firestore";
 import {readingRepository} from "./reading.repository";
 import {Reading} from "./reading.model";
 import {CreateReadingDTO} from "./reading.dto";
@@ -12,7 +12,8 @@ import {snapshotToModel} from "../../utils/firestore.util";
 import {billingService} from "../billing/billing.service";
 import {meterGroupRepository} from "../meter-group/meter-group.repository";
 import {MeterGroup} from "../meter-group/meter-group.model";
-import {getPreviousMonthWindow, findPreviousMonthReading} from "./reading.util";
+import {findPreviousMonthReading} from "./reading.util";
+import {propertyRepository} from "../property/property.repository";
 
 const validator = new ReadingValidator();
 
@@ -94,8 +95,8 @@ export const readingService = {
     const meter_version = meterGroup!.current_version ?? 1;
     await checkAnomalousReading(data.meter_group_id, data.reading_amount, meter_version);
 
-    // Look up the previous-month reading for the same meter_group.
-    const prevReading = await findPreviousMonthReading(data.meter_group_id, data.reading_date);
+    // Look up the previous-month reading for the same meter_group + property.
+    const prevReading = await findPreviousMonthReading(data.meter_group_id, data.property_id, data.reading_date);
 
     // First-time scenario: no previous-month reading. Fall back to a plain
     // create — no billings to generate.
@@ -167,6 +168,22 @@ export const readingService = {
   async createBatch(data: CreateReadingDTO[]): Promise<Reading[]> {
     await validator.validateBatch(data);
 
+    // Reject if any reading targets a main meter property — those are derived automatically
+    for (const r of data) {
+      const property = await propertyRepository.getById(r.property_id);
+      if (!property) continue;
+      const entry = Object.values(property.meter_groups).find(
+        (e) => e.meter_group_id === r.meter_group_id
+      );
+      if (entry?.is_main_meter) {
+        throw new AppError(
+          400,
+          `Property ${r.property_id} is the main meter for meter group ${r.meter_group_id}. ` +
+          `Its readings are derived automatically. Use POST /readings/seed for the first-time baseline.`
+        );
+      }
+    }
+
     const meterGroupIds = [...new Set(data.map((r) => r.meter_group_id))];
     const meterGroupMap = new Map<string, MeterGroup>();
     for (const mgId of meterGroupIds) {
@@ -185,8 +202,8 @@ export const readingService = {
 
     // Create all readings, attempting auto-billing for each (parallelized)
     const readingPromises = readingsWithVersion.map(async (readingData) => {
-      // Look for previous-month reading
-      const prevReading = await findPreviousMonthReading(readingData.meter_group_id, readingData.reading_date);
+      // Look for previous-month reading scoped to this property
+      const prevReading = await findPreviousMonthReading(readingData.meter_group_id, readingData.property_id, readingData.reading_date);
 
       // If no previous reading, just create the reading
       if (!prevReading) {
@@ -230,6 +247,14 @@ export const readingService = {
     });
 
     return Promise.all(readingPromises);
+  },
+
+  async createSeed(data: CreateReadingDTO): Promise<Reading> {
+    await validator.validateSeedCreate(data);
+    const meterGroup = await meterGroupRepository.getById(data.meter_group_id);
+    const meter_version = meterGroup!.current_version ?? 1;
+    const payload: ReadingCreatePayload = { ...data, meter_version };
+    return readingRepository.create(payload);
   },
 
   async search(options: ReadingSearchOptions): Promise<PaginatedResult<Reading>> {

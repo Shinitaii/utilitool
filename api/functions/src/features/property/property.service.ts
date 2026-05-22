@@ -48,7 +48,9 @@ export const propertyService = {
 
     if (options.meterGroupId) {
       result.data = result.data.filter((property) =>
-        Object.values(property.meter_groups).includes(options.meterGroupId!)
+        Object.values(property.meter_groups).some(
+          (entry) => entry.meter_group_id === options.meterGroupId
+        )
       );
     }
 

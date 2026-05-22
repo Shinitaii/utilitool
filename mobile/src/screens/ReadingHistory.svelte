@@ -1,37 +1,65 @@
 <script lang="ts">
   import { listReadings, type Reading } from '../lib/api/readings';
-  import { getProperty } from '../lib/api/properties';
+  import { listMeterGroups, type MeterGroup } from '../lib/api/meter-groups';
+  import { getProperty, listProperties, type Property } from '../lib/api/properties';
+  import BottomNav from '../components/BottomNav.svelte';
 
   let readings: Reading[] = $state([]);
+  let meterGroups: MeterGroup[] = $state([]);
+  let properties: Property[] = $state([]);
   let propertyNames: Record<string, string> = $state({});
   let isLoading = $state(true);
   let error: string | null = $state(null);
   let selectedReading: Reading | null = $state(null);
+  let utilityFilter: 'all' | 'electricity' | 'water' = $state('all');
+  let selectedPropertyId: string = $state('');
+
+  const meterGroupMap = $derived(
+    Object.fromEntries(meterGroups.map(g => [g.id, g]))
+  );
+
+  const utilityFilteredReadings = $derived(
+    utilityFilter === 'all'
+      ? readings
+      : readings.filter(r => meterGroupMap[r.meter_group_id]?.utility_type === utilityFilter)
+  );
+
+  const availableProperties = $derived(() => {
+    const ids = new Set(utilityFilteredReadings.map(r => r.property_id));
+    return properties.filter(p => ids.has(p.id));
+  });
+
+  const filteredReadings = $derived(
+    selectedPropertyId
+      ? utilityFilteredReadings.filter(r => r.property_id === selectedPropertyId)
+      : utilityFilteredReadings
+  );
 
   $effect.pre(async () => {
     try {
-      const res = await listReadings();
-      readings = res.data || [];
+      const [readingsRes, meterGroupsRes, propertiesRes] = await Promise.all([
+        listReadings(),
+        listMeterGroups(),
+        listProperties()
+      ]);
+      readings = readingsRes.data || [];
+      meterGroups = meterGroupsRes.data || [];
+      properties = propertiesRes.data || [];
 
-      // Fetch property names for each reading
       const names: Record<string, string> = {};
-      const propertyIds = new Set(readings.map(r => r.property_id));
-
-      for (const propId of propertyIds) {
-        try {
-          const prop = await getProperty(propId);
-          names[propId] = prop.room_name;
-        } catch (e) {
-          names[propId] = `Property ${propId.slice(0, 6)}`;
-        }
-      }
-
+      properties.forEach((p: Property) => { names[p.id] = p.room_name; });
       propertyNames = names;
     } catch (e) {
       error = 'Failed to load readings';
     } finally {
       isLoading = false;
     }
+  });
+
+  // Reset property filter when utility type changes
+  $effect(() => {
+    utilityFilter;
+    selectedPropertyId = '';
   });
 
   function formatDate(dateStr: string): string {
@@ -41,11 +69,43 @@
       year: 'numeric'
     });
   }
+
+  function getUnit(meterGroupId: string): string {
+    return meterGroupMap[meterGroupId]?.utility_type === 'water' ? 'm³' : 'kWh';
+  }
 </script>
 
 <div class="min-h-screen pb-20" style="background-color: var(--color-bg-primary)">
   <div class="p-4 border-b bg-white" style="border-color: var(--color-border)">
-    <h1 class="text-xl font-bold" style="color: var(--color-text-primary)">Reading History</h1>
+    <h1 class="text-xl font-bold mb-3" style="color: var(--color-text-primary)">Reading History</h1>
+
+    <!-- Utility type tabs -->
+    <div class="flex gap-2 mb-3">
+      {#each [['all', 'All'], ['electricity', 'Electricity'], ['water', 'Water']] as [value, label]}
+        <button
+          onclick={() => { utilityFilter = value as typeof utilityFilter; }}
+          class="px-3 py-1 rounded-full text-sm font-semibold border transition"
+          style={utilityFilter === value
+            ? 'background-color: var(--color-accent); color: white; border-color: var(--color-accent)'
+            : 'background-color: transparent; color: var(--color-text-secondary); border-color: var(--color-border)'}
+        >
+          {label}
+        </button>
+      {/each}
+    </div>
+
+    <!-- Property filter -->
+    {#if availableProperties().length > 0}
+      <select
+        bind:value={selectedPropertyId}
+        class="input-base w-full text-sm"
+      >
+        <option value="">All properties</option>
+        {#each availableProperties() as property (property.id)}
+          <option value={property.id}>{property.room_name}</option>
+        {/each}
+      </select>
+    {/if}
   </div>
 
   {#if error}
@@ -56,20 +116,30 @@
 
   {#if isLoading}
     <div class="p-4 text-center py-8" style="color: var(--color-text-secondary)">Loading...</div>
-  {:else if readings.length === 0}
+  {:else if filteredReadings.length === 0}
     <div class="p-4 text-center py-8" style="color: var(--color-text-secondary)">No readings found</div>
   {:else}
     <div class="p-4 space-y-3">
-      {#each readings as reading (reading.id)}
+      {#each filteredReadings as reading (reading.id)}
         <button
           onclick={() => (selectedReading = selectedReading?.id === reading.id ? null : reading)}
           class="card-base w-full text-left hover:opacity-90 transition"
         >
           <div class="flex justify-between items-start mb-2">
-            <h3 class="font-semibold" style="color: var(--color-text-primary)">
-              {propertyNames[reading.property_id] || 'Loading...'}
-            </h3>
-            <span class="text-lg font-bold" style="color: var(--color-accent)">{reading.reading_amount}</span>
+            <div>
+              <h3 class="font-semibold" style="color: var(--color-text-primary)">
+                {propertyNames[reading.property_id] || 'Unknown'}
+              </h3>
+              <p class="text-xs mt-0.5" style="color: var(--color-text-secondary)">
+                {meterGroupMap[reading.meter_group_id]?.meter_name || ''}
+                {#if meterGroupMap[reading.meter_group_id]?.utility_type}
+                  · {meterGroupMap[reading.meter_group_id].utility_type}
+                {/if}
+              </p>
+            </div>
+            <span class="text-lg font-bold" style="color: var(--color-accent)">
+              {reading.reading_amount} {getUnit(reading.meter_group_id)}
+            </span>
           </div>
           <p class="text-xs" style="color: var(--color-text-secondary)">{formatDate(reading.reading_date)}</p>
 
@@ -93,9 +163,5 @@
     </div>
   {/if}
 
-  <div class="fixed bottom-0 left-0 right-0 border-t flex justify-around" style="background-color: var(--color-bg-secondary); border-color: var(--color-border)">
-    <button onclick={() => { window.location.hash = '#/home'; }} class="flex-1 py-3 text-center font-semibold border-none cursor-pointer" style="color: var(--color-text-secondary)">🏠 Home</button>
-    <button onclick={() => { window.location.hash = '#/history'; }} class="flex-1 py-3 text-center font-semibold border-none cursor-pointer" style="color: var(--color-accent)">📋 History</button>
-    <button onclick={() => { window.location.hash = '#/billings'; }} class="flex-1 py-3 text-center font-semibold border-none cursor-pointer" style="color: var(--color-text-secondary)">💰 Billings</button>
-  </div>
+  <BottomNav active="history" />
 </div>

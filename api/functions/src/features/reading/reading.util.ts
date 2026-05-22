@@ -1,6 +1,5 @@
 import {Timestamp} from "firebase-admin/firestore";
 import {AppError} from "../../utils/error.util";
-import {readingRepository} from "./reading.repository";
 import {firestore} from "../../config/firebase.config";
 import {COLLECTIONS} from "../../constants/collection.constants";
 
@@ -29,17 +28,20 @@ export function getPreviousMonthWindow(readingDate: Timestamp): { start: Timesta
 }
 
 /**
- * Find the most recent reading for a meter group in the previous calendar month.
+ * Find the most recent reading for a specific property within a meter group
+ * in the previous calendar month (Asia/Manila).
  * Returns {id, data} or null if none exists.
  */
 export async function findPreviousMonthReading(
   meterGroupId: string,
+  propertyId: string,
   readingDate: Timestamp
 ): Promise<{id: string; data: any} | null> {
   const prevWindow = getPreviousMonthWindow(readingDate);
   const prevReadingSnap = await firestore
     .collection(COLLECTIONS.READINGS)
     .where("meter_group_id", "==", meterGroupId)
+    .where("property_id", "==", propertyId)
     .where("is_deleted", "==", false)
     .where("reading_date", ">=", prevWindow.start)
     .where("reading_date", "<", prevWindow.end)

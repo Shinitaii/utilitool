@@ -2,6 +2,7 @@ import {Request, Response} from "express";
 import {readingService} from "./reading.service";
 import {
   CreateReadingDTO,
+  CreateSeedReadingDTO,
   ReadingByIdParamsDTO,
   GetReadingsQueryDTO,
   UpdateReadingDTO,
@@ -15,6 +16,15 @@ export const createReading = async (
 ): Promise<void> => {
   const data = req.body as CreateReadingDTO;
   const result = await readingService.create(data);
+  res.status(201).json(result);
+};
+
+export const createSeedReading = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const data = req.body as CreateSeedReadingDTO;
+  const result = await readingService.createSeed(data);
   res.status(201).json(result);
 };
 

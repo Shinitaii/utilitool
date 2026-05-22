@@ -6,6 +6,7 @@
   import CaptureReadings from './screens/CaptureReadings.svelte';
   import ReadingHistory from './screens/ReadingHistory.svelte';
   import Billings from './screens/Billings.svelte';
+  import Settings from './screens/Settings.svelte';
 
   let currentScreen = $state('login');
   let user = $state(auth.currentUser);
@@ -24,7 +25,7 @@
   onMount(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.slice(2);
-      if (hash && ['home', 'capture', 'history', 'billings'].includes(hash)) {
+      if (hash && ['home', 'capture', 'history', 'billings', 'settings'].includes(hash)) {
         currentScreen = hash;
       }
     };
@@ -33,7 +34,6 @@
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   });
-
 </script>
 
 {#if !user}
@@ -46,4 +46,6 @@
   <ReadingHistory />
 {:else if currentScreen === 'billings'}
   <Billings />
+{:else if currentScreen === 'settings'}
+  <Settings />
 {/if}

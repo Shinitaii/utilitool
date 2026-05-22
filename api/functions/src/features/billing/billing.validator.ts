@@ -55,6 +55,24 @@ export class BillingValidator {
     }
   }
 
+  private async ensurePropertyIsNotMainMeter(
+    propertyId: string,
+    meterGroupId: string
+  ): Promise<void> {
+    const property = await propertyRepository.getById(propertyId);
+    if (!property) return;
+    const entry = Object.values(property.meter_groups).find(
+      (e) => e.meter_group_id === meterGroupId
+    );
+    if (entry?.is_main_meter) {
+      throw new AppError(
+        400,
+        `Property ${propertyId} is the main meter for meter group ${meterGroupId}. ` +
+        `Its billings are generated automatically at billing cycle creation.`
+      );
+    }
+  }
+
   async validateCreate(data: CreateBillingDTO): Promise<void> {
     await this.validatePropertyExists(data.property_id);
     await this.validateReadingExists(data.previous_reading_id);
@@ -64,6 +82,10 @@ export class BillingValidator {
       data.previous_reading_id,
       data.current_reading_id
     );
+    const currReading = await readingRepository.getById(data.current_reading_id);
+    if (currReading) {
+      await this.ensurePropertyIsNotMainMeter(data.property_id, currReading.meter_group_id);
+    }
   }
 
   async validateBatch(data: CreateBillingDTO[]): Promise<void> {
@@ -89,6 +111,10 @@ export class BillingValidator {
         item.previous_reading_id,
         item.current_reading_id
       );
+      const currReading = await readingRepository.getById(item.current_reading_id);
+      if (currReading) {
+        await this.ensurePropertyIsNotMainMeter(item.property_id, currReading.meter_group_id);
+      }
     }
   }
 

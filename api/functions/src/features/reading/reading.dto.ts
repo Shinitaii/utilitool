@@ -6,10 +6,22 @@ export const CreateReadingDTOSchema = z.object({
   meter_group_id: z.string().trim().min(1),
   property_id: z.string().trim().min(1),
   reading_amount: z.number().int().min(0),
-  reading_date: z.unknown().transform((val) => parseTimestamp(val)),
+  reading_date: z.unknown()
+    .refine(
+      (v) => {
+        if (v === undefined || v === null) return false;
+        if (typeof v === "string") return !isNaN(new Date(v).getTime());
+        return true;
+      },
+      { message: "reading_date must be a valid date" }
+    )
+    .transform((val) => parseTimestamp(val)),
   image_url: z.url().optional(),
 });
 export type CreateReadingDTO = z.infer<typeof CreateReadingDTOSchema>;
+
+export const CreateSeedReadingDTOSchema = CreateReadingDTOSchema;
+export type CreateSeedReadingDTO = z.infer<typeof CreateSeedReadingDTOSchema>;
 
 // OCR DTOS
 export const OcrReadingDTOSchema = z.object({

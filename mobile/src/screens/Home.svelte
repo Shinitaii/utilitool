@@ -1,10 +1,5 @@
 <script lang="ts">
-  import { auth } from '../firebase';
-
-  function logout() {
-    auth.signOut();
-    window.location.hash = '#/login';
-  }
+  import BottomNav from '../components/BottomNav.svelte';
 </script>
 
 <div class="min-h-screen pb-24" style="background-color: var(--color-bg-primary)">
@@ -38,21 +33,7 @@
       </div>
     </div>
 
-    <!-- Sign Out -->
-    <div class="mt-12 pt-4 border-t" style="border-color: var(--color-border)">
-      <button
-        onclick={logout}
-        class="btn-secondary w-full text-center font-semibold py-3 rounded-lg"
-      >
-        Sign Out
-      </button>
-    </div>
   </div>
 
-  <!-- Bottom Nav -->
-  <nav class="fixed bottom-0 left-0 right-0 flex justify-around p-3 border-t" style="background-color: var(--color-bg-secondary); border-color: var(--color-border)">
-    <a href="#/home" class="flex-1 text-center py-2 font-semibold text-sm rounded" style="color: var(--color-accent)">🏠 Home</a>
-    <a href="#/history" class="flex-1 text-center py-2 font-semibold text-sm rounded" style="color: var(--color-text-secondary)">📋 History</a>
-    <a href="#/billings" class="flex-1 text-center py-2 font-semibold text-sm rounded" style="color: var(--color-text-secondary)">💰 Billings</a>
-  </nav>
+  <BottomNav active="home" />
 </div>

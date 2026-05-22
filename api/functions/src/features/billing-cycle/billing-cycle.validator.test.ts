@@ -3,6 +3,7 @@ jest.mock('../reading/reading.repository');
 
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import { BillingCycleValidator } from './billing-cycle.validator';
+import { CreateBillingCycleDTOSchema } from './billing-cycle.dto';
 import { billingRepository } from '../billing/billing.repository';
 import { readingRepository } from '../reading/reading.repository';
 import { AppError } from '../../utils/error.util';
@@ -96,6 +97,18 @@ describe('BillingCycleValidator', () => {
       await expect(
         validator.validateCreate({ ...base, billing_ids: multiIds, billing_consumption: 100 })
       ).resolves.toBeUndefined();
+    });
+
+    it('should reject create when meter_group_id is missing', async () => {
+      const result = CreateBillingCycleDTOSchema.safeParse({
+        billing_ids: { 'b-1': 100 },
+        billing_rate: 10,
+        billing_consumption: 100,
+        billing_start_date: Timestamp.fromDate(new Date('2026-04-01')),
+        billing_end_date: Timestamp.fromDate(new Date('2026-04-30')),
+        // meter_group_id intentionally omitted
+      });
+      expect(result.success).toBe(false);
     });
   });
 });

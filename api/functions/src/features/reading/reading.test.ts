@@ -29,6 +29,7 @@ jest.mock('../billing/billing.service', () => ({
   },
 }));
 jest.mock('../../utils/firestore.util', () => ({
+  ...jest.requireActual('../../utils/firestore.util'),
   snapshotToModel: jest.fn().mockImplementation((snap: any) => ({ id: snap.id, ...snap.data() })),
 }));
 jest.mock('./reading.repository');
@@ -36,6 +37,11 @@ jest.mock('./reading.validator');
 jest.mock('../meter-group/meter-group.repository', () => ({
   meterGroupRepository: {
     getById: jest.fn().mockResolvedValue({ id: 'mg-1', meter_name: 'Main Electric', utility_type: 'electricity', current_version: 1, versions: {} }),
+  },
+}));
+jest.mock('../property/property.repository', () => ({
+  propertyRepository: {
+    getById: jest.fn().mockResolvedValue(null),
   },
 }));
 
@@ -210,11 +216,10 @@ describe('readingService', () => {
           id: 'prev-reading-id',
           data: () => ({ meter_group_id: 'mg-1', reading_amount: 100 }),
         };
-        const propertyDoc = { id: 'prop-1' };
 
         // First collection() call: READINGS query → has previous reading
-        // Second/third collection() calls: PROPERTIES queries (electricity, water)
-        // Fourth collection() call: READINGS.doc() for new reading
+        // Second collection() call: PROPERTIES.doc(property_id) → property exists
+        // Third collection() call: READINGS.doc() for new reading
         jest.mocked(firestore.collection)
           .mockReturnValueOnce({
             where: jest.fn().mockReturnThis(),
@@ -223,12 +228,14 @@ describe('readingService', () => {
             get: jest.fn().mockResolvedValue({ empty: false, docs: [prevReadingDoc] }),
           })
           .mockReturnValueOnce({
-            where: jest.fn().mockReturnThis(),
-            get: jest.fn().mockResolvedValue({ docs: [propertyDoc] }),
-          })
-          .mockReturnValueOnce({
-            where: jest.fn().mockReturnThis(),
-            get: jest.fn().mockResolvedValue({ docs: [] }),
+            doc: jest.fn().mockReturnValue({
+              id: 'prop-1',
+              get: jest.fn().mockResolvedValue({
+                id: 'prop-1',
+                exists: true,
+                data: () => ({ is_deleted: false }),
+              }),
+            }),
           })
           .mockReturnValueOnce({
             doc: jest.fn().mockReturnValue({
@@ -245,6 +252,7 @@ describe('readingService', () => {
 
         const result = await readingService.create({
           meter_group_id: 'mg-1',
+          property_id: 'prop-1',
           reading_amount: 200,
           reading_date: Timestamp.now(),
         });
@@ -256,6 +264,7 @@ describe('readingService', () => {
       it('should not include meter_version in DTO schema (server-set field)', () => {
         const result = CreateReadingDTOSchema.safeParse({
           meter_group_id: 'mg-1',
+          property_id: 'prop-1',
           reading_amount: 50,
           reading_date: Timestamp.now(),
         });
@@ -283,12 +292,10 @@ describe('readingService', () => {
   describe('createBatch', () => {
     // It should create multiple readings in a batch.
     it('should create multiple readings in a batch', async () => {
-      const mocks = [
-        mockReading({ id: 'reading-1' }),
-        mockReading({ id: 'reading-2', reading_amount: 200 }),
-      ];
       jest.mocked(ReadingValidator.prototype.validateBatch).mockResolvedValue(undefined);
-      jest.mocked(readingRepository.createBatch).mockResolvedValue(mocks);
+      jest.mocked(readingRepository.create)
+        .mockResolvedValueOnce(mockReading({ id: 'reading-1' }))
+        .mockResolvedValueOnce(mockReading({ id: 'reading-2', reading_amount: 200 }));
 
       const input = [
         {
@@ -304,9 +311,7 @@ describe('readingService', () => {
       ];
       const result = await readingService.createBatch(input);
 
-      expect(readingRepository.createBatch).toHaveBeenCalledWith(
-        input.map((r) => ({ ...r, meter_version: 1 }))
-      );
+      expect(readingRepository.create).toHaveBeenCalledTimes(2);
       expect(result).toHaveLength(2);
     });
 

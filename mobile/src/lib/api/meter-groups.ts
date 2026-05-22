@@ -12,7 +12,7 @@ export interface MeterGroup {
 }
 
 export async function listMeterGroups() {
-  return apiGet('/meter-groups?minimal=true');
+  return apiGet('/meter-groups?summary=true');
 }
 
 export async function getMeterGroup(id: string) {

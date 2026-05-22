@@ -200,6 +200,7 @@ describe('meterGroupService', () => {
     // It should update the meter group details for the given meter group ID and return the updated meter group details.
     it('should update the meter group details', async () => {
       const updated = mockMeterGroup({ meter_name: 'Updated Name' });
+      jest.mocked(meterGroupRepository.getById).mockResolvedValue(mockMeterGroup());
       jest.mocked(meterGroupRepository.update).mockResolvedValue(updated);
 
       const result = await meterGroupService.update('mg-1', { meter_name: 'Updated Name' });
