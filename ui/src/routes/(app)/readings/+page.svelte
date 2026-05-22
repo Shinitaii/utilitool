@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getReadings, createReadingsBatch, updateReading, softDeleteReading, ocrReadingImage } from '$lib/api/readings';
+  import { getReadings, createReadingsBatch, updateReading, softDeleteReading } from '$lib/api/readings';
   import { getMeterGroups } from '$lib/api/meter-groups';
   import { getProperties } from '$lib/api/properties';
   import type { Reading, UpdateReadingRequest } from '$lib/types/reading.types';
@@ -14,6 +14,7 @@
   import EditModal from '$lib/components/shared/EditModal.svelte';
   import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
   import SelectionToolbar from '$lib/components/shared/SelectionToolbar.svelte';
+  import ImagePreview from '$lib/components/shared/ImagePreview.svelte';
   import { createCrudStore } from '$lib/stores/crud.svelte';
   import { Archive, Plus, X } from 'lucide-svelte';
 
@@ -25,8 +26,6 @@
     reading_amount: number | null;
     image_url: string | null;
     data_url: string | null;
-    suggested_amount: number | null;
-    is_processing: boolean;
     is_uploading: boolean;
   }
 
@@ -47,14 +46,8 @@
   let batchRows = $state<BatchReadingRow[]>([]);
   let batchLoading = $state(false);
 
-  // Image preview modal
+  // Image preview
   let previewImageUrl = $state<string | null>(null);
-  let previewZoom = $state(1);
-  let previewRotation = $state(0);
-  let previewDragX = $state(0);
-  let previewDragY = $state(0);
-  let previewIsDragging = $state(false);
-  let previewDragStart = $state({ x: 0, y: 0 });
 
   let isUpdating = $state(false);
 
@@ -134,8 +127,6 @@
           reading_amount: null,
           image_url: null,
           data_url: null,
-          suggested_amount: null,
-          is_processing: false,
           is_uploading: false,
         }));
       }
@@ -176,22 +167,6 @@
       uploadToStorage(file, `readings/${Date.now()}_${file.name}`)
         .then((url) => { row.image_url = url; })
         .catch(() => { /* keep data URL */ });
-    }
-  }
-
-  async function handleBatchSuggest(rowIndex: number) {
-    const row = batchRows[rowIndex];
-    if (!row.data_url) return;
-
-    row.is_processing = true;
-    try {
-      error = '';
-      const ocrResult = await ocrReadingImage(row.data_url);
-      row.suggested_amount = ocrResult.suggested_reading_amount ?? null;
-    } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to extract reading from image';
-    } finally {
-      row.is_processing = false;
     }
   }
 
@@ -379,13 +354,7 @@
                         {#if row.image_url}
                           <button
                             type="button"
-                            onclick={() => {
-                              previewImageUrl = row.image_url;
-                              previewZoom = 1;
-                              previewRotation = 0;
-                              previewDragX = 0;
-                              previewDragY = 0;
-                            }}
+                            onclick={() => { previewImageUrl = row.image_url; }}
                             class="block h-full w-full cursor-pointer rounded transition hover:opacity-75"
                           >
                             <img
@@ -399,8 +368,8 @@
                         {/if}
                       </div>
 
-                      <!-- Upload button (bottom left) -->
-                      <label class={row.is_uploading ? 'cursor-not-allowed' : 'cursor-pointer'}>
+                      <!-- Upload button (bottom left, full width) -->
+                      <label class={`col-span-3 ${row.is_uploading ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                         <input
                           type="file"
                           accept="image/*"
@@ -412,28 +381,9 @@
                           class="hidden"
                         />
                         <span class="block rounded bg-blue-100 px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-200 disabled:opacity-50 text-center">
-                          {row.is_uploading ? 'Uploading...' : 'Upload'}
+                          {row.is_uploading ? 'Uploading...' : 'Upload Photo'}
                         </span>
                       </label>
-
-                      <!-- Suggest button (bottom center) -->
-                      <button
-                        type="button"
-                        onclick={() => handleBatchSuggest(i)}
-                        disabled={!row.data_url || row.is_processing}
-                        class="rounded bg-blue-100 px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed text-center"
-                      >
-                        {row.is_processing ? 'Suggesting...' : 'Suggest'}
-                      </button>
-
-                      <!-- Suggested text (bottom right) -->
-                      <span class="text-xs text-gray-600 text-center self-center">
-                        {#if row.suggested_amount !== null}
-                          Suggested: {row.suggested_amount.toLocaleString()}
-                        {:else}
-                          &mdash;
-                        {/if}
-                      </span>
                     </div>
                   </td>
                 </tr>
@@ -604,100 +554,9 @@
   </div>
 </EditModal>
 
-<!-- Image Preview Modal -->
 {#if previewImageUrl}
-  <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
-    onclick={(e) => {
-      if (e.target === e.currentTarget) previewImageUrl = null;
-    }}
-    onkeydown={(e) => {
-      if (e.key === 'Escape') previewImageUrl = null;
-    }}
-    role="dialog"
-    aria-modal="true"
-  >
-    <div
-      class="relative h-screen w-screen bg-black"
-      onmousedown={(e) => {
-        previewIsDragging = true;
-        previewDragStart = { x: e.clientX, y: e.clientY };
-      }}
-      onmousemove={(e) => {
-        if (previewIsDragging) {
-          previewDragX += e.clientX - previewDragStart.x;
-          previewDragY += e.clientY - previewDragStart.y;
-          previewDragStart = { x: e.clientX, y: e.clientY };
-        }
-      }}
-      onmouseup={() => {
-        previewIsDragging = false;
-      }}
-      onmouseleave={() => {
-        previewIsDragging = false;
-      }}
-    >
-      <!-- Close button -->
-      <button
-        onclick={() => (previewImageUrl = null)}
-        class="fixed right-6 top-6 z-10 rounded-full bg-white p-2 text-gray-700 hover:bg-gray-200"
-        aria-label="Close preview"
-      >
-        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-
-      <!-- Image container with zoom and rotation -->
-      <div class="flex h-screen w-screen items-center justify-center" style="cursor: {previewIsDragging ? 'grabbing' : 'grab'};">
-        <img
-          src={previewImageUrl}
-          alt="Preview"
-          style="transform: translate({previewDragX}px, {previewDragY}px) scale({previewZoom}) rotate({previewRotation}deg); transition: {previewIsDragging ? 'none' : 'transform 0.2s ease-in-out'}; user-select: none;"
-          class="select-none"
-          onmousedown={(e) => e.preventDefault()}
-        />
-      </div>
-
-      <!-- Zoom and Rotation controls -->
-      <div class="fixed bottom-6 left-1/2 flex -translate-x-1/2 gap-4 rounded-lg bg-white p-3 shadow-lg">
-        <!-- Rotation controls -->
-        <div class="flex gap-2 border-r border-gray-300 pr-4">
-          <button
-            onclick={() => (previewRotation = (previewRotation - 90) % 360)}
-            class="rounded px-3 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100"
-            title="Rotate left"
-          >
-            ↺
-          </button>
-          <button
-            onclick={() => (previewRotation = (previewRotation + 90) % 360)}
-            class="rounded px-3 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100"
-            title="Rotate right"
-          >
-            ↻
-          </button>
-        </div>
-
-        <!-- Zoom controls -->
-        <div class="flex gap-2">
-          <button
-            onclick={() => (previewZoom = Math.max(1, previewZoom - 0.2))}
-            disabled={previewZoom <= 1}
-            class="rounded px-3 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-          >
-            −
-          </button>
-          <span class="px-3 py-1 text-sm font-medium text-gray-700">{Math.round(previewZoom * 100)}%</span>
-          <button
-            onclick={() => (previewZoom = Math.min(3, previewZoom + 0.2))}
-            disabled={previewZoom >= 3}
-            class="rounded px-3 py-1 text-sm font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-          >
-            +
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
+  <ImagePreview
+    imageUrl={previewImageUrl}
+    onClose={() => { previewImageUrl = null; }}
+  />
 {/if}
