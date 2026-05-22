@@ -43,47 +43,47 @@
   }
 </script>
 
-<div class="min-h-screen bg-gray-50 pb-20">
-  <div class="bg-blue-600 text-white p-4">
-    <h1 class="text-xl font-bold">Reading History</h1>
+<div class="min-h-screen pb-20" style="background-color: var(--color-bg-primary)">
+  <div class="p-4 border-b bg-white" style="border-color: var(--color-border)">
+    <h1 class="text-xl font-bold" style="color: var(--color-text-primary)">Reading History</h1>
   </div>
 
   {#if error}
-    <div class="bg-red-50 border border-red-200 text-red-700 p-4 m-4 rounded">
+    <div class="p-3 rounded-lg text-sm m-4" style="background-color: #fde5e0; color: var(--color-status-alert); border: 1px solid var(--color-status-alert)">
       {error}
     </div>
   {/if}
 
   {#if isLoading}
-    <div class="p-4 text-center text-gray-500 py-8">Loading...</div>
+    <div class="p-4 text-center py-8" style="color: var(--color-text-secondary)">Loading...</div>
   {:else if readings.length === 0}
-    <div class="p-4 text-center text-gray-500 py-8">No readings found</div>
+    <div class="p-4 text-center py-8" style="color: var(--color-text-secondary)">No readings found</div>
   {:else}
     <div class="p-4 space-y-3">
       {#each readings as reading (reading.id)}
         <button
           onclick={() => (selectedReading = selectedReading?.id === reading.id ? null : reading)}
-          class="w-full bg-white p-4 rounded-lg border border-gray-200 text-left hover:border-blue-300 transition"
+          class="card-base w-full text-left hover:opacity-90 transition"
         >
           <div class="flex justify-between items-start mb-2">
-            <h3 class="font-semibold text-gray-900">
+            <h3 class="font-semibold" style="color: var(--color-text-primary)">
               {propertyNames[reading.property_id] || 'Loading...'}
             </h3>
-            <span class="text-lg font-bold text-blue-600">{reading.reading_amount}</span>
+            <span class="text-lg font-bold" style="color: var(--color-accent)">{reading.reading_amount}</span>
           </div>
-          <p class="text-xs text-gray-500">{formatDate(reading.reading_date)}</p>
+          <p class="text-xs" style="color: var(--color-text-secondary)">{formatDate(reading.reading_date)}</p>
 
           {#if selectedReading?.id === reading.id}
-            <div class="mt-3 pt-3 border-t border-gray-200 space-y-2 text-sm">
+            <div class="mt-3 pt-3 border-t space-y-2 text-sm" style="border-color: var(--color-border)">
               {#if reading.image_url}
                 <div class="mb-2">
                   <img src={reading.image_url} alt="Reading" class="w-full h-32 object-cover rounded" />
                 </div>
               {/if}
-              <p class="text-gray-600">
+              <p style="color: var(--color-text-secondary)">
                 <strong>Created:</strong> {formatDate(reading.created_at)}
               </p>
-              <p class="text-gray-600">
+              <p style="color: var(--color-text-secondary)">
                 <strong>Meter Version:</strong> {reading.meter_version}
               </p>
             </div>
@@ -93,9 +93,9 @@
     </div>
   {/if}
 
-  <div class="fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around">
-    <a href="#/home" class="flex-1 py-3 text-center text-gray-600 font-semibold">🏠 Home</a>
-    <a href="#/history" class="flex-1 py-3 text-center text-blue-600 font-semibold">📋 History</a>
-    <a href="#/billings" class="flex-1 py-3 text-center text-gray-600 font-semibold">💰 Billings</a>
+  <div class="fixed bottom-0 left-0 right-0 border-t flex justify-around" style="background-color: var(--color-bg-secondary); border-color: var(--color-border)">
+    <button onclick={() => { window.location.hash = '#/home'; }} class="flex-1 py-3 text-center font-semibold border-none cursor-pointer" style="color: var(--color-text-secondary)">🏠 Home</button>
+    <button onclick={() => { window.location.hash = '#/history'; }} class="flex-1 py-3 text-center font-semibold border-none cursor-pointer" style="color: var(--color-accent)">📋 History</button>
+    <button onclick={() => { window.location.hash = '#/billings'; }} class="flex-1 py-3 text-center font-semibold border-none cursor-pointer" style="color: var(--color-text-secondary)">💰 Billings</button>
   </div>
 </div>
