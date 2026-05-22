@@ -10,6 +10,7 @@ import {authRateLimiter, apiRateLimiter} from './config/rate-limit.config';
 import {errorHandler} from './middlewares/error-handler.middleware';
 import {authMiddleware} from './middlewares/auth.middleware';
 import {requestLogger} from './middlewares/request-logger.middleware';
+import {sanitizeInput} from './middlewares/sanitize-input.middleware';
 import {setupSwagger} from './config/swagger.config';
 import {logger} from './utils/logger.util';
 
@@ -43,13 +44,35 @@ app.set('json replacer', (key: string, value: any) => {
 
 // CORS & Security
 app.use(cors(corsOptions));
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"], // Unsafe inline for inline styles in templates
+      imgSrc: ["'self'", 'data:', 'https:'],
+      fontSrc: ["'self'", 'data:'],
+      connectSrc: ["'self'"],
+      frameSrc: ["'none'"],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: [],
+    },
+  },
+  hsts: {
+    maxAge: 31536000, // 1 year
+    includeSubDomains: true,
+    preload: true,
+  },
+}));
 
 // Logging
 app.use(requestLogger);
 
 // Parsing
 app.use(express.json());
+
+// Input sanitization (prevent XSS)
+app.use(sanitizeInput);
 
 // Rate limiting (auth routes stricter)
 app.use('/auth', authRateLimiter);

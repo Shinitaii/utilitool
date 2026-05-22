@@ -10,6 +10,7 @@ import {
 } from "./billing-cycle.dto";
 import {AppError} from "../../utils/error.util";
 import {geminiLib} from "../../lib/gemini.lib";
+import {logger} from "../../utils/logger.util";
 
 export const createBillingCycle = async (
   req: Request,
@@ -112,10 +113,67 @@ export const ocrBillingCycle = async (
   res: Response
 ): Promise<void> => {
   const {image_url} = req.body as OcrBillingCycleDTO;
-  const result = await geminiLib.extractBillData(image_url);
-  if (!result) {
-    throw new AppError(422, "Could not extract billing data from the provided image. Please try a clearer photo of the utility bill.");
+  
+  // Validate image_url format and security before processing
+  if (!image_url) {
+    throw new AppError(400, "Image URL is required");
   }
-  const validated = OcrBillingCycleResponseSchema.parse(result);
-  res.status(200).json(validated);
+
+  try {
+    // Validate URL (this will throw if it's invalid or private)
+    validateOcrUrl(image_url);
+    
+    logger.info({endpoint: '/billing-cycles/ocr', urlPrefix: image_url.substring(0, 20)}, 'Processing OCR request');
+    
+    const result = await geminiLib.extractBillData(image_url);
+    
+    if (!result) {
+      throw new AppError(422, "Could not extract billing data from the provided image. Please try a clearer photo of the utility bill.");
+    }
+    
+    const validated = OcrBillingCycleResponseSchema.parse(result);
+    res.status(200).json(validated);
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw error;
+    }
+    if (error instanceof Error && error.message.includes('Invalid image URL')) {
+      throw new AppError(400, error.message);
+    }
+    logger.error({error, image_url: image_url.substring(0, 50)}, 'OCR processing failed');
+    throw new AppError(400, 'Failed to process image. Please try a different image.');
+  }
 };
+
+/**
+ * Validates that a URL is safe for OCR processing.
+ * Prevents SSRF attacks by blocking private/local addresses.
+ */
+function validateOcrUrl(url: string): void {
+  // Block data: URLs (already handled by Gemini lib, but double-check)
+  if (url.startsWith('data:')) {
+    throw new AppError(400, 'Data URLs are not supported for this endpoint');
+  }
+
+  try {
+    const parsed = new URL(url);
+
+    // Only allow HTTP(S)
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new AppError(400, 'Invalid image URL: only http and https are allowed');
+    }
+
+    // Block RFC-1918 (private networks), loopback, link-local, and metadata services
+    const blockedPattern =
+      /^(10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+|127\.\d+\.\d+\.\d+|169\.254\.\d+\.\d+|::1|localhost|metadata\.google\.internal|169\.254\.169\.254)/i;
+
+    if (blockedPattern.test(parsed.hostname)) {
+      throw new AppError(400, 'Invalid image URL: private or reserved IP addresses are not allowed');
+    }
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw error;
+    }
+    throw new AppError(400, 'Invalid image URL format');
+  }
+}
