@@ -6,17 +6,17 @@
 
   let step = $state(1);
   let isLoading = $state(false);
-  let error = $state<string | null>(null);
+  let error: string | null = $state(null);
 
   // Step 1: Session setup
-  let meterGroups = $state<MeterGroup[]>([]);
-  let selectedMeterGroupId = $state<string>('');
-  let readingDate = $state<string>(new Date().toISOString().split('T')[0]);
+  let meterGroups: MeterGroup[] = $state([]);
+  let selectedMeterGroupId: string = $state('');
+  let readingDate: string = $state(new Date().toISOString().split('T')[0]);
   let meterGroupsLoaded = $state(false);
 
   // Step 2: Property iteration
-  let properties = $state<Property[]>([]);
-  let propertyReadings = $state<Record<string, { amount: number; image_url: string }>({});
+  let properties: Property[] = $state([]);
+  let propertyReadings: Record<string, { amount: number; image_url: string }> = $state({});
 
   // Effects
   $effect.pre(async () => {

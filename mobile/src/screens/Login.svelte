@@ -7,7 +7,8 @@
   let error = $state('');
   let loading = $state(false);
 
-  async function handleLogin() {
+  async function handleLogin(e: Event) {
+    e.preventDefault();
     loading = true;
     error = '';
     try {
@@ -26,7 +27,7 @@
     <div class="bg-white rounded-lg shadow-lg p-8">
       <h1 class="text-3xl font-bold text-center mb-8 text-gray-800">Utilitool</h1>
 
-      <form onsubmit|preventDefault={handleLogin} class="space-y-4">
+      <form onsubmit={handleLogin} class="space-y-4">
         <div>
           <label for="email" class="block text-sm font-medium text-gray-700 mb-2">Email</label>
           <input

@@ -2,11 +2,11 @@
   import { listReadings, type Reading } from '../lib/api/readings';
   import { getProperty } from '../lib/api/properties';
 
-  let readings = $state<Reading[]>([]);
-  let propertyNames = $state<Record<string, string>>({});
+  let readings: Reading[] = $state([]);
+  let propertyNames: Record<string, string> = $state({});
   let isLoading = $state(true);
-  let error = $state<string | null>(null);
-  let selectedReading = $state<Reading | null>(null);
+  let error: string | null = $state(null);
+  let selectedReading: Reading | null = $state(null);
 
   $effect.pre(async () => {
     try {

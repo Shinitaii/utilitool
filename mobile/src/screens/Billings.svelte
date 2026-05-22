@@ -3,11 +3,11 @@
   import { getProperty } from '../lib/api/properties';
   import { getProperty as getPropertyForBilling } from '../lib/api/properties';
 
-  let billings = $state<Billing[]>([]);
-  let propertyNames = $state<Record<string, string>>({});
+  let billings: Billing[] = $state([]);
+  let propertyNames: Record<string, string> = $state({});
   let isLoading = $state(true);
-  let error = $state<string | null>(null);
-  let expandedBillings = $state<Set<string>>(new Set());
+  let error: string | null = $state(null);
+  let expandedBillings: Set<string> = $state(new Set());
 
   $effect.pre(async () => {
     try {
