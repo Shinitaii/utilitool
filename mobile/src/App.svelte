@@ -1,4 +1,5 @@
 <script lang="ts">
+  import './styles/globals.css';
   import { onMount } from 'svelte';
   import { auth } from './firebase';
   import Login from './screens/Login.svelte';
@@ -10,7 +11,7 @@
   let currentScreen = $state('login');
   let user = $state(auth.currentUser);
 
-  onMount(() => {
+  $effect.pre(() => {
     auth.onAuthStateChanged((newUser) => {
       user = newUser;
       if (newUser && currentScreen === 'login') {
@@ -19,18 +20,21 @@
         currentScreen = 'login';
       }
     });
+  });
 
+  onMount(() => {
     const handleHashChange = () => {
-      const hash = window.location.hash.slice(1);
+      const hash = window.location.hash.slice(2);
       if (hash && ['home', 'capture', 'history', 'billings'].includes(hash)) {
         currentScreen = hash;
       }
     };
 
-    window.addEventListener('hashchange', handleHashChange);
     handleHashChange();
+    window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   });
+
 </script>
 
 {#if !user}
