@@ -1,10 +1,12 @@
 <script lang="ts">
   import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
   import { auth } from '$lib/firebase';
+  import { createUser } from '$lib/api/users';
 
   let email = $state('');
   let displayName = $state('');
   let password = $state('');
+  let role = $state<'admin' | 'landlord' | 'assistant'>('assistant');
   let isLoading = $state(false);
   let error = $state('');
   let success = $state('');
@@ -26,10 +28,23 @@
       if (displayName) {
         await updateProfile(credential.user, { displayName });
       }
+
+      // Pre-seed the user profile with the selected role
+      try {
+        await createUser({
+          uid: credential.user.uid,
+          role
+        });
+      } catch (roleErr) {
+        console.error('Failed to set user role:', roleErr);
+        // Continue anyway - user auth was successful
+      }
+
       success = `User "${displayName || email}" created successfully`;
       email = '';
       displayName = '';
       password = '';
+      role = 'assistant';
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code ?? '';
       const messages: Record<string, string> = {
@@ -107,6 +122,21 @@
           disabled={isLoading}
         />
         <p class="mt-1 text-xs text-gray-500">Minimum 8 characters</p>
+      </div>
+
+      <div>
+        <label for="role" class="block text-sm font-medium text-gray-700">Role</label>
+        <select
+          id="role"
+          bind:value={role}
+          class="mt-1 block w-full rounded border border-gray-300 px-3 py-2 shadow-sm focus:border-opacity-50 focus:outline-none focus:ring-2"
+          style="--tw-ring-color: var(--color-accent)"
+          disabled={isLoading}
+        >
+          <option value="assistant">Assistant (Meter Reader)</option>
+          <option value="landlord">Landlord</option>
+          <option value="admin">Admin</option>
+        </select>
       </div>
 
       <button
