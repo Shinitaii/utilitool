@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.capacitor/
+android/
+ios/
+*.log
+.env
+.env.local
