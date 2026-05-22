@@ -1,6 +1,7 @@
 import {Router} from "express";
 import {
   createReading,
+  createSeedReading,
   getReadingById,
   getReadings,
   updateReading,
@@ -14,6 +15,7 @@ import {
 import {
   CreateReadingBatchDTOSchema,
   CreateReadingDTOSchema,
+  CreateSeedReadingDTOSchema,
   ReadingByIdParamsDTOSchema,
   GetReadingsQueryDTOSchema,
   UpdateReadingBatchDTOSchema,
@@ -44,6 +46,13 @@ router.patch(
   validateRequest({body: UpdateReadingBatchDTOSchema}),
   requireRole('admin', 'landlord', 'assistant'),
   updateBatchReadings
+);
+
+router.post(
+  "/seed",
+  validateRequest({body: CreateSeedReadingDTOSchema}),
+  requireRole('admin', 'landlord', 'assistant'),
+  createSeedReading
 );
 
 router.post(

@@ -2,6 +2,7 @@ import {CreateReadingDTO} from "./reading.dto";
 import {readingRepository} from "./reading.repository";
 import {AppError} from "../../utils/error.util";
 import {meterGroupRepository} from "../meter-group/meter-group.repository";
+import {propertyRepository} from "../property/property.repository";
 import {Timestamp} from "firebase-admin/firestore";
 
 const MAX_READINGS_PER_METER_GROUP = 1000;
@@ -111,6 +112,44 @@ export class ReadingValidator {
   ): Promise<void> {
     for (const {data} of updates) {
       await this.validateUpdate(data);
+    }
+  }
+
+  async validateSeedCreate(data: CreateReadingDTO): Promise<void> {
+    await this.validateMeterGroupExists(data.meter_group_id);
+    this.validateReadingAmount(data.reading_amount);
+    this.validateReadingDate(data.reading_date);
+
+    const property = await propertyRepository.getById(data.property_id);
+    if (!property) {
+      throw new AppError(404, "Property not found");
+    }
+
+    const entry = Object.values(property.meter_groups).find(
+      (e) => e.meter_group_id === data.meter_group_id
+    );
+    if (!entry?.is_main_meter) {
+      throw new AppError(
+        400,
+        `Property ${data.property_id} is not the main meter for meter group ${data.meter_group_id}`
+      );
+    }
+
+    const existing = await readingRepository.search({
+      limit: 1,
+      orderBy: "created_at",
+      filters: {
+        property_id: data.property_id,
+        meter_group_id: data.meter_group_id,
+      },
+    });
+
+    if (existing.data.length > 0) {
+      throw new AppError(
+        409,
+        "A seed reading already exists for this property and meter group. " +
+          "All subsequent readings are auto-derived at billing cycle creation."
+      );
     }
   }
 }

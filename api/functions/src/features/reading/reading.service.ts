@@ -249,6 +249,47 @@ export const readingService = {
     return Promise.all(readingPromises);
   },
 
+  async createSeed(data: CreateReadingDTO): Promise<Reading> {
+    await validator.validateCreate(data);
+
+    // Guard: property must be the main meter for this meter group
+    const property = await propertyRepository.getById(data.property_id);
+    if (!property) {
+      throw new AppError(404, "Property not found");
+    }
+    const entry = Object.values(property.meter_groups).find(
+      (e) => e.meter_group_id === data.meter_group_id
+    );
+    if (!entry?.is_main_meter) {
+      throw new AppError(
+        400,
+        `Property ${data.property_id} is not the main meter for meter group ${data.meter_group_id}`
+      );
+    }
+
+    // Guard: no seed reading may already exist for this property + meter group
+    const existing = await readingRepository.search({
+      limit: 1,
+      orderBy: "created_at",
+      filters: {
+        property_id: data.property_id,
+        meter_group_id: data.meter_group_id,
+      },
+    });
+    if (existing.data.length > 0) {
+      throw new AppError(
+        409,
+        "A seed reading already exists for this property and meter group. " +
+          "All subsequent readings are auto-derived at billing cycle creation."
+      );
+    }
+
+    const meterGroup = await meterGroupRepository.getById(data.meter_group_id);
+    const meter_version = meterGroup!.current_version ?? 1;
+    const payload: ReadingCreatePayload = { ...data, meter_version };
+    return readingRepository.create(payload);
+  },
+
   async search(options: ReadingSearchOptions): Promise<PaginatedResult<Reading>> {
     return readingRepository.search({
       limit: options.limit,

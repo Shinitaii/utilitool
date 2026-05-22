@@ -11,6 +11,9 @@ export const CreateReadingDTOSchema = z.object({
 });
 export type CreateReadingDTO = z.infer<typeof CreateReadingDTOSchema>;
 
+export const CreateSeedReadingDTOSchema = CreateReadingDTOSchema;
+export type CreateSeedReadingDTO = z.infer<typeof CreateSeedReadingDTOSchema>;
+
 // OCR DTOS
 export const OcrReadingDTOSchema = z.object({
   image_url: z.url(),
