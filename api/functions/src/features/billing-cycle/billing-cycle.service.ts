@@ -14,9 +14,10 @@ const validator = new BillingCycleValidator();
 async function injectMainMeterBilling(
   data: CreateBillingCycleDTO
 ): Promise<CreateBillingCycleDTO> {
+  // limit: 1000 — meter groups are not expected to exceed this property count
   const allProperties = await propertyService.search({
     meterGroupId: data.meter_group_id,
-    limit: 100,
+    limit: 1000,
   });
 
   const mainMeterProperty = allProperties.data.find((p) =>
@@ -50,6 +51,10 @@ async function injectMainMeterBilling(
   const derivedReadingAmount =
     prevReading.data.reading_amount + derivedConsumption;
 
+  // Passes through readingService.create() — anomaly guard and duplicate-month check
+  // apply to the derived reading. If the derived amount triggers the 5× anomaly
+  // threshold (e.g. after meter replacement in the billing period), this will throw 422.
+  // Operators should reset the meter group before creating the billing cycle.
   const derivedReading = await readingService.create({
     meter_group_id: data.meter_group_id,
     property_id: mainMeterProperty.id,
@@ -98,6 +103,19 @@ export const billingCycleService = {
   },
 
   async createBatch(data: CreateBillingCycleDTO[]): Promise<BillingCycle[]> {
+    const seenMeterGroups = new Set<string>();
+    for (const item of data) {
+      if (item.meter_group_id) {
+        if (seenMeterGroups.has(item.meter_group_id)) {
+          throw new AppError(
+            400,
+            `Duplicate meter_group_id "${item.meter_group_id}" in batch. ` +
+            `Each billing cycle in a batch must be for a different meter group.`
+          );
+        }
+        seenMeterGroups.add(item.meter_group_id);
+      }
+    }
     const enriched = await Promise.all(data.map(injectMainMeterBilling));
     await validator.validateBatch(enriched);
     return billingCycleRepository.createBatch(enriched);
