@@ -4,6 +4,7 @@ import {parseTimestamp} from "../../utils/firestore.util";
 
 // Create DTOS
 const BillingCycleBaseSchema = z.object({
+  meter_group_id: z.string().trim().min(1),
   billing_ids: z
     .record(z.string(), z.number().nonnegative())
     .refine(
@@ -32,6 +33,7 @@ export type CreateBillingCycleBatchDTO = z.infer<typeof CreateBillingCycleBatchD
 
 // Update DTOS
 const UpdateBillingCycleBaseSchema = z.object({
+  meter_group_id: z.string().trim().min(1).optional(),
   billing_ids: z
     .record(z.string(), z.number().nonnegative())
     .optional(),
