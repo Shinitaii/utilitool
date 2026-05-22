@@ -88,27 +88,6 @@
     });
   }
 
-  // Group billings by status
-  $derived.by(() => {
-    const grouped = {
-      pending: [] as Billing[],
-      overdue: [] as Billing[],
-      paid: [] as Billing[]
-    };
-
-    billings.forEach(b => {
-      if (b.payment_status === 'paid') {
-        grouped.paid.push(b);
-      } else if (b.payment_status === 'overdue') {
-        grouped.overdue.push(b);
-      } else {
-        grouped.pending.push(b);
-      }
-    });
-
-    return grouped;
-  });
-
   let groupedBillings = $derived.by(() => {
     const grouped = {
       pending: [] as Billing[],
@@ -155,9 +134,12 @@
           </h3>
           <div class="space-y-2">
             {#each groupedBillings.overdue as billing (billing.id)}
-              <button
+              <div
+                role="button"
+                tabindex="0"
                 onclick={() => toggleBilling(billing.id)}
-                class="w-full bg-white p-4 rounded-lg border-2 border-red-200 text-left hover:border-red-400 transition"
+                onkeydown={(e) => e.key === 'Enter' && toggleBilling(billing.id)}
+                class="w-full bg-white p-4 rounded-lg border-2 border-red-200 text-left hover:border-red-400 transition cursor-pointer"
               >
                 <div class="flex justify-between items-start mb-2">
                   <h4 class="font-semibold text-gray-900">
@@ -180,7 +162,7 @@
                     </button>
                   </div>
                 {/if}
-              </button>
+              </div>
             {/each}
           </div>
         </div>
@@ -219,7 +201,7 @@
                     </button>
                   </div>
                 {/if}
-              </button>
+              </div>
             {/each}
           </div>
         </div>
@@ -233,9 +215,12 @@
           </h3>
           <div class="space-y-2">
             {#each groupedBillings.paid as billing (billing.id)}
-              <button
+              <div
+                role="button"
+                tabindex="0"
                 onclick={() => toggleBilling(billing.id)}
-                class="w-full bg-white p-4 rounded-lg border border-green-200 text-left hover:border-green-400 transition opacity-75"
+                onkeydown={(e) => e.key === 'Enter' && toggleBilling(billing.id)}
+                class="w-full bg-white p-4 rounded-lg border border-green-200 text-left hover:border-green-400 transition opacity-75 cursor-pointer"
               >
                 <div class="flex justify-between items-start">
                   <h4 class="font-semibold text-gray-900">
@@ -244,7 +229,7 @@
                   <span class="text-lg font-bold text-green-600">{billing.current_reading_amount}</span>
                 </div>
                 <p class="text-xs text-gray-500">Paid: {formatDate(billing.updated_at)}</p>
-              </button>
+              </div>
             {/each}
           </div>
         </div>

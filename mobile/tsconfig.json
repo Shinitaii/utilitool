@@ -15,7 +15,9 @@
     "baseUrl": ".",
     "paths": {
       "$lib/*": ["src/lib/*"]
-    }
+    },
+    "types": ["svelte"],
+    "ignoreDeprecations": "6.0"
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.svelte"]
 }
