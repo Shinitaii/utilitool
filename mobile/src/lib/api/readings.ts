@@ -31,6 +31,10 @@ export async function listReadings(meterGroupId?: string) {
   return apiGet(`/readings${params.toString() ? '?' + params.toString() : ''}`);
 }
 
+export async function getReading(id: string): Promise<Reading> {
+  return apiGet(`/readings/${id}`);
+}
+
 export async function createReading(data: CreateReadingRequest) {
   return apiPost('/readings', data);
 }
