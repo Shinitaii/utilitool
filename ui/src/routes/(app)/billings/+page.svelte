@@ -79,7 +79,17 @@
     if (!selectedProp) return readings;
 
     const meterGroupIds = [selectedProp.meter_groups.electricity, selectedProp.meter_groups.water].filter(Boolean);
-    return readings.filter(r => meterGroupIds.includes(r.meter_group_id));
+    return readings.filter(r => meterGroupIds.includes(r.meter_group_id) && r.property_id === createFormData.property_id);
+  });
+
+  // Filter readings for edit modal based on selected property's meter groups
+  const editModalReadings = $derived.by(() => {
+    if (!readings || !editData.property_id) return readings || [];
+    const selectedProp = properties.find(p => p.id === editData.property_id);
+    if (!selectedProp) return readings;
+
+    const meterGroupIds = [selectedProp.meter_groups.electricity, selectedProp.meter_groups.water].filter(Boolean);
+    return readings.filter(r => meterGroupIds.includes(r.meter_group_id) && r.property_id === editData.property_id);
   });
 
   // Get utility type for cycle form meter group
@@ -952,7 +962,7 @@
         bind:value={editData.previous_reading_id}
         class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
       >
-        {#each readings as reading (reading.id)}
+        {#each editModalReadings as reading (reading.id)}
           <option value={reading.id}>
             {formatReading(reading.reading_amount, meterGroups.find(m => m.id === reading.meter_group_id)?.utility_type || 'electricity')} - {formatDate(toDate(reading.reading_date))}
           </option>
@@ -966,7 +976,7 @@
         bind:value={editData.current_reading_id}
         class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
       >
-        {#each readings as reading (reading.id)}
+        {#each editModalReadings as reading (reading.id)}
           <option value={reading.id}>
             {formatReading(reading.reading_amount, meterGroups.find(m => m.id === reading.meter_group_id)?.utility_type || 'electricity')} - {formatDate(toDate(reading.reading_date))}
           </option>

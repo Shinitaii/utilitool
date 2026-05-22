@@ -4,12 +4,14 @@ import type { PaginatedResult } from '$lib/types/api.types';
 
 export async function getReadings(params?: {
   meterGroupId?: string;
+  propertyId?: string;
   limit?: number;
   cursor?: string;
   archived?: boolean;
 }): Promise<PaginatedResult<Reading>> {
   const query = new URLSearchParams();
   if (params?.meterGroupId) query.set('meterGroupId', params.meterGroupId);
+  if (params?.propertyId) query.set('propertyId', params.propertyId);
   if (params?.limit) query.set('limit', params.limit.toString());
   if (params?.cursor) query.set('cursor', params.cursor);
   if (params?.archived) query.set('archived', 'true');

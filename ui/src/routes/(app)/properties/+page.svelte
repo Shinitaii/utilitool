@@ -122,8 +122,8 @@
       } else if (activeTab === 'readings') {
         // Load readings for both electricity and water meter groups
         const [electricityReadings, waterReadings] = await Promise.all([
-          getReadings({ meterGroupId: selectedProperty.meter_groups.electricity, limit: 50 }),
-          getReadings({ meterGroupId: selectedProperty.meter_groups.water, limit: 50 })
+          getReadings({ meterGroupId: selectedProperty.meter_groups.electricity, propertyId: selectedProperty.id, limit: 50 }),
+          getReadings({ meterGroupId: selectedProperty.meter_groups.water, propertyId: selectedProperty.id, limit: 50 })
         ]);
         // Combine results
         readings = {
@@ -134,8 +134,8 @@
       } else if (activeTab === 'billings') {
         const [billingsResult, electricityReadings, waterReadings] = await Promise.all([
           getBillings({ propertyId: selectedProperty.id, limit: 50 }),
-          getReadings({ meterGroupId: selectedProperty.meter_groups.electricity, limit: 100 }),
-          getReadings({ meterGroupId: selectedProperty.meter_groups.water, limit: 100 })
+          getReadings({ meterGroupId: selectedProperty.meter_groups.electricity, propertyId: selectedProperty.id, limit: 100 }),
+          getReadings({ meterGroupId: selectedProperty.meter_groups.water, propertyId: selectedProperty.id, limit: 100 })
         ]);
         billings = billingsResult;
         readings = {
