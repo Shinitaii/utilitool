@@ -1,10 +1,18 @@
 jest.mock('./billing-cycle.repository');
 jest.mock('./billing-cycle.validator');
+jest.mock('../property/property.service');
+jest.mock('../reading/reading.service');
+jest.mock('../billing/billing.repository');
+jest.mock('../reading/reading.util');
 
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import { billingCycleService } from './billing-cycle.service';
 import { billingCycleRepository } from './billing-cycle.repository';
 import { BillingCycleValidator } from './billing-cycle.validator';
+import { propertyService } from '../property/property.service';
+import { readingService } from '../reading/reading.service';
+import { billingRepository } from '../billing/billing.repository';
+import { findPreviousMonthReading } from '../reading/reading.util';
 import { CreateBillingCycleDTOSchema, UpdateBillingCycleDTOSchema, BillingCycleByIdParamsDTOSchema, CreateBillingCycleBatchDTOSchema, UpdateBillingCycleBatchDTOSchema } from './billing-cycle.dto';
 import { AppError } from '../../utils/error.util';
 import { Timestamp } from 'firebase-admin/firestore';
@@ -36,6 +44,12 @@ const mockBillingCycle = (overrides?: Record<string, any>) => {
 describe('billingCycleService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Default: no main meter property, so injectMainMeterBilling is a no-op for existing tests
+    jest.mocked(propertyService.search).mockResolvedValue({
+      data: [],
+      hasMore: false,
+      nextCursor: null,
+    });
   });
 
   // Create a new billing cycle
@@ -508,5 +522,159 @@ describe('billingCycleService', () => {
         statusCode: 404,
       });
     });
+  });
+});
+
+const startDate = Timestamp.fromDate(new Date('2026-04-01'));
+const endDate = Timestamp.fromDate(new Date('2026-04-30'));
+
+const baseInput = {
+  meter_group_id: 'mg-1',
+  billing_ids: { 'b-101': 18, 'b-103': 5 },
+  billing_rate: 12,
+  billing_consumption: 30,
+  billing_start_date: startDate,
+  billing_end_date: endDate,
+};
+
+describe('billingCycleService.create - main meter injection', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('should inject derived billing for main meter property and pass to repository', async () => {
+    jest.mocked(propertyService.search).mockResolvedValue({
+      data: [{
+        id: 'prop-100',
+        room_name: 'Unit 100',
+        tenant_amount: 1,
+        meter_groups: {
+          electricity: { meter_group_id: 'mg-1', is_main_meter: true },
+          water: { meter_group_id: 'mg-water', is_main_meter: false },
+        },
+        created_at: startDate,
+        updated_at: startDate,
+        is_deleted: false,
+        deleted_at: null,
+      }],
+      hasMore: false,
+      nextCursor: null,
+    });
+
+    jest.mocked(findPreviousMonthReading).mockResolvedValue({
+      id: 'r-prev',
+      data: { reading_amount: 20 },
+    });
+
+    jest.mocked(readingService.create).mockResolvedValue({
+      id: 'r-derived',
+      meter_group_id: 'mg-1',
+      property_id: 'prop-100',
+      reading_amount: 27,
+      reading_date: endDate,
+      meter_version: 1,
+      created_at: endDate,
+      updated_at: endDate,
+      is_deleted: false,
+      deleted_at: null,
+    });
+
+    jest.mocked(billingRepository.search).mockResolvedValue({
+      data: [{
+        id: 'b-100-derived',
+        property_id: 'prop-100',
+        previous_reading_id: 'r-prev',
+        current_reading_id: 'r-derived',
+        payment_status: 'pending',
+        created_at: endDate,
+        updated_at: endDate,
+        is_deleted: false,
+        deleted_at: null,
+      }],
+      hasMore: false,
+      nextCursor: null,
+    });
+
+    jest.mocked(BillingCycleValidator.prototype.validateCreate).mockResolvedValue(undefined);
+    jest.mocked(billingCycleRepository.create).mockResolvedValue({
+      id: 'cycle-1',
+      ...baseInput,
+      billing_ids: { 'b-101': 18, 'b-103': 5, 'b-100-derived': 7 },
+      created_at: endDate,
+      updated_at: endDate,
+      is_deleted: false,
+      deleted_at: null,
+    });
+
+    await billingCycleService.create(baseInput);
+
+    const repoCallArg = jest.mocked(billingCycleRepository.create).mock.calls[0][0];
+    expect(repoCallArg.billing_ids).toMatchObject({
+      'b-101': 18,
+      'b-103': 5,
+      'b-100-derived': 7,
+    });
+    expect(repoCallArg.billing_ids['b-100-derived']).toBe(7); // derived = 30 - (18+5)
+  });
+
+  it('should throw 400 when main meter property has no seed reading', async () => {
+    jest.mocked(propertyService.search).mockResolvedValue({
+      data: [{
+        id: 'prop-100',
+        room_name: 'Unit 100',
+        tenant_amount: 1,
+        meter_groups: {
+          electricity: { meter_group_id: 'mg-1', is_main_meter: true },
+          water: { meter_group_id: 'mg-water', is_main_meter: false },
+        },
+        created_at: startDate,
+        updated_at: startDate,
+        is_deleted: false,
+        deleted_at: null,
+      }],
+      hasMore: false,
+      nextCursor: null,
+    });
+
+    // findPreviousMonthReading returns null → injectMainMeterBilling throws AppError(400)
+    jest.mocked(findPreviousMonthReading).mockResolvedValue(null);
+
+    await expect(billingCycleService.create(baseInput)).rejects.toMatchObject({
+      statusCode: 400,
+    });
+  });
+
+  it('should skip injection when no main meter property exists for meter group', async () => {
+    jest.mocked(propertyService.search).mockResolvedValue({
+      data: [{
+        id: 'prop-101',
+        room_name: 'Unit 101',
+        tenant_amount: 1,
+        meter_groups: {
+          electricity: { meter_group_id: 'mg-1', is_main_meter: false },
+          water: { meter_group_id: 'mg-water', is_main_meter: false },
+        },
+        created_at: startDate,
+        updated_at: startDate,
+        is_deleted: false,
+        deleted_at: null,
+      }],
+      hasMore: false,
+      nextCursor: null,
+    });
+
+    jest.mocked(BillingCycleValidator.prototype.validateCreate).mockResolvedValue(undefined);
+    jest.mocked(billingCycleRepository.create).mockResolvedValue({
+      id: 'cycle-1',
+      ...baseInput,
+      created_at: endDate,
+      updated_at: endDate,
+      is_deleted: false,
+      deleted_at: null,
+    });
+
+    await billingCycleService.create(baseInput);
+
+    expect(readingService.create).not.toHaveBeenCalled();
+    const repoCallArg = jest.mocked(billingCycleRepository.create).mock.calls[0][0];
+    expect(Object.keys(repoCallArg.billing_ids)).toHaveLength(2);
   });
 });
