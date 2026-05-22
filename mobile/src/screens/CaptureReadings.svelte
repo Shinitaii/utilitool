@@ -130,14 +130,14 @@
   }
 </script>
 
-<div class="min-h-screen bg-gray-50 pb-20">
-  <div class="bg-blue-600 text-white p-4 flex items-center gap-3">
-    <button onclick={goBack} class="text-xl">←</button>
+<div class="min-h-screen pb-20" style="background-color: var(--color-bg-primary)">
+  <div class="p-4 flex items-center gap-3 bg-white border-b" style="border-color: var(--color-border); color: var(--color-text-primary)">
+    <button onclick={goBack} class="text-xl" style="color: var(--color-text-primary)">←</button>
     <h1 class="text-xl font-bold">New Reading Session</h1>
   </div>
 
   {#if error}
-    <div class="bg-red-50 border border-red-200 text-red-700 p-4 m-4 rounded">
+    <div class="p-4 m-4 rounded border" style="background-color: #fff0f0; border-color: var(--color-status-alert); color: var(--color-status-alert)">
       {error}
     </div>
   {/if}
@@ -146,13 +146,13 @@
   {#if step === 1}
     <div class="p-4 space-y-4">
       <div>
-        <label for="meter-group" class="block text-sm font-medium text-gray-700 mb-2">
+        <label for="meter-group" class="label-base mb-2">
           Select Meter Group
         </label>
         <select
           id="meter-group"
           bind:value={selectedMeterGroupId}
-          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          class="input-base w-full"
         >
           <option value="">-- Choose meter group --</option>
           {#each meterGroups as group (group.id)}
@@ -164,21 +164,21 @@
       </div>
 
       <div>
-        <label for="reading-date" class="block text-sm font-medium text-gray-700 mb-2">
+        <label for="reading-date" class="label-base mb-2">
           Reading Date
         </label>
         <input
           id="reading-date"
           type="date"
           bind:value={readingDate}
-          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          class="input-base w-full"
         />
       </div>
 
       <button
         onclick={proceedToStep2}
         disabled={isLoading}
-        class="w-full px-4 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400"
+        class="btn-primary w-full py-3 text-base font-semibold rounded-lg disabled:opacity-50"
       >
         {isLoading ? 'Loading...' : 'Next'}
       </button>
@@ -278,9 +278,9 @@
     </div>
   {/if}
 
-  <div class="fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around">
-    <a href="#/home" class="flex-1 py-3 text-center text-gray-600 font-semibold">🏠 Home</a>
-    <a href="#/history" class="flex-1 py-3 text-center text-gray-600 font-semibold">📋 History</a>
-    <a href="#/billings" class="flex-1 py-3 text-center text-gray-600 font-semibold">💰 Billings</a>
+  <div class="fixed bottom-0 left-0 right-0 flex justify-around border-t" style="background-color: var(--color-bg-secondary); border-color: var(--color-border)">
+    <button onclick={() => { window.location.hash = '#/home'; }} class="flex-1 py-3 text-center font-semibold border-none cursor-pointer" style="background: transparent; color: var(--color-text-secondary)">🏠 Home</button>
+    <button onclick={() => { window.location.hash = '#/history'; }} class="flex-1 py-3 text-center font-semibold border-none cursor-pointer" style="background: transparent; color: var(--color-text-secondary)">📋 History</button>
+    <button onclick={() => { window.location.hash = '#/billings'; }} class="flex-1 py-3 text-center font-semibold border-none cursor-pointer" style="background: transparent; color: var(--color-text-secondary)">💰 Billings</button>
   </div>
 </div>
