@@ -22,52 +22,71 @@
   }
 </script>
 
-<div class="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-600 to-blue-800">
-  <div class="w-full max-w-md px-4">
-    <div class="bg-white rounded-lg shadow-lg p-8">
-      <h1 class="text-3xl font-bold text-center mb-8 text-gray-800">Utilitool</h1>
+<div class="min-h-screen flex items-center justify-center p-4" style="background-color: var(--color-bg-primary)">
+  <div class="w-full max-w-md">
+    <div class="bg-white rounded-lg shadow-sm p-6" style="border: 1px solid var(--color-border)">
+      <!-- Logo / Title -->
+      <h1 class="text-3xl font-bold text-center mb-2" style="color: var(--color-accent)">Utilitool</h1>
+      <p class="text-center text-sm mb-8" style="color: var(--color-text-secondary)">Meter Reader</p>
 
+      <!-- Form -->
       <form onsubmit={handleLogin} class="space-y-4">
+        <!-- Email Field -->
         <div>
-          <label for="email" class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+          <label for="email" class="label-base">Email</label>
           <input
             id="email"
             type="email"
             bind:value={email}
             disabled={loading}
             required
-            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="input-base w-full"
             placeholder="meter.reader@example.com"
           />
         </div>
 
+        <!-- Password Field -->
         <div>
-          <label for="password" class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+          <label for="password" class="label-base">Password</label>
           <input
             id="password"
             type="password"
             bind:value={password}
             disabled={loading}
             required
-            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="input-base w-full"
             placeholder="••••••••"
           />
         </div>
 
+        <!-- Error Message -->
         {#if error}
-          <div class="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          <div class="p-3 rounded-lg text-sm font-medium" style="background-color: #fde5e0; color: var(--color-status-alert)">
             {error}
           </div>
         {/if}
 
+        <!-- Submit Button -->
         <button
           type="submit"
           disabled={loading}
-          class="w-full px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          class="btn-primary w-full text-base"
         >
           {loading ? 'Signing in...' : 'Sign In'}
         </button>
       </form>
     </div>
+
+    <!-- Footer -->
+    <p class="text-center text-xs mt-6" style="color: var(--color-text-tertiary)">
+      Secure meter reading application
+    </p>
   </div>
 </div>
+
+<style>
+  :global(body) {
+    margin: 0;
+    padding: 0;
+  }
+</style>
