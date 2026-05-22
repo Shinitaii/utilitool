@@ -188,13 +188,13 @@
   <!-- Step 2: Property Cards & Photo Capture -->
   {#if step === 2}
     <div class="p-4 space-y-4">
-      <p class="text-sm text-gray-600">
+      <p class="text-sm" style="color: var(--color-text-secondary)">
         Reading date: <strong>{readingDate}</strong>
       </p>
 
       {#each properties as property (property.id)}
-        <div class="bg-white p-4 rounded-lg border border-gray-200 space-y-3">
-          <h3 class="font-semibold text-gray-900">{property.room_name}</h3>
+        <div class="card-base space-y-3">
+          <h3 class="font-semibold" style="color: var(--color-text-primary)">{property.room_name}</h3>
 
           {#if propertyReadings[property.id]?.image_url}
             <div class="relative w-full h-32 bg-gray-100 rounded-lg overflow-hidden">
@@ -205,7 +205,8 @@
               />
               <button
                 onclick={() => (propertyReadings[property.id].image_url = '')}
-                class="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded text-sm"
+                class="absolute top-2 right-2 text-white px-2 py-1 rounded text-sm"
+                style="background-color: var(--color-status-alert)"
               >
                 Remove
               </button>
@@ -214,13 +215,16 @@
 
           <button
             onclick={() => capturePhoto(property.id)}
-            class="w-full px-3 py-2 bg-gray-200 text-gray-900 rounded-lg font-semibold hover:bg-gray-300"
+            class="w-full p-4 border-2 border-dashed rounded-lg font-semibold text-center"
+            style={propertyReadings[property.id]?.image_url
+              ? `background-color: var(--color-accent); color: white`
+              : `border-color: var(--color-border); background-color: #f5eee5; color: var(--color-text-primary)`}
           >
             {propertyReadings[property.id]?.image_url ? '📷 Retake' : '📷 Capture Photo'}
           </button>
 
           <div>
-            <label for={`amount-${property.id}`} class="block text-sm font-medium text-gray-700 mb-1">
+            <label for={`amount-${property.id}`} class="label-base mb-1">
               Reading Amount (kWh/m³)
             </label>
             <input
@@ -228,7 +232,7 @@
               type="number"
               bind:value={propertyReadings[property.id].amount}
               placeholder="0"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              class="input-base w-full"
             />
           </div>
         </div>
@@ -237,7 +241,7 @@
       <button
         onclick={proceedToStep3}
         disabled={isLoading}
-        class="w-full px-4 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400"
+        class="btn-primary w-full py-3 text-base font-semibold rounded-lg disabled:opacity-50"
       >
         Review & Submit
       </button>
