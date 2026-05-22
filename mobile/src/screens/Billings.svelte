@@ -47,11 +47,11 @@
   function getStatusColor(status: string): string {
     switch (status) {
       case 'paid':
-        return 'bg-green-100 text-green-800 border-green-300';
+        return 'background-color: #d4edda; color: var(--color-status-good); border-color: var(--color-status-good)';
       case 'overdue':
-        return 'bg-red-100 text-red-800 border-red-300';
+        return 'background-color: #fde5e0; color: var(--color-status-alert); border-color: var(--color-status-alert)';
       default:
-        return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+        return 'background-color: #fef3cd; color: #7a5c00; border-color: #c89a00';
     }
   }
 
@@ -109,27 +109,27 @@
   });
 </script>
 
-<div class="min-h-screen bg-gray-50 pb-20">
-  <div class="bg-blue-600 text-white p-4">
-    <h1 class="text-xl font-bold">Billings</h1>
+<div class="min-h-screen pb-20" style="background-color: var(--color-bg-primary)">
+  <div class="p-4 border-b bg-white" style="border-color: var(--color-border)">
+    <h1 class="text-xl font-bold" style="color: var(--color-text-primary)">Billings</h1>
   </div>
 
   {#if error}
-    <div class="bg-red-50 border border-red-200 text-red-700 p-4 m-4 rounded">
+    <div class="p-4 m-4 rounded" style="background-color: #fde5e0; color: var(--color-status-alert); border: 1px solid var(--color-status-alert)">
       {error}
     </div>
   {/if}
 
   {#if isLoading}
-    <div class="p-4 text-center text-gray-500 py-8">Loading...</div>
+    <div class="p-4 text-center py-8" style="color: var(--color-text-secondary)">Loading...</div>
   {:else if billings.length === 0}
-    <div class="p-4 text-center text-gray-500 py-8">No billings found</div>
+    <div class="p-4 text-center py-8" style="color: var(--color-text-secondary)">No billings found</div>
   {:else}
     <div class="p-4 space-y-4">
       <!-- Overdue Section -->
       {#if groupedBillings.overdue.length > 0}
         <div>
-          <h3 class="text-sm font-semibold text-red-700 mb-2">
+          <h3 class="text-sm font-semibold mb-2" style="color: var(--color-status-alert)">
             ⚠ Overdue ({groupedBillings.overdue.length})
           </h3>
           <div class="space-y-2">
@@ -139,24 +139,28 @@
                 tabindex="0"
                 onclick={() => toggleBilling(billing.id)}
                 onkeydown={(e) => e.key === 'Enter' && toggleBilling(billing.id)}
-                class="w-full bg-white p-4 rounded-lg border-2 border-red-200 text-left hover:border-red-400 transition cursor-pointer"
+                class="card-base w-full p-4 text-left transition cursor-pointer"
               >
                 <div class="flex justify-between items-start mb-2">
-                  <h4 class="font-semibold text-gray-900">
+                  <h4 class="font-semibold" style="color: var(--color-text-primary)">
                     {propertyNames[billing.property_id] || 'Loading...'}
                   </h4>
-                  <span class="text-lg font-bold text-red-600">{billing.current_reading_amount}</span>
+                  <span class="text-lg font-bold" style="color: var(--color-accent)">{billing.current_reading_amount}</span>
                 </div>
-                <p class="text-xs text-gray-500">Created: {formatDate(billing.created_at)}</p>
+                <div class="flex items-center justify-between">
+                  <p class="text-xs" style="color: var(--color-text-tertiary)">Created: {formatDate(billing.created_at)}</p>
+                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full border" style={getStatusColor('overdue')}>{getStatusLabel('overdue')}</span>
+                </div>
 
                 {#if expandedBillings.has(billing.id)}
-                  <div class="mt-3 pt-3 border-t border-gray-200 space-y-2">
+                  <div class="mt-3 pt-3 border-t space-y-2" style="border-color: var(--color-border)">
                     <button
                       onclick={(e) => {
                         e.stopPropagation();
                         markAsPaid(billing.id);
                       }}
-                      class="w-full px-3 py-2 bg-green-600 text-white rounded text-sm font-semibold hover:bg-green-700"
+                      class="w-full px-3 py-2 rounded text-sm font-semibold"
+                      style="background-color: var(--color-status-good); color: white"
                     >
                       Mark as Paid
                     </button>
@@ -171,7 +175,7 @@
       <!-- Pending Section -->
       {#if groupedBillings.pending.length > 0}
         <div>
-          <h3 class="text-sm font-semibold text-yellow-700 mb-2">
+          <h3 class="text-sm font-semibold mb-2" style="color: var(--color-text-secondary)">
             ⏳ Pending ({groupedBillings.pending.length})
           </h3>
           <div class="space-y-2">
@@ -181,24 +185,28 @@
                 tabindex="0"
                 onclick={() => toggleBilling(billing.id)}
                 onkeydown={(e) => e.key === 'Enter' && toggleBilling(billing.id)}
-                class="w-full bg-white p-4 rounded-lg border border-yellow-200 text-left hover:border-yellow-400 transition cursor-pointer"
+                class="card-base w-full p-4 text-left transition cursor-pointer"
               >
                 <div class="flex justify-between items-start mb-2">
-                  <h4 class="font-semibold text-gray-900">
+                  <h4 class="font-semibold" style="color: var(--color-text-primary)">
                     {propertyNames[billing.property_id] || 'Loading...'}
                   </h4>
-                  <span class="text-lg font-bold text-yellow-600">{billing.current_reading_amount}</span>
+                  <span class="text-lg font-bold" style="color: var(--color-accent)">{billing.current_reading_amount}</span>
                 </div>
-                <p class="text-xs text-gray-500">Created: {formatDate(billing.created_at)}</p>
+                <div class="flex items-center justify-between">
+                  <p class="text-xs" style="color: var(--color-text-tertiary)">Created: {formatDate(billing.created_at)}</p>
+                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full border" style={getStatusColor('pending')}>{getStatusLabel('pending')}</span>
+                </div>
 
                 {#if expandedBillings.has(billing.id)}
-                  <div class="mt-3 pt-3 border-t border-gray-200 space-y-2">
+                  <div class="mt-3 pt-3 border-t space-y-2" style="border-color: var(--color-border)">
                     <button
                       onclick={(e) => {
                         e.stopPropagation();
                         markAsPaid(billing.id);
                       }}
-                      class="w-full px-3 py-2 bg-green-600 text-white rounded text-sm font-semibold hover:bg-green-700"
+                      class="w-full px-3 py-2 rounded text-sm font-semibold"
+                      style="background-color: var(--color-status-good); color: white"
                     >
                       Mark as Paid
                     </button>
@@ -213,7 +221,7 @@
       <!-- Paid Section -->
       {#if groupedBillings.paid.length > 0}
         <div>
-          <h3 class="text-sm font-semibold text-green-700 mb-2">
+          <h3 class="text-sm font-semibold mb-2" style="color: var(--color-status-good)">
             ✓ Paid ({groupedBillings.paid.length})
           </h3>
           <div class="space-y-2">
@@ -223,15 +231,18 @@
                 tabindex="0"
                 onclick={() => toggleBilling(billing.id)}
                 onkeydown={(e) => e.key === 'Enter' && toggleBilling(billing.id)}
-                class="w-full bg-white p-4 rounded-lg border border-green-200 text-left hover:border-green-400 transition opacity-75 cursor-pointer"
+                class="card-base w-full p-4 text-left transition opacity-75 cursor-pointer"
               >
                 <div class="flex justify-between items-start">
-                  <h4 class="font-semibold text-gray-900">
+                  <h4 class="font-semibold" style="color: var(--color-text-primary)">
                     {propertyNames[billing.property_id] || 'Loading...'}
                   </h4>
-                  <span class="text-lg font-bold text-green-600">{billing.current_reading_amount}</span>
+                  <span class="text-lg font-bold" style="color: var(--color-accent)">{billing.current_reading_amount}</span>
                 </div>
-                <p class="text-xs text-gray-500">Paid: {formatDate(billing.updated_at)}</p>
+                <div class="flex items-center justify-between mt-1">
+                  <p class="text-xs" style="color: var(--color-text-tertiary)">Paid: {formatDate(billing.updated_at)}</p>
+                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full border" style={getStatusColor('paid')}>{getStatusLabel('paid')}</span>
+                </div>
               </div>
             {/each}
           </div>
@@ -240,9 +251,9 @@
     </div>
   {/if}
 
-  <div class="fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around">
-    <a href="#/home" class="flex-1 py-3 text-center text-gray-600 font-semibold">🏠 Home</a>
-    <a href="#/history" class="flex-1 py-3 text-center text-gray-600 font-semibold">📋 History</a>
-    <a href="#/billings" class="flex-1 py-3 text-center text-blue-600 font-semibold">💰 Billings</a>
+  <div class="fixed bottom-0 left-0 right-0 border-t flex justify-around" style="background-color: var(--color-bg-secondary); border-color: var(--color-border)">
+    <button onclick={() => { window.location.hash = '#/home'; }} class="flex-1 py-3 text-center font-semibold border-none cursor-pointer" style="color: var(--color-text-secondary); background-color: transparent">🏠 Home</button>
+    <button onclick={() => { window.location.hash = '#/history'; }} class="flex-1 py-3 text-center font-semibold border-none cursor-pointer" style="color: var(--color-text-secondary); background-color: transparent">📋 History</button>
+    <button onclick={() => { window.location.hash = '#/billings'; }} class="flex-1 py-3 text-center font-semibold border-none cursor-pointer" style="color: var(--color-accent); background-color: transparent">💰 Billings</button>
   </div>
 </div>
