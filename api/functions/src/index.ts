@@ -11,6 +11,7 @@ import {errorHandler} from './middlewares/error-handler.middleware';
 import {authMiddleware} from './middlewares/auth.middleware';
 import {requestLogger} from './middlewares/request-logger.middleware';
 import {setupSwagger} from './config/swagger.config';
+import {logger} from './utils/logger.util';
 
 import authRoutes from './features/auth/auth.route';
 import meterGroupRoutes from './features/meter-group/meter-group.route';
@@ -20,6 +21,7 @@ import readingRoutes from './features/reading/reading.route';
 import billingRoutes from './features/billing/billing.route';
 import billingCycleRoutes from './features/billing-cycle/billing-cycle.route';
 import billsRoutes from './features/bills/bills.route';
+import userRoutes from './features/user/user.route';
 
 const app = express();
 
@@ -78,6 +80,7 @@ app.use('/readings', readingRoutes);
 app.use('/billings', billingRoutes);
 app.use('/billing-cycles', billingCycleRoutes);
 app.use('/bills', billsRoutes);
+app.use('/users', userRoutes);
 
 // Error handling
 app.use(errorHandler);
