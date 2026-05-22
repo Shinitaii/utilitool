@@ -59,14 +59,23 @@ export class PropertyValidator {
     meterGroups: Record<string, MeterGroupEntry>,
     excludePropertyId?: string
   ): Promise<void> {
-    for (const entry of Object.values(meterGroups)) {
-      if (!entry.is_main_meter) continue;
+    const mainMeterEntries = Object.values(meterGroups).filter(e => e.is_main_meter);
+    if (mainMeterEntries.length === 0) return;
 
-      const {data: allProperties} = await propertyRepository.search({
-        limit: 100,
+    // Fetch all properties with cursor-based pagination to avoid the 100-item hard limit
+    const allProperties: Property[] = [];
+    let cursor: string | null = null;
+    do {
+      const {data, hasMore, nextCursor} = await propertyRepository.search({
+        limit: 1000,
         orderBy: "created_at",
+        cursor,
       });
+      allProperties.push(...data);
+      cursor = hasMore ? nextCursor : null;
+    } while (cursor);
 
+    for (const entry of mainMeterEntries) {
       const conflict = allProperties.find((p) => {
         if (excludePropertyId && p.id === excludePropertyId) return false;
         return Object.values(p.meter_groups).some(
@@ -110,6 +119,21 @@ export class PropertyValidator {
     }
 
     await this.ensureMeterGroupsExist(Array.from(allMeterGroupIds));
+
+    // Check for intra-batch main meter conflicts before per-item validation
+    const batchMainMeters = new Map<string, string>(); // meter_group_id → room_name claiming it
+    for (const item of data) {
+      for (const entry of Object.values(item.meter_groups)) {
+        if (!entry.is_main_meter) continue;
+        if (batchMainMeters.has(entry.meter_group_id)) {
+          throw new AppError(
+            409,
+            `Meter group ${entry.meter_group_id} is claimed as main meter by multiple properties in this batch`
+          );
+        }
+        batchMainMeters.set(entry.meter_group_id, item.room_name);
+      }
+    }
 
     for (const item of data) {
       await this.ensureMainMeterUniqueness(item.meter_groups);
