@@ -69,6 +69,11 @@ describe('readingService - Business Rules', () => {
       });
 
       expect(result.id).toBe('r-new');
+      expect(findPreviousMonthReading).toHaveBeenCalledWith(
+        'mg-1',
+        'prop-100',
+        expect.any(Object)
+      );
       // billingService.createFromReadings must NOT have been called
       expect(billingService.createFromReadings).not.toHaveBeenCalled();
     });
