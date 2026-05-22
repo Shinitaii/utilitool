@@ -1,5 +1,4 @@
 <script lang="ts">
-  import './styles/globals.css';
   import { onMount } from 'svelte';
   import { auth } from './firebase';
   import Login from './screens/Login.svelte';
