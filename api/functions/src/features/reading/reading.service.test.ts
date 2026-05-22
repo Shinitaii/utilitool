@@ -3,10 +3,17 @@ jest.mock('../../lib/gemini.lib');
 jest.mock('../billing/billing.service');
 jest.mock('../meter-group/meter-group.repository');
 jest.mock('./reading.validator');
+jest.mock('./reading.util', () => ({
+  ...jest.requireActual('./reading.util') as object,
+  findPreviousMonthReading: jest.fn(),
+}));
 
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import { readingService } from './reading.service';
 import { readingRepository } from './reading.repository';
+import { meterGroupRepository } from '../meter-group/meter-group.repository';
+import { billingService } from '../billing/billing.service';
+import { findPreviousMonthReading } from './reading.util';
 import { AppError } from '../../utils/error.util';
 import { Timestamp } from 'firebase-admin/firestore';
 
@@ -28,6 +35,43 @@ const mockReading = (overrides?: Record<string, any>) => ({
 describe('readingService - Business Rules', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('findPreviousMonthReading - property scoping', () => {
+    it('should not return a previous-month reading from a sibling property', async () => {
+      // Sibling property has a reading last month; target property has none —
+      // findPreviousMonthReading returns null because it is now property-scoped.
+      jest.mocked(findPreviousMonthReading).mockResolvedValue(null);
+      jest.mocked(meterGroupRepository.getById).mockResolvedValue({
+        id: 'mg-1',
+        current_version: 1,
+      } as any);
+      jest.mocked(readingRepository.search).mockResolvedValue({
+        data: [],
+        hasMore: false,
+        nextCursor: null,
+      });
+      const newReading = {
+        id: 'r-new',
+        meter_group_id: 'mg-1',
+        property_id: 'prop-100',
+        reading_amount: 50,
+        reading_date: Timestamp.now(),
+        meter_version: 1,
+      };
+      jest.mocked(readingRepository.create).mockResolvedValue(newReading as any);
+
+      const result = await readingService.create({
+        meter_group_id: 'mg-1',
+        property_id: 'prop-100',
+        reading_amount: 50,
+        reading_date: Timestamp.now(),
+      });
+
+      expect(result.id).toBe('r-new');
+      // billingService.createFromReadings must NOT have been called
+      expect(billingService.createFromReadings).not.toHaveBeenCalled();
+    });
   });
 
   describe('checkAnomalousReading - Anomaly Guard', () => {

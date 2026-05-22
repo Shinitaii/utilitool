@@ -94,8 +94,8 @@ export const readingService = {
     const meter_version = meterGroup!.current_version ?? 1;
     await checkAnomalousReading(data.meter_group_id, data.reading_amount, meter_version);
 
-    // Look up the previous-month reading for the same meter_group.
-    const prevReading = await findPreviousMonthReading(data.meter_group_id, data.reading_date);
+    // Look up the previous-month reading for the same meter_group + property.
+    const prevReading = await findPreviousMonthReading(data.meter_group_id, data.property_id, data.reading_date);
 
     // First-time scenario: no previous-month reading. Fall back to a plain
     // create — no billings to generate.
@@ -185,8 +185,8 @@ export const readingService = {
 
     // Create all readings, attempting auto-billing for each (parallelized)
     const readingPromises = readingsWithVersion.map(async (readingData) => {
-      // Look for previous-month reading
-      const prevReading = await findPreviousMonthReading(readingData.meter_group_id, readingData.reading_date);
+      // Look for previous-month reading scoped to this property
+      const prevReading = await findPreviousMonthReading(readingData.meter_group_id, readingData.property_id, readingData.reading_date);
 
       // If no previous reading, just create the reading
       if (!prevReading) {
