@@ -1,6 +1,5 @@
 import {Timestamp} from "firebase-admin/firestore";
 import {AppError} from "../../utils/error.util";
-import {readingRepository} from "./reading.repository";
 import {firestore} from "../../config/firebase.config";
 import {COLLECTIONS} from "../../constants/collection.constants";
 

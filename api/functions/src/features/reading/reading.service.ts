@@ -1,4 +1,4 @@
-import {FieldValue, Timestamp} from "firebase-admin/firestore";
+import {FieldValue} from "firebase-admin/firestore";
 import {readingRepository} from "./reading.repository";
 import {Reading} from "./reading.model";
 import {CreateReadingDTO} from "./reading.dto";
@@ -12,7 +12,7 @@ import {snapshotToModel} from "../../utils/firestore.util";
 import {billingService} from "../billing/billing.service";
 import {meterGroupRepository} from "../meter-group/meter-group.repository";
 import {MeterGroup} from "../meter-group/meter-group.model";
-import {getPreviousMonthWindow, findPreviousMonthReading} from "./reading.util";
+import {findPreviousMonthReading} from "./reading.util";
 import {propertyRepository} from "../property/property.repository";
 
 const validator = new ReadingValidator();
