@@ -1,29 +1,43 @@
-import Redis from 'ioredis';
+import { createClient } from 'redis';
+import type { RedisClientType } from 'redis';
 import {logger} from '../utils/logger.util';
 
-let redisClient: Redis | null = null;
+let redisClient: RedisClientType | null = null;
 
-export function getRedisClient(): Redis | null {
+export function getRedisClient(): RedisClientType | null {
   if (redisClient) return redisClient;
 
-  const redisUrl = process.env.REDIS_URL;
+  const redisHost = process.env.REDIS_HOST;
+  const redisPort = process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT, 10) : 6379;
+  const redisUsername = process.env.REDIS_USERNAME;
+  const redisPassword = process.env.REDIS_PASSWORD;
 
-  if (!redisUrl) {
+  if (!redisHost) {
     if (process.env.NODE_ENV !== 'test') {
-      logger.warn('REDIS_URL is not set. Rate limiting will use in-memory store (not shared across instances).');
+      logger.warn('Redis not configured (REDIS_HOST not set). Caching and rate limiting will use in-memory store.');
     }
     return null;
   }
 
   try {
-    redisClient = new Redis(redisUrl, {
-      maxRetriesPerRequest: 3,
-      connectTimeout: 5000,
-      lazyConnect: true,
+    redisClient = createClient({
+      username: redisUsername || 'default',
+      password: redisPassword,
+      socket: {
+        host: redisHost,
+        port: redisPort,
+        tls: process.env.REDIS_TLS === 'true',
+      },
     });
 
-    redisClient.on('error', (err) => {
+    redisClient.on('error', (err: Error) => {
       logger.error({err}, 'Redis connection error');
+    });
+
+    // Connect immediately so rate-limit and caching can use it synchronously
+    redisClient.connect().catch((err: Error) => {
+      logger.warn({err}, 'Failed to connect Redis client; falling back to in-memory caching/rate-limiting');
+      redisClient = null;
     });
 
     return redisClient;

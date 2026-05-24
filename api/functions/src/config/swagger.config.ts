@@ -9,6 +9,7 @@ import { readingPaths } from '../features/reading/reading.swagger';
 import { billingPaths } from '../features/billing/billing.swagger';
 import { billingCyclePaths } from '../features/billing-cycle/billing-cycle.swagger';
 import { billsPaths } from '../features/bills/bills.swagger';
+import { paths as imageExtractionPaths } from '../features/image-extraction/image-extraction.swagger';
 
 const swaggerSpec = {
   openapi: '3.0.3',
@@ -768,6 +769,7 @@ const swaggerSpec = {
     ...billingPaths,
     ...billingCyclePaths,
     ...billsPaths,
+    ...imageExtractionPaths,
   },
 };
 

@@ -9,6 +9,7 @@ import {corsOptions} from './config/cors.config';
 import {authRateLimiter, apiRateLimiter} from './config/rate-limit.config';
 import {errorHandler} from './middlewares/error-handler.middleware';
 import {authMiddleware} from './middlewares/auth.middleware';
+import {requestContextMiddleware} from './middlewares/request-context.middleware';
 import {requestLogger} from './middlewares/request-logger.middleware';
 import {setupSwagger} from './config/swagger.config';
 import {logger} from './utils/logger.util';
@@ -22,6 +23,7 @@ import billingRoutes from './features/billing/billing.route';
 import billingCycleRoutes from './features/billing-cycle/billing-cycle.route';
 import billsRoutes from './features/bills/bills.route';
 import userRoutes from './features/user/user.route';
+import {imageExtractionRouter} from './features/image-extraction/image-extraction.route';
 
 const app = express();
 
@@ -44,6 +46,9 @@ app.set('json replacer', (key: string, value: any) => {
 // CORS & Security
 app.use(cors(corsOptions));
 app.use(helmet());
+
+// Request context (initialize early for all middleware to access)
+app.use(requestContextMiddleware);
 
 // Logging
 app.use(requestLogger);
@@ -72,6 +77,7 @@ app.use(authMiddleware);
 // OCR routes: allow larger payloads (base64 images)
 app.use('/readings/ocr', express.json({limit: '1mb'}));
 app.use('/billing-cycles/ocr', express.json({limit: '1mb'}));
+app.use('/image-extraction', express.json({limit: '1mb'}));
 
 app.use('/meter-groups', meterGroupRoutes);
 app.use('/properties', propertyRoutes);
@@ -81,6 +87,7 @@ app.use('/billings', billingRoutes);
 app.use('/billing-cycles', billingCycleRoutes);
 app.use('/bills', billsRoutes);
 app.use('/users', userRoutes);
+app.use('/image-extraction', imageExtractionRouter);
 
 // Error handling
 app.use(errorHandler);

@@ -7,9 +7,12 @@ const TOO_MANY_REQUESTS_MESSAGE = "Too many requests, please try again later.";
 function buildStore(prefix: string) {
   const redis = getRedisClient();
   if (!redis) return undefined;
+
   return new RedisStore({
-    // rate-limit-redis calls sendCommand with individual string args
-    sendCommand: (...args: string[]) => redis.call(args[0], ...args.slice(1)) as Promise<number>,
+    sendCommand: async (...args: string[]) => {
+      const result = await redis.sendCommand(args as Parameters<typeof redis.sendCommand>[0]);
+      return result as number;
+    },
     prefix,
   });
 }

@@ -167,6 +167,8 @@ Represents utility type containers (electricity, water).
 - `current_version` starts at 1 and increments on each reset; `versions` Record stores `{ reset_at, last_reading }` per version
 - Reset requires at least one existing reading; uses the latest non-deleted reading as the closing value
 - Requires `admin` or `landlord` role
+- **Cascade delete**: `DELETE /:id` soft-deletes the meter group + all readings for this meter group + all billings referencing those readings (atomic transaction)
+- **Cascade restore**: `PATCH /:id/restore` restores the meter group + all its soft-deleted readings + billings (atomic transaction)
 
 **Swagger**: http://localhost:5002/docs → look for `/meter-groups` paths
 
@@ -190,9 +192,11 @@ Represents buildings/units that consume utilities.
 | PATCH | `/properties/:id/restore` | Restore property (clear is_deleted flag) |
 
 **Business rules**:
-- Must reference valid meter_group_id
+- Must reference valid meter_group_id(s) via the `meter_groups` map
 - tenant_amount must be ≥ 1
 - Enforces max-tenant-count per property
+- **Cascade delete**: `DELETE /:id` soft-deletes the property + all readings for this property + all billings for this property (atomic transaction)
+- **Cascade restore**: `PATCH /:id/restore` restores the property + all its soft-deleted readings + billings (atomic transaction)
 
 ---
 
@@ -245,6 +249,8 @@ Represents snapshots of meter consumption. **Single create has a critical side e
 - `image_url` is optional
 - `meter_version` is server-set from the meter group's `current_version` at creation time (not provided by client)
 - Anomaly guard: if the reading delta exceeds 5× the rolling average for that meter group, returns 422 with a descriptive message — record a meter group reset first if the meter was physically replaced
+- **Cascade delete**: `DELETE /:id` soft-deletes the reading + all billings that reference it (as previous or current reading) (atomic transaction)
+- **Cascade restore**: `PATCH /:id/restore` restores the reading + all its soft-deleted billings (atomic transaction)
 
 **Auto-Billing Behavior** (`POST /readings` only — batch skips this):
 1. System looks for the most recent reading for the same `meter_group_id` in the previous calendar month (Asia/Manila timezone)
@@ -281,6 +287,7 @@ Represents individual bill records linking a property to a reading pair. **Billi
 - current_reading_amount must be > previous_reading_amount (meter rollback not allowed)
 - Exception: rollback check is skipped when `curr_reading.meter_version > prev_reading.meter_version` (cross-version pair from a meter reset)
 - All readings must belong to the same meter group
+- **No cascade delete**: `DELETE /:id` soft-deletes only the billing (leaf entity, no child entities). Related readings and cycles remain intact
 
 **Internal method** (not an HTTP endpoint):
 - `billingService.createFromReadings(txn, propertyId, prevReadingId, currReadingId, prevReading, currReading)` — called by the reading service inside its Firestore transaction to write billings without redundant validation
@@ -331,7 +338,7 @@ Represents billing periods with validation and rate calculation.
 
 ## HTTP Method Semantics
 
-**DELETE = Soft Delete (not hard removal)**
+**DELETE = Soft Delete with Cascading (not hard removal)**
 
 | Operation | Method | Path | Why |
 |-----------|--------|------|-----|
@@ -340,9 +347,21 @@ Represents billing periods with validation and rate calculation.
 | Soft delete | DELETE | `/:id` | Semantic: "delete from user view" (mark as deleted) |
 | Restore | PATCH | `/:id/restore` | Restore from deletion (state change) |
 
+**Cascade Deletion Strategy**:
+- **Meter Group DELETE** → soft-deletes the meter group + all readings for that meter group + all billings referencing those readings
+- **Property DELETE** → soft-deletes the property + all readings for that property (all meter groups) + all billings for that property
+- **Reading DELETE** → soft-deletes the reading + all billings that reference it (as previous or current reading)
+- **Billing DELETE** → soft-deletes only the billing (no cascade — billings are the leaf entity)
+- **Billing Cycle DELETE** → soft-deletes only the cycle (does not cascade — cycles contain billings from multiple properties)
+
+**Cascade Restoration Strategy**:
+- **Restore endpoints mirror deletion**: restoring a meter group, property, or reading restores all soft-deleted child entities that belong to it
+- All cascade operations use Firestore transactions for atomicity
+
 **Rationale**: 
 - **DELETE** is semantically correct for soft deletion — from the user's perspective, the resource is gone (hidden)
 - No hard delete endpoints — soft delete is the only deletion option, ensuring data safety
+- **Cascade** prevents orphaned data (e.g., billings referencing deleted readings) and maintains referential integrity
 - **PATCH** is used for all state modifications (updates, restore)
 - Timestamps are serialized to ISO strings in responses (D2 fix) for proper JSON handling
 
@@ -682,7 +701,7 @@ Dev environment (`APP_ENV=dev`) connects directly to `utilitool-staging` Firebas
 ```
 APP_ENV=dev
 GCLOUD_PROJECT=utilitool-staging
-GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/utilitool-staging-firebase-adminsdk-fbsvc-6a77170d3f.json
+GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/utilitool-staging-firebase-adminsdk-fbsvc-1fe128504a.json
 GEMINI_API_KEY=<optional — OCR returns mock data if absent>
 REDIS_URL=<optional — rate limiting falls back to in-memory store if absent>
 ```
