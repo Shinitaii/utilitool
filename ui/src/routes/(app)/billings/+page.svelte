@@ -18,7 +18,7 @@
   import EditModal from '$lib/components/shared/EditModal.svelte';
   import StatusPill from '$lib/components/shared/StatusPill.svelte';
   import { createCrudStore } from '$lib/stores/crud.svelte';
-  import { CheckCircle2, Pencil, Archive, Printer, Plus } from 'lucide-svelte';
+  import { CheckCircle2, Pencil, Archive, Printer, Plus, ChevronRight } from 'lucide-svelte';
 
   const crud = createCrudStore<Billing>();
 
@@ -378,7 +378,8 @@
   }
 
   function getCycleUtilityType(cycle: BillingCycle): string {
-    const cycleBillings = billings.get(cycle.id) || [];
+    const cycleBillingIds = Object.keys(cycle.billing_ids);
+    const cycleBillings = allBillings.filter(b => cycleBillingIds.includes(b.id));
     if (cycleBillings.length > 0) {
       const firstBilling = cycleBillings[0];
       const firstReading = readings.find(r => r.id === firstBilling.current_reading_id);
@@ -389,6 +390,54 @@
     }
     return 'electricity';
   }
+
+  function getCycleMeterGroupId(cycle: BillingCycle): string | null {
+    const cycleBillingIds = Object.keys(cycle.billing_ids);
+    const cycleBillings = allBillings.filter(b => cycleBillingIds.includes(b.id));
+    if (cycleBillings.length > 0) {
+      const firstBilling = cycleBillings[0];
+      const firstReading = readings.find(r => r.id === firstBilling.current_reading_id);
+      if (firstReading) {
+        return firstReading.meter_group_id;
+      }
+    }
+    return null;
+  }
+
+  function getCycleMeterGroupName(cycle: BillingCycle): string {
+    const meterGroupId = getCycleMeterGroupId(cycle);
+    if (meterGroupId) {
+      const meterGroup = meterGroups.find(m => m.id === meterGroupId);
+      return meterGroup?.meter_name || 'Unknown';
+    }
+    return 'Unknown';
+  }
+
+  function getCyclePaidAmount(cycle: BillingCycle): number {
+    const cycleBillingIds = Object.keys(cycle.billing_ids);
+    const cycleBillings = allBillings.filter(b => cycleBillingIds.includes(b.id) && b.payment_status === 'paid');
+    return cycleBillings.reduce((sum, billing) => {
+      const consumption = cycle.billing_ids[billing.id] ?? 0;
+      return sum + (consumption * cycle.billing_rate);
+    }, 0);
+  }
+
+  const groupedCycles = $derived.by(() => {
+    const groups = new Map<string, BillingCycle[]>();
+    for (const cycle of cycles.data) {
+      const meterGroupId = getCycleMeterGroupId(cycle);
+      const key = meterGroupId || 'unknown';
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key)!.push(cycle);
+    }
+    return Array.from(groups.entries()).map(([id, cyclesInGroup]) => ({
+      meterGroupId: id === 'unknown' ? null : id,
+      meterGroupName: id === 'unknown' ? 'Unknown' : meterGroups.find(m => m.id === id)?.meter_name || 'Unknown',
+      cycles: cyclesInGroup
+    }));
+  });
 
   function printReceipts(cycle: BillingCycle) {
     const cycleBillings = billings.get(cycle.id) || [];
@@ -761,173 +810,189 @@
         <EmptyState title="No billing cycles" message="Create cycles to manage billing periods" />
       </div>
     {:else}
-      {#each cycles.data as cycle (cycle.id)}
-        <div class="rounded-lg border border-gray-200 bg-white">
-          <!-- Cycle Header Row -->
-          <div class="px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition">
-            <button
-              onclick={() => toggleCycleExpand(cycle.id)}
-              class="flex-1 text-left"
-              aria-expanded={expandedCycleId === cycle.id}
-              aria-controls={`cycle-detail-${cycle.id}`}
-            >
-              <div class="flex items-center justify-between">
-                <div class="flex-1">
-                  <div class="flex items-center gap-3">
-                    <div
-                      class="text-gray-400 transition {expandedCycleId === cycle.id ? 'rotate-90' : ''}"
-                    >
-                      ▶
-                    </div>
-                    <div>
-                      <div class="font-medium text-gray-900">
-                        {formatDate(toDate(cycle.billing_start_date))} –
-                        {formatDate(toDate(cycle.billing_end_date))}
-                      </div>
-                      <div class="text-sm text-gray-500">
-                        {Object.keys(cycle.billing_ids).length} billing
-                        {Object.keys(cycle.billing_ids).length === 1 ? 'record' : 'records'}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div class="ml-6 grid grid-cols-3 gap-8 text-right">
-                  <div>
-                    <div class="text-xs font-medium text-gray-600">Consumption</div>
-                    <div class="font-mono font-semibold text-gray-900">
-                      {cycle.billing_consumption.toLocaleString()} {getReadingUnit(getCycleUtilityType(cycle))}
-                    </div>
-                  </div>
-                  <div>
-                    <div class="text-xs font-medium text-gray-600">Rate</div>
-                    <div class="font-mono font-semibold text-gray-900">
-                      ₱{cycle.billing_rate.toFixed(2)}/{getReadingUnit(getCycleUtilityType(cycle))}
-                    </div>
-                  </div>
-                  <div>
-                    <div class="text-xs font-medium text-gray-600">Total Amount</div>
-                    <div class="font-mono font-semibold text-gray-900">
-                      {formatCurrency(cycle.billing_consumption * cycle.billing_rate)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </button>
-
-            {#if expandedCycleId === cycle.id && (billings.get(cycle.id)?.length ?? 0) > 0}
-              <button
-                onclick={(e) => {
-                  e.stopPropagation();
-                  printReceipts(cycle);
-                }}
-                class="ml-4 p-2 rounded hover:bg-gray-100 text-gray-700"
-                title="Print receipts"
-              >
-                <Printer size={20} />
-              </button>
+      {#each groupedCycles as group (group.meterGroupId || 'unknown')}
+        <div class="space-y-2">
+          <h2 class="px-6 text-sm font-semibold text-gray-600">
+            {group.meterGroupName}
+            {#if group.meterGroupId}
+              <span class="text-gray-500 font-normal">({meterGroups.find(m => m.id === group.meterGroupId)?.utility_type})</span>
             {/if}
-          </div>
+          </h2>
+          {#each group.cycles as cycle (cycle.id)}
+            <div class="rounded-lg border border-gray-200 bg-white">
+              <!-- Cycle Header Row -->
+              <div class="px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition">
+                <button
+                  onclick={() => toggleCycleExpand(cycle.id)}
+                  class="flex-1 text-left"
+                  aria-expanded={expandedCycleId === cycle.id}
+                  aria-controls={`cycle-detail-${cycle.id}`}
+                >
+                  <div class="flex items-center justify-between">
+                    <div class="flex-1">
+                      <div class="flex items-center gap-3">
+                        <div
+                          class="text-gray-400 transition {expandedCycleId === cycle.id ? 'rotate-90' : ''}"
+                        >
+                          <ChevronRight size={20} />
+                        </div>
+                        <div>
+                          <div class="font-medium text-gray-900">
+                            {formatDate(toDate(cycle.billing_start_date))} –
+                            {formatDate(toDate(cycle.billing_end_date))}
+                          </div>
+                          <div class="text-sm text-gray-500">
+                            {Object.keys(cycle.billing_ids).length} billing
+                            {Object.keys(cycle.billing_ids).length === 1 ? 'record' : 'records'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="ml-6 grid grid-cols-4 gap-8 text-right">
+                      <div>
+                        <div class="text-xs font-medium text-gray-600">Consumption</div>
+                        <div class="font-mono font-semibold text-gray-900">
+                          {cycle.billing_consumption.toLocaleString()} {getReadingUnit(getCycleUtilityType(cycle))}
+                        </div>
+                      </div>
+                      <div>
+                        <div class="text-xs font-medium text-gray-600">Rate</div>
+                        <div class="font-mono font-semibold text-gray-900">
+                          ₱{cycle.billing_rate.toFixed(2)}/{getReadingUnit(getCycleUtilityType(cycle))}
+                        </div>
+                      </div>
+                      <div>
+                        <div class="text-xs font-medium text-gray-600">Total Amount</div>
+                        <div class="font-mono font-semibold text-gray-900">
+                          {formatCurrency(cycle.billing_consumption * cycle.billing_rate)}
+                        </div>
+                      </div>
+                      <div>
+                        <div class="text-xs font-medium text-gray-600">Currently Paid</div>
+                        <div class="font-mono font-semibold text-green-700">
+                          {formatCurrency(getCyclePaidAmount(cycle))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </button>
 
-          <!-- Expanded Billings Table -->
-          {#if expandedCycleId === cycle.id}
-            <div id={`cycle-detail-${cycle.id}`} class="border-t border-gray-200 bg-gray-50">
-              {#if billings.get(cycle.id)?.length === 0}
-                <div class="px-6 py-4">
-                  <EmptyState title="No billings" message="No billings in this cycle yet" />
-                </div>
-              {:else if billings.has(cycle.id)}
-                <div class="overflow-x-auto">
-                  <table class="w-full text-sm">
-                    <thead class="border-b border-gray-200 bg-gray-50">
-                      <tr>
-                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Property</th>
-                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Previous Reading</th>
-                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Current Reading</th>
-                        <th scope="col" class="px-6 py-3 text-right font-semibold text-gray-700">
-                          Consumption
-                        </th>
-                        <th scope="col" class="px-6 py-3 text-right font-semibold text-gray-700">Amount</th>
-                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Status</th>
-                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {#each billings.get(cycle.id) || [] as billing (billing.id)}
-                        <tr class="border-b border-gray-100 hover:bg-white">
-                          <td class="px-6 py-3 text-gray-900">
-                            {properties.find(p => p.id === billing.property_id)?.room_name ?? 'Unknown Property'}
-                          </td>
-                          <td class="px-6 py-3 font-mono text-gray-700">
-                            {#if readings.find(r => r.id === billing.previous_reading_id)}
-                              {formatReading(readings.find(r => r.id === billing.previous_reading_id)?.reading_amount || 0, meterGroups.find(m => m.id === readings.find(r => r.id === billing.previous_reading_id)?.meter_group_id)?.utility_type || 'electricity')}
-                            {:else}
-                              N/A
-                            {/if}
-                          </td>
-                          <td class="px-6 py-3 font-mono text-gray-700">
-                            {#if readings.find(r => r.id === billing.current_reading_id)}
-                              {formatReading(readings.find(r => r.id === billing.current_reading_id)?.reading_amount || 0, meterGroups.find(m => m.id === readings.find(r => r.id === billing.current_reading_id)?.meter_group_id)?.utility_type || 'electricity')}
-                            {:else}
-                              N/A
-                            {/if}
-                          </td>
-                          <td class="px-6 py-3 text-right font-mono text-gray-700">
-                            {#if readings.find(r => r.id === billing.current_reading_id)}
-                              {(cycle.billing_ids[billing.id] ?? 0).toLocaleString()} {getReadingUnit(meterGroups.find(m => m.id === readings.find(r => r.id === billing.current_reading_id)?.meter_group_id)?.utility_type || 'electricity')}
-                            {:else}
-                              N/A
-                            {/if}
-                          </td>
-                          <td class="px-6 py-3 text-right font-semibold text-gray-900">
-                            {formatCurrency(
-                              (cycle.billing_ids[billing.id] ?? 0) * cycle.billing_rate
-                            )}
-                          </td>
-                          <td class="px-6 py-3">
-                            <StatusPill status={billing.payment_status} />
-                          </td>
-                          <td class="px-6 py-3">
-                            <div class="flex gap-1">
-                              {#if billing.payment_status === 'pending'}
-                                <button
-                                  onclick={() => handleMarkAsPaid(billing.id)}
-                                  disabled={isLoading || markingAsPaidId === billing.id}
-                                  class="p-2 rounded hover:bg-green-100 text-green-700 disabled:opacity-50"
-                                  title="Mark as paid"
-                                >
-                                  <CheckCircle2 size={18} />
-                                </button>
-                              {/if}
-                              <button
-                                onclick={() => openEditModal(billing)}
-                                disabled={isLoading || isUpdating}
-                                class="p-2 rounded hover:bg-blue-100 text-blue-700 disabled:opacity-50"
-                                title="Edit billing"
-                              >
-                                <Pencil size={18} />
-                              </button>
-                              <button
-                                onclick={() => crud.handleSoftDelete(billing.id, softDeleteBilling, loadData, () => confirm('Archive this billing? It can be restored from the archive.'))}
-                                disabled={isLoading || crud.deletingId === billing.id}
-                                class="p-2 rounded hover:bg-red-100 text-red-700 disabled:opacity-50"
-                                title="Archive billing"
-                              >
-                                <Archive size={18} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </table>
-                </div>
-              {:else}
-                <div class="px-6 py-4 text-center text-sm text-gray-500">
-                  Loading billings...
+                {#if expandedCycleId === cycle.id && (billings.get(cycle.id)?.length ?? 0) > 0}
+                  <button
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      printReceipts(cycle);
+                    }}
+                    class="ml-4 p-2 rounded hover:bg-gray-100 text-gray-700"
+                    title="Print receipts"
+                  >
+                    <Printer size={20} />
+                  </button>
+                {/if}
+              </div>
+
+              <!-- Expanded Billings Table -->
+              {#if expandedCycleId === cycle.id}
+                <div id={`cycle-detail-${cycle.id}`} class="border-t border-gray-200 bg-gray-50">
+                  {#if billings.get(cycle.id)?.length === 0}
+                    <div class="px-6 py-4">
+                      <EmptyState title="No billings" message="No billings in this cycle yet" />
+                    </div>
+                  {:else if billings.has(cycle.id)}
+                    <div class="overflow-x-auto">
+                      <table class="w-full text-sm">
+                        <thead class="border-b border-gray-200 bg-gray-50">
+                          <tr>
+                            <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Property</th>
+                            <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Previous Reading</th>
+                            <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Current Reading</th>
+                            <th scope="col" class="px-6 py-3 text-right font-semibold text-gray-700">
+                              Consumption
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-right font-semibold text-gray-700">Amount</th>
+                            <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Status</th>
+                            <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {#each billings.get(cycle.id) || [] as billing (billing.id)}
+                            <tr class="border-b border-gray-100 hover:bg-white">
+                              <td class="px-6 py-3 text-gray-900">
+                                {properties.find(p => p.id === billing.property_id)?.room_name ?? 'Unknown Property'}
+                              </td>
+                              <td class="px-6 py-3 font-mono text-gray-700">
+                                {#if readings.find(r => r.id === billing.previous_reading_id)}
+                                  {formatReading(readings.find(r => r.id === billing.previous_reading_id)?.reading_amount || 0, meterGroups.find(m => m.id === readings.find(r => r.id === billing.previous_reading_id)?.meter_group_id)?.utility_type || 'electricity')}
+                                {:else}
+                                  N/A
+                                {/if}
+                              </td>
+                              <td class="px-6 py-3 font-mono text-gray-700">
+                                {#if readings.find(r => r.id === billing.current_reading_id)}
+                                  {formatReading(readings.find(r => r.id === billing.current_reading_id)?.reading_amount || 0, meterGroups.find(m => m.id === readings.find(r => r.id === billing.current_reading_id)?.meter_group_id)?.utility_type || 'electricity')}
+                                {:else}
+                                  N/A
+                                {/if}
+                              </td>
+                              <td class="px-6 py-3 text-right font-mono text-gray-700">
+                                {#if readings.find(r => r.id === billing.current_reading_id)}
+                                  {(cycle.billing_ids[billing.id] ?? 0).toLocaleString()} {getReadingUnit(meterGroups.find(m => m.id === readings.find(r => r.id === billing.current_reading_id)?.meter_group_id)?.utility_type || 'electricity')}
+                                {:else}
+                                  N/A
+                                {/if}
+                              </td>
+                              <td class="px-6 py-3 text-right font-semibold text-gray-900">
+                                {formatCurrency(
+                                  (cycle.billing_ids[billing.id] ?? 0) * cycle.billing_rate
+                                )}
+                              </td>
+                              <td class="px-6 py-3">
+                                <StatusPill status={billing.payment_status} />
+                              </td>
+                              <td class="px-6 py-3">
+                                <div class="flex gap-1">
+                                  {#if billing.payment_status === 'pending'}
+                                    <button
+                                      onclick={() => handleMarkAsPaid(billing.id)}
+                                      disabled={isLoading || markingAsPaidId === billing.id}
+                                      class="p-2 rounded hover:bg-green-100 text-green-700 disabled:opacity-50"
+                                      title="Mark as paid"
+                                    >
+                                      <CheckCircle2 size={18} />
+                                    </button>
+                                  {/if}
+                                  <button
+                                    onclick={() => openEditModal(billing)}
+                                    disabled={isLoading || isUpdating}
+                                    class="p-2 rounded hover:bg-blue-100 text-blue-700 disabled:opacity-50"
+                                    title="Edit billing"
+                                  >
+                                    <Pencil size={18} />
+                                  </button>
+                                  <button
+                                    onclick={() => crud.handleSoftDelete(billing.id, softDeleteBilling, loadData, () => confirm('Archive this billing? It can be restored from the archive.'))}
+                                    disabled={isLoading || crud.deletingId === billing.id}
+                                    class="p-2 rounded hover:bg-red-100 text-red-700 disabled:opacity-50"
+                                    title="Archive billing"
+                                  >
+                                    <Archive size={18} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          {/each}
+                        </tbody>
+                      </table>
+                    </div>
+                  {:else}
+                    <div class="px-6 py-4 text-center text-sm text-gray-500">
+                      Loading billings...
+                    </div>
+                  {/if}
                 </div>
               {/if}
             </div>
-          {/if}
+          {/each}
         </div>
       {/each}
     {/if}

@@ -1,10 +1,6 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-
   let { imageUrl = '', onClose = () => {} } = $props();
 
-  let container: HTMLDivElement;
-  let img: HTMLImageElement;
   let scale = $state(1);
   let rotate = $state(0);
   let translateX = $state(0);
@@ -54,34 +50,33 @@
   }
 
   function handleRotate() {
-    rotate = (rotate + 90) % 360;
+    rotate = (rotate - 90 + 360) % 360;
   }
 </script>
 
 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90">
-  <div bind:this={container} class="relative w-full h-full flex items-center justify-center overflow-hidden">
+  <div class="relative w-full h-full flex items-center justify-center overflow-hidden">
     <img
-      bind:this={img}
       src={imageUrl}
       alt="Preview"
       class="max-h-full max-w-full object-contain select-none"
       style="transform: translate({translateX}px, {translateY}px) scale({scale}) rotate({rotate}deg);"
-      on:wheel={handleWheel}
-      on:touchstart={handleTouchStart}
-      on:touchmove={handleTouchMove}
+      onwheel={handleWheel}
+      ontouchstart={handleTouchStart}
+      ontouchmove={handleTouchMove}
     />
   </div>
 
   <div class="absolute top-4 right-4 flex gap-2 z-10">
     <button
-      on:click={handleRotate}
+      onclick={handleRotate}
       class="p-2 bg-white rounded-full shadow-lg hover:bg-gray-200"
-      aria-label="Rotate"
+      aria-label="Rotate counter-clockwise"
     >
-      ↻
+      ↺
     </button>
     <button
-      on:click={onClose}
+      onclick={onClose}
       class="p-2 bg-white rounded-full shadow-lg hover:bg-gray-200"
       aria-label="Close"
     >

@@ -121,9 +121,16 @@
         );
       } else if (activeTab === 'readings') {
         // Load readings for both electricity and water meter groups
+        const electricityId = typeof selectedProperty.meter_groups.electricity === 'string'
+          ? selectedProperty.meter_groups.electricity
+          : selectedProperty.meter_groups.electricity.meter_group_id;
+        const waterId = typeof selectedProperty.meter_groups.water === 'string'
+          ? selectedProperty.meter_groups.water
+          : selectedProperty.meter_groups.water.meter_group_id;
+
         const [electricityReadings, waterReadings] = await Promise.all([
-          getReadings({ meterGroupId: selectedProperty.meter_groups.electricity, propertyId: selectedProperty.id, limit: 50 }),
-          getReadings({ meterGroupId: selectedProperty.meter_groups.water, propertyId: selectedProperty.id, limit: 50 })
+          getReadings({ meterGroupId: electricityId, propertyId: selectedProperty.id, limit: 50 }),
+          getReadings({ meterGroupId: waterId, propertyId: selectedProperty.id, limit: 50 })
         ]);
         // Combine results
         readings = {
@@ -132,10 +139,17 @@
           hasMore: false
         };
       } else if (activeTab === 'billings') {
+        const electricityId = typeof selectedProperty.meter_groups.electricity === 'string'
+          ? selectedProperty.meter_groups.electricity
+          : selectedProperty.meter_groups.electricity.meter_group_id;
+        const waterId = typeof selectedProperty.meter_groups.water === 'string'
+          ? selectedProperty.meter_groups.water
+          : selectedProperty.meter_groups.water.meter_group_id;
+
         const [billingsResult, electricityReadings, waterReadings] = await Promise.all([
           getBillings({ propertyId: selectedProperty.id, limit: 50 }),
-          getReadings({ meterGroupId: selectedProperty.meter_groups.electricity, propertyId: selectedProperty.id, limit: 100 }),
-          getReadings({ meterGroupId: selectedProperty.meter_groups.water, propertyId: selectedProperty.id, limit: 100 })
+          getReadings({ meterGroupId: electricityId, propertyId: selectedProperty.id, limit: 100 }),
+          getReadings({ meterGroupId: waterId, propertyId: selectedProperty.id, limit: 100 })
         ]);
         billings = billingsResult;
         readings = {
@@ -181,7 +195,10 @@
       const created = await createProperty({
         room_name: newPropertyForm.room_name,
         tenant_amount: newPropertyForm.tenant_amount,
-        meter_groups: newPropertyForm.meter_groups
+        meter_groups: {
+          electricity: { meter_group_id: newPropertyForm.meter_groups.electricity, is_main_meter: true },
+          water: { meter_group_id: newPropertyForm.meter_groups.water, is_main_meter: true }
+        }
       });
 
       properties.data = [created, ...properties.data];
@@ -201,12 +218,19 @@
   }
 
   function openEditModal(property: Property) {
+    const electricityId = typeof property.meter_groups.electricity === 'string'
+      ? property.meter_groups.electricity
+      : property.meter_groups.electricity.meter_group_id;
+    const waterId = typeof property.meter_groups.water === 'string'
+      ? property.meter_groups.water
+      : property.meter_groups.water.meter_group_id;
+
     editPropertyForm = {
       room_name: property.room_name,
       tenant_amount: property.tenant_amount,
       meter_groups: {
-        electricity: property.meter_groups.electricity,
-        water: property.meter_groups.water
+        electricity: electricityId,
+        water: waterId
       }
     };
     crud.openEditModal(property, editPropertyForm as any);
@@ -217,7 +241,14 @@
     isUpdating = true;
     error = '';
     try {
-      await updateProperty(crud.editingItem.id, editPropertyForm);
+      await updateProperty(crud.editingItem.id, {
+        room_name: editPropertyForm.room_name,
+        tenant_amount: editPropertyForm.tenant_amount,
+        meter_groups: {
+          electricity: { meter_group_id: editPropertyForm.meter_groups.electricity, is_main_meter: true },
+          water: { meter_group_id: editPropertyForm.meter_groups.water, is_main_meter: true }
+        }
+      });
       crud.closeEditModal();
       await loadProperties();
     } catch (err) {
@@ -413,11 +444,19 @@
             <div class="mt-2 space-y-1 text-sm text-gray-600">
               <p>
                 <span class="font-medium">Electricity:</span>
-                <span class="font-mono text-xs">{selectedProperty.meter_groups.electricity || 'N/A'}</span>
+                <span class="font-mono text-xs">
+                  {typeof selectedProperty.meter_groups.electricity === 'string'
+                    ? selectedProperty.meter_groups.electricity
+                    : selectedProperty.meter_groups.electricity?.meter_group_id || 'N/A'}
+                </span>
               </p>
               <p>
                 <span class="font-medium">Water:</span>
-                <span class="font-mono text-xs">{selectedProperty.meter_groups.water || 'N/A'}</span>
+                <span class="font-mono text-xs">
+                  {typeof selectedProperty.meter_groups.water === 'string'
+                    ? selectedProperty.meter_groups.water
+                    : selectedProperty.meter_groups.water?.meter_group_id || 'N/A'}
+                </span>
               </p>
             </div>
           </div>

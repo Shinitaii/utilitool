@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getReadings, createReadingsBatch, updateReading, softDeleteReading } from '$lib/api/readings';
+  import { getReadings, createReadingsBatch, updateReading, softDeleteReading, ocrReadingImage } from '$lib/api/readings';
   import { getMeterGroups } from '$lib/api/meter-groups';
   import { getProperties } from '$lib/api/properties';
   import type { Reading, UpdateReadingRequest } from '$lib/types/reading.types';
@@ -10,6 +10,7 @@
   import { formatDate, formatReading, getReadingUnit } from '$lib/utils/format';
   import { toDate } from '$lib/utils/timestamp';
   import { uploadToStorage } from '$lib/utils/firebase-storage';
+  import { compressImage } from '$lib/utils/image-compression';
   import EmptyState from '$lib/components/shared/EmptyState.svelte';
   import EditModal from '$lib/components/shared/EditModal.svelte';
   import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
@@ -145,17 +146,12 @@
 
     row.is_uploading = true;
     try {
-      // Read file to data URL (needed for OCR via Suggest button)
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target?.result as string);
-        reader.onerror = () => reject(new Error('Failed to read file'));
-        reader.readAsDataURL(file);
-      });
+      // Compress image to avoid "request entity too large" errors
+      const compressedDataUrl = await compressImage(file, 800, 0.7);
 
       // Show preview and enable Suggest immediately — don't wait for Storage
-      row.data_url = dataUrl;
-      row.image_url = dataUrl;
+      row.data_url = compressedDataUrl;
+      row.image_url = compressedDataUrl;
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to process image';
     } finally {
@@ -234,6 +230,23 @@
       batchRows.length > 0 &&
       batchRows.every((r) => r.reading_amount !== null && r.reading_amount !== undefined)
     );
+  }
+
+  async function handleSuggestReading(rowIndex: number) {
+    const row = batchRows[rowIndex];
+    if (!row.image_url) {
+      error = 'Please upload an image first';
+      return;
+    }
+
+    try {
+      const result = await ocrReadingImage(row.image_url);
+      if (result.suggested_reading_amount !== null) {
+        row.reading_amount = result.suggested_reading_amount;
+      }
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to suggest reading';
+    }
   }
 </script>
 
@@ -368,8 +381,8 @@
                         {/if}
                       </div>
 
-                      <!-- Upload button (bottom left, full width) -->
-                      <label class={`col-span-3 ${row.is_uploading ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                      <!-- Upload & Suggest buttons (bottom, side by side) -->
+                      <label class={`col-span-2 ${row.is_uploading ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                         <input
                           type="file"
                           accept="image/*"
@@ -384,6 +397,16 @@
                           {row.is_uploading ? 'Uploading...' : 'Upload Photo'}
                         </span>
                       </label>
+
+                      <!-- Suggest button -->
+                      <button
+                        type="button"
+                        onclick={() => handleSuggestReading(i)}
+                        disabled={!row.image_url}
+                        class="col-span-1 rounded bg-green-100 px-3 py-2 text-xs font-medium text-green-700 hover:bg-green-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Suggest
+                      </button>
                     </div>
                   </td>
                 </tr>
