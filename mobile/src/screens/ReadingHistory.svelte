@@ -1,7 +1,8 @@
 <script lang="ts">
   import { listReadings, type Reading } from '../lib/api/readings';
   import { listMeterGroups, type MeterGroup } from '../lib/api/meter-groups';
-  import { getProperty, listProperties, type Property } from '../lib/api/properties';
+  import { listProperties, type Property } from '../lib/api/properties';
+  import { sessionCache } from '../lib/stores/session';
   import BottomNav from '../components/BottomNav.svelte';
 
   let readings: Reading[] = $state([]);
@@ -37,14 +38,27 @@
 
   $effect.pre(async () => {
     try {
-      const [readingsRes, meterGroupsRes, propertiesRes] = await Promise.all([
-        listReadings(),
-        listMeterGroups(),
-        listProperties()
-      ]);
+      // Fetch readings (always fresh, not cached)
+      const readingsRes = await listReadings();
       readings = readingsRes.data || [];
-      meterGroups = meterGroupsRes.data || [];
-      properties = propertiesRes.data || [];
+
+      // Fetch meter groups from cache or API
+      let cachedMeterGroups = sessionCache.getMeterGroups();
+      if (!cachedMeterGroups) {
+        const meterGroupsRes = await listMeterGroups();
+        cachedMeterGroups = meterGroupsRes.data || [];
+        sessionCache.setMeterGroups(cachedMeterGroups);
+      }
+      meterGroups = cachedMeterGroups;
+
+      // Fetch properties from cache or API
+      let cachedProperties = sessionCache.getProperties();
+      if (!cachedProperties) {
+        const propertiesRes = await listProperties();
+        cachedProperties = propertiesRes.data || [];
+        sessionCache.setProperties(cachedProperties);
+      }
+      properties = cachedProperties;
 
       const names: Record<string, string> = {};
       properties.forEach((p: Property) => { names[p.id] = p.room_name; });

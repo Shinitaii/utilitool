@@ -1,6 +1,7 @@
 <script lang="ts">
   import { listBillings, updateBillingStatus, type Billing } from '../lib/api/billings';
-  import { getProperty } from '../lib/api/properties';
+  import { listProperties } from '../lib/api/properties';
+  import { sessionCache } from '../lib/stores/session';
   import BottomNav from '../components/BottomNav.svelte';
 
   let billings: Billing[] = $state([]);
@@ -14,17 +15,20 @@
       const res = await listBillings();
       billings = res.data || [];
 
-      // Fetch property names
-      const names: Record<string, string> = {};
-      const propertyIds = new Set(billings.map(b => b.property_id));
+      // Fetch property names from cache or API
+      let properties = sessionCache.getProperties();
+      if (!properties) {
+        const propsRes = await listProperties();
+        properties = propsRes.data || [];
+        sessionCache.setProperties(properties);
+      }
 
+      const names: Record<string, string> = {};
+      const propertyMap = new Map(properties.map(p => [p.id, p.room_name]));
+
+      const propertyIds = new Set(billings.map(b => b.property_id));
       for (const propId of propertyIds) {
-        try {
-          const prop = await getPropertyForBilling(propId);
-          names[propId] = prop.room_name;
-        } catch (e) {
-          names[propId] = `Property ${propId.slice(0, 6)}`;
-        }
+        names[propId] = propertyMap.get(propId) || `Property ${propId.slice(0, 6)}`;
       }
 
       propertyNames = names;

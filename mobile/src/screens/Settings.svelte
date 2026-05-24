@@ -1,6 +1,7 @@
 <script lang="ts">
   import { signOut } from 'firebase/auth';
   import { auth } from '../firebase';
+  import { sessionCache } from '../lib/stores/session';
   import BottomNav from '../components/BottomNav.svelte';
 
   let isLoading = $state(false);
@@ -12,6 +13,7 @@
     isLoading = true;
     error = null;
     try {
+      sessionCache.clear();
       await signOut(auth);
       window.location.hash = '#/home';
     } catch (e: any) {
