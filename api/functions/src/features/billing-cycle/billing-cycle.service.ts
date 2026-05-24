@@ -8,14 +8,19 @@ import {propertyService} from "../property/property.service";
 import {readingService} from "../reading/reading.service";
 import {billingRepository} from "../billing/billing.repository";
 import {findPreviousMonthReading} from "../reading/reading.util";
+import {listRemove} from "../../utils/list-cache.util";
+import {cacheDel} from "../../utils/cache.util";
+import {CachedRepository} from "../../lib/cached-repository.lib";
 
 const validator = new BillingCycleValidator();
+const CACHE_TTL = 15 * 60; // 15 minutes
 
 async function injectMainMeterBilling(
+  userId: string,
   data: CreateBillingCycleDTO
 ): Promise<CreateBillingCycleDTO> {
   // limit: 1000 — meter groups are not expected to exceed this property count
-  const allProperties = await propertyService.search({
+  const allProperties = await propertyService.search(userId, {
     meterGroupId: data.meter_group_id,
     limit: 1000,
   });
@@ -55,7 +60,7 @@ async function injectMainMeterBilling(
   // apply to the derived reading. If the derived amount triggers the 5× anomaly
   // threshold (e.g. after meter replacement in the billing period), this will throw 422.
   // Operators should reset the meter group before creating the billing cycle.
-  const derivedReading = await readingService.create({
+  const derivedReading = await readingService.create(userId, {
     meter_group_id: data.meter_group_id,
     property_id: mainMeterProperty.id,
     reading_amount: derivedReadingAmount,
@@ -96,13 +101,14 @@ type BillingCycleSearchOptions = {
 };
 
 export const billingCycleService = {
-  async create(data: CreateBillingCycleDTO): Promise<BillingCycle> {
-    const enrichedData = await injectMainMeterBilling(data);
+  async create(userId: string, data: CreateBillingCycleDTO): Promise<BillingCycle> {
+    const enrichedData = await injectMainMeterBilling(userId, data);
     await validator.validateCreate(enrichedData);
-    return billingCycleRepository.create(enrichedData);
+    const cachedRepo = new CachedRepository(billingCycleRepository, userId, 'billing-cycles', CACHE_TTL);
+    return cachedRepo.create(enrichedData);
   },
 
-  async createBatch(data: CreateBillingCycleDTO[]): Promise<BillingCycle[]> {
+  async createBatch(userId: string, data: CreateBillingCycleDTO[]): Promise<BillingCycle[]> {
     const seenMeterGroups = new Set<string>();
     for (const item of data) {
       if (item.meter_group_id) {
@@ -116,61 +122,105 @@ export const billingCycleService = {
         seenMeterGroups.add(item.meter_group_id);
       }
     }
-    const enriched = await Promise.all(data.map(injectMainMeterBilling));
+    const enriched = await Promise.all(data.map((item) => injectMainMeterBilling(userId, item)));
     await validator.validateBatch(enriched);
-    return billingCycleRepository.createBatch(enriched);
+    const cachedRepo = new CachedRepository(billingCycleRepository, userId, 'billing-cycles', CACHE_TTL);
+    return cachedRepo.createBatch(enriched);
   },
 
   async search(
+    userId: string,
     options: BillingCycleSearchOptions
   ): Promise<PaginatedResult<BillingCycle>> {
-    const filters: Record<string, any> = {};
-    if (options.billingStartDate) {
-      filters.billing_start_date = { gte: new Date(options.billingStartDate) };
+    const cachedRepo = new CachedRepository(billingCycleRepository, userId, 'billing-cycles', CACHE_TTL);
+
+    // For archived queries, we need custom date filtering
+    if (options.archived) {
+      const filters: Record<string, any> = {};
+      if (options.billingStartDate) {
+        filters.billing_start_date = { gte: new Date(options.billingStartDate) };
+      }
+      if (options.billingEndDate) {
+        filters.billing_end_date = { lte: new Date(options.billingEndDate) };
+      }
+      return billingCycleRepository.search({
+        limit: options.limit,
+        orderBy: (options.sortBy ?? "created_at") as any,
+        orderDirection: options.sortOrder ?? "desc",
+        cursor: options.cursor,
+        archived: true,
+        filters,
+      });
     }
-    if (options.billingEndDate) {
-      filters.billing_end_date = { lte: new Date(options.billingEndDate) };
-    }
-    return billingCycleRepository.search({
+
+    // Load active items via cache and apply date filters in memory
+    const result = await cachedRepo.search({
       limit: options.limit,
       orderBy: (options.sortBy ?? "created_at") as any,
       orderDirection: options.sortOrder ?? "desc",
       cursor: options.cursor,
-      archived: options.archived,
-      filters,
+      archived: false,
+      filters: {},
     });
+
+    // Post-filter for date ranges (can't query dates directly in Firestore query)
+    if (options.billingStartDate || options.billingEndDate) {
+      if (options.billingStartDate) {
+        const startDate = new Date(options.billingStartDate);
+        result.data = result.data.filter((bc) => {
+          const bcDate = bc.billing_start_date instanceof Date ? bc.billing_start_date : new Date(bc.billing_start_date as any);
+          return bcDate >= startDate;
+        });
+      }
+      if (options.billingEndDate) {
+        const endDate = new Date(options.billingEndDate);
+        result.data = result.data.filter((bc) => {
+          const bcDate = bc.billing_end_date instanceof Date ? bc.billing_end_date : new Date(bc.billing_end_date as any);
+          return bcDate <= endDate;
+        });
+      }
+    }
+
+    return result;
   },
 
-  async getById(id: string): Promise<BillingCycle | null> {
-    return billingCycleRepository.getById(id);
+  async getById(userId: string, id: string): Promise<BillingCycle | null> {
+    const cachedRepo = new CachedRepository(billingCycleRepository, userId, 'billing-cycles', CACHE_TTL);
+    return cachedRepo.getById(id);
   },
 
   async update(
+    userId: string,
     id: string,
     data: Partial<CreateBillingCycleDTO>
   ): Promise<BillingCycle> {
     await validator.validateUpdate(data);
-    return billingCycleRepository.update(id, data);
+    const cachedRepo = new CachedRepository(billingCycleRepository, userId, 'billing-cycles', CACHE_TTL);
+    return cachedRepo.update(id, data);
   },
 
-  async updateBatch(updates: {id: string, data: Partial<CreateBillingCycleDTO>}[]): Promise<BillingCycle[]> {
+  async updateBatch(userId: string, updates: {id: string, data: Partial<CreateBillingCycleDTO>}[]): Promise<BillingCycle[]> {
     await validator.validateUpdateBatch(updates);
-    return billingCycleRepository.updateBatch(updates);
+    const cachedRepo = new CachedRepository(billingCycleRepository, userId, 'billing-cycles', CACHE_TTL);
+    return cachedRepo.updateBatch(updates);
   },
 
-  async delete(id: string): Promise<void> {
-    return billingCycleRepository.delete(id);
+  async delete(userId: string, id: string): Promise<void> {
+    const cachedRepo = new CachedRepository(billingCycleRepository, userId, 'billing-cycles', CACHE_TTL);
+    await cachedRepo.delete(id);
   },
 
-  async softDelete(id: string): Promise<BillingCycle> {
-    return billingCycleRepository.softDelete(id);
+  async softDelete(userId: string, id: string): Promise<BillingCycle> {
+    const cachedRepo = new CachedRepository(billingCycleRepository, userId, 'billing-cycles', CACHE_TTL);
+    return cachedRepo.softDelete(id);
   },
 
-  async restore(id: string): Promise<BillingCycle> {
+  async restore(userId: string, id: string): Promise<BillingCycle> {
     const billingCycle = await billingCycleRepository.getById(id);
     if (!billingCycle) {
       throw new AppError(404, "Billing cycle not found");
     }
-    return billingCycleRepository.restore(id);
+    const cachedRepo = new CachedRepository(billingCycleRepository, userId, 'billing-cycles', CACHE_TTL);
+    return cachedRepo.restore(id);
   },
 };

@@ -1,69 +1,22 @@
-import {FieldValue} from "firebase-admin/firestore";
 import {readingRepository} from "./reading.repository";
 import {Reading} from "./reading.model";
 import {CreateReadingDTO} from "./reading.dto";
 import {PaginatedResult} from "../../utils/pagination.util";
 import {ReadingValidator} from "./reading.validator";
 import {AppError} from "../../utils/error.util";
-import {geminiLib} from "../../lib/gemini.lib";
-import {firestore} from "../../config/firebase.config";
-import {COLLECTIONS} from "../../constants/collection.constants";
-import {snapshotToModel} from "../../utils/firestore.util";
-import {billingService} from "../billing/billing.service";
 import {meterGroupRepository} from "../meter-group/meter-group.repository";
 import {MeterGroup} from "../meter-group/meter-group.model";
-import {findPreviousMonthReading} from "./reading.util";
+import {cacheSet, cacheDel} from "../../utils/cache.util";
+import {listRemove} from "../../utils/list-cache.util";
+import {cascadeDeleteReading, cascadeRestoreReading} from "../../utils/cascade-delete.util";
+import {CachedRepository} from "../../lib/cached-repository.lib";
+import {createReadingWithAutoBilling, createBatchReadingsWithAutoBilling} from "./reading.util";
 import {propertyRepository} from "../property/property.repository";
 
 const validator = new ReadingValidator();
+const CACHE_TTL = 10 * 60; // 10 minutes
 
 type ReadingCreatePayload = CreateReadingDTO & { meter_version: number };
-
-async function checkAnomalousReading(
-  meterGroupId: string,
-  newReadingAmount: number,
-  meterVersion: number,
-): Promise<void> {
-  const recentResult = await readingRepository.search({
-    limit: 6,
-    orderBy: "reading_date",
-    orderDirection: "desc",
-    filters: { meter_group_id: meterGroupId },
-  });
-  const recentReadings = recentResult.data;
-
-  if (recentReadings.length < 2) return;
-
-  const sameVersionReadings = recentReadings.filter(
-    (r) => (r.meter_version ?? 1) === meterVersion
-  );
-  if (sameVersionReadings.length < 1) return;
-
-  const mostRecent = sameVersionReadings[0];
-  if (newReadingAmount <= mostRecent.reading_amount) return;
-
-  const deltas: number[] = [];
-  for (let i = 0; i < sameVersionReadings.length - 1; i++) {
-    const curr = sameVersionReadings[i];
-    const prev = sameVersionReadings[i + 1];
-    const delta = curr.reading_amount - prev.reading_amount;
-    if (delta > 0) deltas.push(delta);
-  }
-  if (deltas.length === 0) return;
-
-  const avgDelta = deltas.reduce((s, d) => s + d, 0) / deltas.length;
-  const newDelta = newReadingAmount - mostRecent.reading_amount;
-
-  if (newDelta > 5 * avgDelta) {
-    throw new AppError(
-      422,
-      `Reading amount ${newReadingAmount} is unusually high. ` +
-        `Average monthly delta for this meter group is ${Math.round(avgDelta)} units; ` +
-        `this reading implies a delta of ${Math.round(newDelta)} units. ` +
-        `If the meter was reset, record a reset on the meter group first.`
-    );
-  }
-}
 
 
 type ReadingSearchOptions = {
@@ -88,76 +41,14 @@ export const readingService = {
    * (see ReadingValidator.validateMeterGroupConstraints), which prevents
    * duplicate auto-billings from arising in the first place.
    */
-  async create(data: CreateReadingDTO): Promise<Reading> {
+  async create(userId: string, data: CreateReadingDTO): Promise<Reading> {
     await validator.validateCreate(data);
 
     const meterGroup = await meterGroupRepository.getById(data.meter_group_id);
     const meter_version = meterGroup!.current_version ?? 1;
-    await checkAnomalousReading(data.meter_group_id, data.reading_amount, meter_version);
+    await validator.validateAnomalous(data.meter_group_id, data.reading_amount, meter_version);
 
-    // Look up the previous-month reading for the same meter_group + property.
-    const prevReading = await findPreviousMonthReading(data.meter_group_id, data.property_id, data.reading_date);
-
-    // First-time scenario: no previous-month reading. Fall back to a plain
-    // create — no billings to generate.
-    if (!prevReading) {
-      const payload: ReadingCreatePayload = { ...data, meter_version };
-      return readingRepository.create(payload);
-    }
-
-    const prevReadingId = prevReading.id;
-    const prevReadingData = prevReading.data;
-
-    // Get the specific property for this reading
-    const propertySnap = await firestore
-      .collection(COLLECTIONS.PROPERTIES)
-      .doc(data.property_id)
-      .get();
-
-    if (!propertySnap.exists || propertySnap.data()?.is_deleted) {
-      const payload: ReadingCreatePayload = { ...data, meter_version };
-      return readingRepository.create(payload);
-    }
-
-    const properties = [propertySnap];
-
-    // Build the new reading document up front so we can use it inside the txn.
-    const newReadingRef = firestore.collection(COLLECTIONS.READINGS).doc();
-    const newReadingId = newReadingRef.id;
-    const newReadingData = {
-      ...data,
-      meter_version,
-      created_at: FieldValue.serverTimestamp(),
-      is_deleted: false,
-      deleted_at: null,
-    };
-
-    // Data passed to billingService.createFromReadings is the in-memory shape
-    // used for comparisons (meter_group_id, reading_amount, meter_version). The
-    // serverTimestamp sentinel isn't read by that method.
-    const newReadingForBilling = {
-      meter_group_id: data.meter_group_id,
-      reading_amount: data.reading_amount,
-      reading_date: data.reading_date,
-      meter_version,
-    };
-
-    await firestore.runTransaction(async (txn) => {
-      txn.set(newReadingRef, newReadingData);
-      for (const propertyDoc of properties) {
-        billingService.createFromReadings(
-          txn,
-          propertyDoc.id,
-          prevReadingId,
-          newReadingId,
-          prevReadingData,
-          newReadingForBilling,
-        );
-      }
-    });
-
-    const snap = await newReadingRef.get();
-    return snapshotToModel<Reading>(snap);
+    return createReadingWithAutoBilling(userId, data, meter_version);
   },
 
   /**
@@ -165,7 +56,7 @@ export const readingService = {
    * reading exists for that meter group, create a billing automatically.
    * Uses atomic transactions per reading to ensure consistency.
    */
-  async createBatch(data: CreateReadingDTO[]): Promise<Reading[]> {
+  async createBatch(userId: string, data: CreateReadingDTO[]): Promise<Reading[]> {
     await validator.validateBatch(data);
 
     // Reject if any reading targets a main meter property — those are derived automatically
@@ -197,111 +88,82 @@ export const readingService = {
     }));
 
     for (const r of readingsWithVersion) {
-      await checkAnomalousReading(r.meter_group_id, r.reading_amount, r.meter_version);
+      await validator.validateAnomalous(r.meter_group_id, r.reading_amount, r.meter_version);
     }
 
-    // Create all readings, attempting auto-billing for each (parallelized)
-    const readingPromises = readingsWithVersion.map(async (readingData) => {
-      // Look for previous-month reading scoped to this property
-      const prevReading = await findPreviousMonthReading(readingData.meter_group_id, readingData.property_id, readingData.reading_date);
-
-      // If no previous reading, just create the reading
-      if (!prevReading) {
-        return readingRepository.create(readingData);
-      }
-
-      // Previous reading exists; create reading + billing in transaction
-      const prevReadingId = prevReading.id;
-      const prevReadingData = prevReading.data;
-
-      const newReadingRef = firestore.collection(COLLECTIONS.READINGS).doc();
-      const newReadingId = newReadingRef.id;
-      const newReadingDoc = {
-        ...readingData,
-        created_at: FieldValue.serverTimestamp(),
-        is_deleted: false,
-        deleted_at: null,
-      };
-
-      const newReadingForBilling = {
-        meter_group_id: readingData.meter_group_id,
-        reading_amount: readingData.reading_amount,
-        reading_date: readingData.reading_date,
-        meter_version: readingData.meter_version,
-      };
-
-      await firestore.runTransaction(async (txn) => {
-        txn.set(newReadingRef, newReadingDoc);
-        billingService.createFromReadings(
-          txn,
-          readingData.property_id,
-          prevReadingId,
-          newReadingId,
-          prevReadingData,
-          newReadingForBilling,
-        );
-      });
-
-      const snap = await newReadingRef.get();
-      return snapshotToModel<Reading>(snap);
-    });
-
-    return Promise.all(readingPromises);
+    return createBatchReadingsWithAutoBilling(userId, readingsWithVersion);
   },
 
-  async createSeed(data: CreateReadingDTO): Promise<Reading> {
+  async createSeed(userId: string, data: CreateReadingDTO): Promise<Reading> {
     await validator.validateSeedCreate(data);
     const meterGroup = await meterGroupRepository.getById(data.meter_group_id);
     const meter_version = meterGroup!.current_version ?? 1;
     const payload: ReadingCreatePayload = { ...data, meter_version };
-    return readingRepository.create(payload);
+    const cachedRepo = new CachedRepository(readingRepository, userId, 'readings', CACHE_TTL);
+    return cachedRepo.create(payload);
   },
 
-  async search(options: ReadingSearchOptions): Promise<PaginatedResult<Reading>> {
-    return readingRepository.search({
+  async search(userId: string, options: ReadingSearchOptions): Promise<PaginatedResult<Reading>> {
+    const cachedRepo = new CachedRepository(readingRepository, userId, 'readings', CACHE_TTL);
+    return cachedRepo.search({
       limit: options.limit,
       orderBy: (options.sortBy ?? "created_at") as any,
       orderDirection: options.sortOrder ?? "desc",
       cursor: options.cursor,
       archived: options.archived,
       filters: {
-        ...(options.meterGroupId ? {meter_group_id: options.meterGroupId} : {}),
-        ...(options.propertyId ? {property_id: options.propertyId} : {}),
+        ...(options.meterGroupId ? { meter_group_id: options.meterGroupId } : {}),
+        ...(options.propertyId ? { property_id: options.propertyId } : {}),
       },
     });
   },
 
-  async getById(id: string): Promise<Reading | null> {
-    return readingRepository.getById(id);
+  async getById(userId: string, id: string): Promise<Reading | null> {
+    const cachedRepo = new CachedRepository(readingRepository, userId, 'readings', CACHE_TTL);
+    return cachedRepo.getById(id);
   },
 
-  async update(id: string, data: Partial<CreateReadingDTO>): Promise<Reading> {
+  async update(userId: string, id: string, data: Partial<CreateReadingDTO>): Promise<Reading> {
     await validator.validateUpdate(data);
-    return readingRepository.update(id, data);
+    const cachedRepo = new CachedRepository(readingRepository, userId, 'readings', CACHE_TTL);
+    return cachedRepo.update(id, data);
   },
 
-  async updateBatch(updates: {id: string, data: Partial<CreateReadingDTO>}[]): Promise<Reading[]> {
+  async updateBatch(userId: string, updates: {id: string, data: Partial<CreateReadingDTO>}[]): Promise<Reading[]> {
     await validator.validateUpdateBatch(updates);
-    return readingRepository.updateBatch(updates);
+    const cachedRepo = new CachedRepository(readingRepository, userId, 'readings', CACHE_TTL);
+    return cachedRepo.updateBatch(updates);
   },
 
-  async delete(id: string): Promise<void> {
-    return readingRepository.delete(id);
+  async delete(userId: string, id: string): Promise<void> {
+    const cachedRepo = new CachedRepository(readingRepository, userId, 'readings', CACHE_TTL);
+    await cachedRepo.delete(id);
   },
 
-  async softDelete(id: string): Promise<Reading> {
-    return readingRepository.softDelete(id);
-  },
-
-  async restore(id: string): Promise<Reading> {
+  async softDelete(userId: string, id: string): Promise<Reading> {
     const reading = await readingRepository.getById(id);
     if (!reading) {
       throw new AppError(404, "Reading not found");
     }
-    return readingRepository.restore(id);
+
+    // Cascade delete + invalidate caches (cascade is custom logic, not generic)
+    await cascadeDeleteReading(id);
+    const deleted = await readingRepository.getById(id);
+    await listRemove(`utilitool:readings:all:${userId}`, id);
+    await cacheDel(`utilitool:readings:id:${id}`);
+    return deleted!;
   },
 
-  async extractReadingFromImage(imageUrl: string): Promise<number | null> {
-    return geminiLib.extractReadingFromImage(imageUrl);
+  async restore(userId: string, id: string): Promise<Reading> {
+    const reading = await readingRepository.getById(id);
+    if (!reading) {
+      throw new AppError(404, "Reading not found");
+    }
+
+    // Cascade restore + update caches (cascade is custom logic, not generic)
+    await cascadeRestoreReading(id);
+    const restored = await readingRepository.getById(id);
+    await cacheSet(`utilitool:readings:id:${restored!.id}`, restored!, CACHE_TTL);
+    return restored!;
   },
 };

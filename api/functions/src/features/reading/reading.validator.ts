@@ -115,6 +115,52 @@ export class ReadingValidator {
     }
   }
 
+  async validateAnomalous(
+    meterGroupId: string,
+    newReadingAmount: number,
+    meterVersion: number,
+  ): Promise<void> {
+    const recentResult = await readingRepository.search({
+      limit: 6,
+      orderBy: "reading_date",
+      orderDirection: "desc",
+      filters: { meter_group_id: meterGroupId },
+    });
+    const recentReadings = recentResult.data;
+
+    if (recentReadings.length < 2) return;
+
+    const sameVersionReadings = recentReadings.filter(
+      (r) => (r.meter_version ?? 1) === meterVersion
+    );
+    if (sameVersionReadings.length < 1) return;
+
+    const mostRecent = sameVersionReadings[0];
+    if (newReadingAmount <= mostRecent.reading_amount) return;
+
+    const deltas: number[] = [];
+    for (let i = 0; i < sameVersionReadings.length - 1; i++) {
+      const curr = sameVersionReadings[i];
+      const prev = sameVersionReadings[i + 1];
+      const delta = curr.reading_amount - prev.reading_amount;
+      if (delta > 0) deltas.push(delta);
+    }
+    if (deltas.length === 0) return;
+
+    const avgDelta = deltas.reduce((s, d) => s + d, 0) / deltas.length;
+    const newDelta = newReadingAmount - mostRecent.reading_amount;
+
+    if (newDelta > 5 * avgDelta) {
+      throw new AppError(
+        422,
+        `Reading amount ${newReadingAmount} is unusually high. ` +
+          `Average monthly delta for this meter group is ${Math.round(avgDelta)} units; ` +
+          `this reading implies a delta of ${Math.round(newDelta)} units. ` +
+          `If the meter was reset, record a reset on the meter group first.`
+      );
+    }
+  }
+
   async validateSeedCreate(data: CreateReadingDTO): Promise<void> {
     await this.validateMeterGroupExists(data.meter_group_id);
     this.validateReadingAmount(data.reading_amount);
