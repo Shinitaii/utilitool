@@ -1381,7 +1381,7 @@ Expected: no errors.
 
 ```bash
 cd api/functions
-export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/secrets/utilitool-staging-firebase-adminsdk-fbsvc-6a77170d3f.json
+export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/secrets/utilitool-staging-firebase-adminsdk-fbsvc-1fe128504a.json
 npx tsx src/migrations/migrate-meter-groups.ts
 ```
 

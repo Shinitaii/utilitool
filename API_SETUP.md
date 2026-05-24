@@ -24,7 +24,7 @@ npm ci
 
 # Set environment variables
 export APP_ENV=dev
-export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/secrets/utilitool-staging-firebase-adminsdk-fbsvc-6a77170d3f.json
+export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/secrets/utilitool-staging-firebase-adminsdk-fbsvc-1fe128504a.json
 
 # Start API in watch mode
 npm run dev:watch

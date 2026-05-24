@@ -113,7 +113,7 @@ See `docker-compose.yml` for full config.
 cd api/functions
 npm ci
 export APP_ENV=dev
-export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/secrets/utilitool-staging-firebase-adminsdk-fbsvc-6a77170d3f.json
+export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/secrets/utilitool-staging-firebase-adminsdk-fbsvc-1fe128504a.json
 npm run dev:watch
 
 # Terminal 2: Start UI
