@@ -83,6 +83,27 @@
       : properties.data
   );
 
+  const mainMetersByUtility = $derived.by(() => {
+    const mainMeters: { electricity: string | null; water: string | null } = { electricity: null, water: null };
+    for (const prop of properties.data) {
+      const elecEntry = prop.meter_groups.electricity;
+      const waterEntry = prop.meter_groups.water;
+      if (typeof elecEntry !== 'string' && elecEntry?.is_main_meter) {
+        mainMeters.electricity = prop.id;
+      }
+      if (typeof waterEntry !== 'string' && waterEntry?.is_main_meter) {
+        mainMeters.water = prop.id;
+      }
+    }
+    return mainMeters;
+  });
+
+  function getMainMeterPropertyName(utilityType: 'electricity' | 'water'): string | null {
+    const mainMeterId = mainMetersByUtility[utilityType];
+    if (!mainMeterId) return null;
+    return properties.data.find(p => p.id === mainMeterId)?.room_name || null;
+  }
+
   onMount(async () => {
     await loadProperties();
   });
@@ -390,18 +411,30 @@
                 <input
                   type="checkbox"
                   bind:checked={newPropertyForm.is_main_meter.electricity}
-                  class="rounded"
+                  disabled={mainMetersByUtility.electricity !== null && !newPropertyForm.is_main_meter.electricity}
+                  class="rounded disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <span>Main Meter (Electricity)</span>
               </label>
+              {#if mainMetersByUtility.electricity !== null && !newPropertyForm.is_main_meter.electricity}
+                <p class="text-xs text-amber-700 ml-6">
+                  {getMainMeterPropertyName('electricity')} is already the main meter
+                </p>
+              {/if}
               <label class="flex items-center gap-2 text-xs font-medium text-gray-700">
                 <input
                   type="checkbox"
                   bind:checked={newPropertyForm.is_main_meter.water}
-                  class="rounded"
+                  disabled={mainMetersByUtility.water !== null && !newPropertyForm.is_main_meter.water}
+                  class="rounded disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <span>Main Meter (Water)</span>
               </label>
+              {#if mainMetersByUtility.water !== null && !newPropertyForm.is_main_meter.water}
+                <p class="text-xs text-amber-700 ml-6">
+                  {getMainMeterPropertyName('water')} is already the main meter
+                </p>
+              {/if}
             </div>
             <div class="flex gap-2">
               <button
@@ -747,18 +780,30 @@
         <input
           type="checkbox"
           bind:checked={editPropertyForm.is_main_meter.electricity}
-          class="rounded"
+          disabled={mainMetersByUtility.electricity !== null && mainMetersByUtility.electricity !== crud.editingItem?.id && !editPropertyForm.is_main_meter.electricity}
+          class="rounded disabled:opacity-50 disabled:cursor-not-allowed"
         />
         <span>Main Meter (Electricity)</span>
       </label>
+      {#if mainMetersByUtility.electricity !== null && mainMetersByUtility.electricity !== crud.editingItem?.id && !editPropertyForm.is_main_meter.electricity}
+        <p class="text-xs text-amber-700 ml-6">
+          {getMainMeterPropertyName('electricity')} is already the main meter
+        </p>
+      {/if}
       <label class="flex items-center gap-2 text-sm font-medium text-gray-700">
         <input
           type="checkbox"
           bind:checked={editPropertyForm.is_main_meter.water}
-          class="rounded"
+          disabled={mainMetersByUtility.water !== null && mainMetersByUtility.water !== crud.editingItem?.id && !editPropertyForm.is_main_meter.water}
+          class="rounded disabled:opacity-50 disabled:cursor-not-allowed"
         />
         <span>Main Meter (Water)</span>
       </label>
+      {#if mainMetersByUtility.water !== null && mainMetersByUtility.water !== crud.editingItem?.id && !editPropertyForm.is_main_meter.water}
+        <p class="text-xs text-amber-700 ml-6">
+          {getMainMeterPropertyName('water')} is already the main meter
+        </p>
+      {/if}
     </div>
   </div>
 </EditModal>
