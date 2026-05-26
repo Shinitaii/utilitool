@@ -40,9 +40,11 @@
 
   // Billing cycle form state
   let cycleFormOpen = $state(false);
+  let cycleFormTab = $state<'manual' | 'auto'>('auto');
   let cycleFormMeterGroup = $state('');
   let cycleFormStartDate = $state('');
   let cycleFormEndDate = $state('');
+  let cycleFormDueDate = $state('');
   let cycleFormRate = $state(0);
   let cycleFormDiscoveredBillings = $state<DiscoveredBilling[]>([]);
   let cycleFormTotalConsumption = $state(0);
@@ -68,6 +70,7 @@
   });
 
   let isUpdating = $state(false);
+  let isCreating = $state(false);
   let markingAsPaidId = $state<string | null>(null);
 
   let auth = $state<AuthState>({ isAuthenticated: false, user: null, isLoading: false, error: null });
@@ -152,6 +155,7 @@
 
   async function handleCreate(e: SubmitEvent) {
     e.preventDefault();
+    isCreating = true;
     try {
       await createBilling(createFormData);
       createFormOpen = false;
@@ -163,6 +167,8 @@
       await loadData();
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to create billing';
+    } finally {
+      isCreating = false;
     }
   }
 
@@ -268,6 +274,7 @@
     cycleFormMeterGroup = '';
     cycleFormStartDate = '';
     cycleFormEndDate = '';
+    cycleFormDueDate = '';
     cycleFormRate = 0;
     cycleFormDiscoveredBillings = [];
     cycleFormTotalConsumption = 0;
@@ -275,6 +282,52 @@
     billPhotoUrl = null;
     isBillOcrLoading = false;
     billOcrRawAmount = null;
+  }
+
+  function autoCalculateCycleDates() {
+    if (!cycleFormMeterGroup) return;
+
+    // Find the last billing cycle for this meter group
+    const meterGroupCycles = cycles.data
+      .filter(c => {
+        const cycleBillingIds = Object.keys(c.billing_ids);
+        const cycleBillings = allBillings.filter(b => cycleBillingIds.includes(b.id));
+        if (cycleBillings.length === 0) return false;
+        const firstBilling = cycleBillings[0];
+        const firstReading = readings.find(r => r.id === firstBilling.current_reading_id);
+        return firstReading?.meter_group_id === cycleFormMeterGroup;
+      })
+      .sort((a, b) => new Date(toDate(b.billing_end_date)).getTime() - new Date(toDate(a.billing_end_date)).getTime());
+
+    if (meterGroupCycles.length === 0) {
+      // No previous cycle, use current month
+      const now = new Date();
+      const startDate = new Date(now.getUTCFullYear(), now.getUTCMonth(), 1);
+      const endDate = new Date(now.getUTCFullYear(), now.getUTCMonth() + 1, 0);
+      const dueDate = new Date(endDate);
+      dueDate.setUTCDate(dueDate.getUTCDate() + 13);
+
+      cycleFormStartDate = startDate.toISOString().split('T')[0];
+      cycleFormEndDate = endDate.toISOString().split('T')[0];
+      cycleFormDueDate = dueDate.toISOString().split('T')[0];
+    } else {
+      // Calculate next cycle based on last cycle
+      const lastCycle = meterGroupCycles[0];
+      const lastEndDate = toDate(lastCycle.billing_end_date);
+      const nextStartDate = new Date(lastEndDate);
+      nextStartDate.setUTCDate(nextStartDate.getUTCDate() + 1);
+
+      const nextEndDate = new Date(nextStartDate);
+      nextEndDate.setUTCMonth(nextEndDate.getUTCMonth() + 1);
+      nextEndDate.setUTCDate(nextStartDate.getUTCDate() - 1);
+
+      const nextDueDate = new Date(nextEndDate);
+      nextDueDate.setUTCDate(nextDueDate.getUTCDate() + 14);
+
+      cycleFormStartDate = nextStartDate.toISOString().split('T')[0];
+      cycleFormEndDate = nextEndDate.toISOString().split('T')[0];
+      cycleFormDueDate = nextDueDate.toISOString().split('T')[0];
+    }
   }
 
   async function readFileAsDataUrl(file: File): Promise<string> {
@@ -349,13 +402,23 @@
         _nanoseconds: 0,
       };
 
-      await createBillingCycle({
+      const createPayload: any = {
+        meter_group_id: cycleFormMeterGroup,
         billing_ids,
         billing_rate: cycleFormRate,
         billing_consumption: totalConsumption,
         billing_start_date: startTs,
         billing_end_date: endTs,
-      });
+      };
+
+      if (cycleFormDueDate) {
+        createPayload.overdue_date = {
+          _seconds: Math.floor(new Date(cycleFormDueDate).getTime() / 1000),
+          _nanoseconds: 0,
+        };
+      }
+
+      await createBillingCycle(createPayload);
 
       cycleFormOpen = false;
       resetCycleForm();
@@ -481,6 +544,7 @@
           <div style="margin-bottom: 30px; line-height: 1.8;">
             <p><strong>Property:</strong> ${roomName}</p>
             <p><strong>Billing Period:</strong> ${escHtml(formatDate(toDate(cycle.billing_start_date)))} to ${escHtml(formatDate(toDate(cycle.billing_end_date)))}</p>
+            ${cycle.overdue_date ? `<p><strong>Due Date:</strong> ${escHtml(formatDate(toDate(cycle.overdue_date)))}</p>` : ''}
             <p><strong>Consumption:</strong> ${escHtml(consumption.toLocaleString())} ${unit}</p>
             <p><strong>Rate:</strong> ₱${escHtml(cycle.billing_rate.toFixed(2))}/${unit}</p>
           </div>
@@ -567,6 +631,30 @@
     <div class="rounded-lg border border-gray-200 bg-white p-6">
       <h2 class="font-semibold">New Billing Cycle</h2>
 
+      <!-- Tabs -->
+      <div class="mt-4 flex border-b border-gray-200">
+        <button
+          onclick={() => { cycleFormTab = 'manual'; resetCycleForm(); cycleFormTab = 'manual'; }}
+          class="px-4 py-2 font-medium text-sm border-b-2"
+          class:border-blue-500={cycleFormTab === 'manual'}
+          class:border-transparent={cycleFormTab !== 'manual'}
+          class:text-blue-600={cycleFormTab === 'manual'}
+          class:text-gray-600={cycleFormTab !== 'manual'}
+        >
+          Manual
+        </button>
+        <button
+          onclick={() => { cycleFormTab = 'auto'; resetCycleForm(); autoCalculateCycleDates(); cycleFormTab = 'auto'; }}
+          class="px-4 py-2 font-medium text-sm border-b-2"
+          class:border-blue-500={cycleFormTab === 'auto'}
+          class:border-transparent={cycleFormTab !== 'auto'}
+          class:text-blue-600={cycleFormTab === 'auto'}
+          class:text-gray-600={cycleFormTab !== 'auto'}
+        >
+          Automated
+        </button>
+      </div>
+
       <!-- Bill Photo OCR -->
       <div class="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-2">
         <p class="text-sm font-medium text-gray-700">Extract from Bill Photo (optional)</p>
@@ -601,6 +689,10 @@
           <select
             id="cycle-meter-group"
             bind:value={cycleFormMeterGroup}
+            onchange={() => {
+              if (cycleFormTab === 'auto') autoCalculateCycleDates();
+              if (cycleFormEndDate) handleDiscoverBillings();
+            }}
             class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
           >
             <option value="">Select a meter group</option>
@@ -635,6 +727,15 @@
             id="cycle-end-date"
             type="date"
             bind:value={cycleFormEndDate}
+            class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
+          />
+        </div>
+        <div>
+          <label for="cycle-due-date" class="block text-sm font-medium text-gray-700">Due Date (optional)</label>
+          <input
+            id="cycle-due-date"
+            type="date"
+            bind:value={cycleFormDueDate}
             class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
           />
         </div>
@@ -784,15 +885,17 @@
             <div class="flex space-x-2">
               <button
                 type="submit"
-                class="rounded px-4 py-2 text-white font-medium"
+                disabled={isCreating}
+                class="rounded px-4 py-2 text-white font-medium disabled:opacity-50"
                 style="background-color: var(--color-accent)"
               >
-                Create
+                {isCreating ? 'Creating...' : 'Create'}
               </button>
               <button
                 type="button"
+                disabled={isCreating}
                 onclick={() => (createFormOpen = false)}
-                class="rounded px-4 py-2 border border-gray-300 bg-white text-gray-700"
+                class="rounded px-4 py-2 border border-gray-300 bg-white text-gray-700 disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -844,6 +947,9 @@
                           <div class="text-sm text-gray-500">
                             {Object.keys(cycle.billing_ids).length} billing
                             {Object.keys(cycle.billing_ids).length === 1 ? 'record' : 'records'}
+                            {#if cycle.overdue_date}
+                              • Due: {formatDate(toDate(cycle.overdue_date))}
+                            {/if}
                           </div>
                         </div>
                       </div>
@@ -916,9 +1022,23 @@
                         </thead>
                         <tbody>
                           {#each billings.get(cycle.id) || [] as billing (billing.id)}
+                            {@const billingProperty = properties.find(p => p.id === billing.property_id)}
+                            {@const meterEntry = cycle.meter_group_id ? (
+                              meterGroups.find(m => m.id === cycle.meter_group_id)?.utility_type === 'water'
+                                ? billingProperty?.meter_groups.water
+                                : billingProperty?.meter_groups.electricity
+                            ) : null}
+                            {@const isMainMeter = typeof meterEntry === 'string' ? false : meterEntry?.is_main_meter ?? false}
                             <tr class="border-b border-gray-100 hover:bg-white">
                               <td class="px-6 py-3 text-gray-900">
-                                {properties.find(p => p.id === billing.property_id)?.room_name ?? 'Unknown Property'}
+                                <div class="flex items-center gap-2">
+                                  <span>{billingProperty?.room_name ?? 'Unknown Property'}</span>
+                                  {#if isMainMeter}
+                                    <span class="inline-block rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-800">
+                                      Derived
+                                    </span>
+                                  {/if}
+                                </div>
                               </td>
                               <td class="px-6 py-3 font-mono text-gray-700">
                                 {#if readings.find(r => r.id === billing.previous_reading_id)}

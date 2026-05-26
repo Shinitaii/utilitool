@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getReadings, createReadingsBatch, updateReading, softDeleteReading, ocrReadingImage } from '$lib/api/readings';
+  import { getReadings, createReadingsBatch, createSeedReading, updateReading, softDeleteReading, ocrReadingImage } from '$lib/api/readings';
   import { getMeterGroups } from '$lib/api/meter-groups';
   import { getProperties } from '$lib/api/properties';
   import type { Reading, UpdateReadingRequest } from '$lib/types/reading.types';
@@ -49,6 +49,17 @@
 
   // Image preview
   let previewImageUrl = $state<string | null>(null);
+
+  // Seed reading form
+  let seedFormOpen = $state(false);
+  let seedForm = $state({
+    meter_group_id: '',
+    property_id: '',
+    reading_amount: 0,
+    reading_date: new Date().toISOString().split('T')[0],
+    image_url: ''
+  });
+  let seedLoading = $state(false);
 
   let isUpdating = $state(false);
 
@@ -117,19 +128,34 @@
     error = '';
     try {
       const result = await getProperties({ limit: 100, meterGroupId: selectedMeterGroup });
+      const selectedMeter = meterGroups.find(m => m.id === selectedMeterGroup);
+      const utilityType = selectedMeter?.utility_type || 'electricity';
 
       if (result.data.length === 0) {
         error = 'No properties found for this meter group';
         batchRows = [];
       } else {
-        batchRows = result.data.map((property) => ({
-          property,
-          meter_group_id: selectedMeterGroup,
-          reading_amount: null,
-          image_url: null,
-          data_url: null,
-          is_uploading: false,
-        }));
+        const filteredProperties = result.data.filter((property) => {
+          const meterEntry = utilityType === 'electricity'
+            ? property.meter_groups.electricity
+            : property.meter_groups.water;
+          const isMainMeter = typeof meterEntry === 'string' ? false : meterEntry?.is_main_meter ?? false;
+          return !isMainMeter;
+        });
+
+        if (filteredProperties.length === 0) {
+          error = 'No submeter properties found for this meter group (all are main meters)';
+          batchRows = [];
+        } else {
+          batchRows = filteredProperties.map((property) => ({
+            property,
+            meter_group_id: selectedMeterGroup,
+            reading_amount: null,
+            image_url: null,
+            data_url: null,
+            is_uploading: false,
+          }));
+        }
       }
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load properties';
@@ -221,6 +247,45 @@
     }
   }
 
+  async function handleCreateSeedReading() {
+    if (!seedForm.meter_group_id || !seedForm.property_id || seedForm.reading_amount < 0) {
+      error = 'Please fill in all required fields';
+      return;
+    }
+
+    seedLoading = true;
+    error = '';
+
+    try {
+      const dateObj = new Date(seedForm.reading_date);
+      await createSeedReading({
+        meter_group_id: seedForm.meter_group_id,
+        property_id: seedForm.property_id,
+        reading_amount: seedForm.reading_amount,
+        reading_date: {
+          _seconds: Math.floor(dateObj.getTime() / 1000),
+          _nanoseconds: 0,
+        },
+        image_url: seedForm.image_url || undefined
+      });
+
+      seedFormOpen = false;
+      seedForm = {
+        meter_group_id: '',
+        property_id: '',
+        reading_amount: 0,
+        reading_date: new Date().toISOString().split('T')[0],
+        image_url: ''
+      };
+      await loadData();
+      alert('Seed reading created successfully!');
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to create seed reading';
+    } finally {
+      seedLoading = false;
+    }
+  }
+
   const editData = $derived(crud.editFormData as unknown as { reading_amount: number; reading_date: string });
 
   function canBatchSubmit(): boolean {
@@ -266,8 +331,18 @@
         <Archive size={20} />
       </a>
       <button
+        onclick={() => (seedFormOpen = !seedFormOpen)}
+        disabled={seedLoading}
+        class="px-3 py-2 rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 text-sm font-medium"
+        title={seedFormOpen ? 'Cancel seed reading' : 'Create seed reading'}
+        aria-label={seedFormOpen ? 'Cancel seed reading' : 'Create seed reading'}
+      >
+        {seedFormOpen ? 'Cancel' : 'Seed Reading'}
+      </button>
+      <button
         onclick={() => (createFormOpen = !createFormOpen)}
-        class="p-2 rounded text-white"
+        disabled={batchLoading}
+        class="p-2 rounded text-white disabled:opacity-50"
         style="background-color: var(--color-accent)"
         title={createFormOpen ? 'Cancel' : 'Create new reading'}
         aria-label={createFormOpen ? 'Cancel new reading' : 'Create new reading'}
@@ -284,6 +359,95 @@
   {#if error}
     <div class="rounded-lg bg-red-50 p-4 text-sm text-red-700">
       {error}
+    </div>
+  {/if}
+
+  <!-- Seed Reading Form -->
+  {#if seedFormOpen}
+    <div class="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+      <h2 class="font-semibold">Create Seed Reading</h2>
+      <p class="text-sm text-gray-600">Create a baseline reading for a main meter property (required before creating billing cycles)</p>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label for="seed-meter-group" class="block text-sm font-medium text-gray-700">Meter Group *</label>
+          <select
+            id="seed-meter-group"
+            bind:value={seedForm.meter_group_id}
+            disabled={seedLoading}
+            class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
+          >
+            <option value="">Select meter option</option>
+            {#each meterGroups as group (group.id)}
+              <option value={group.id}>
+                {group.meter_name} ({group.utility_type})
+              </option>
+            {/each}
+          </select>
+        </div>
+
+        <div>
+          <label for="seed-property" class="block text-sm font-medium text-gray-700">Main Meter Property *</label>
+          <select
+            id="seed-property"
+            bind:value={seedForm.property_id}
+            disabled={seedLoading}
+            class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
+          >
+            <option value="">Select property</option>
+            {#each properties as prop (prop.id)}
+              {@const utilityType = meterGroups.find(m => m.id === seedForm.meter_group_id)?.utility_type || 'electricity'}
+              {@const meterEntry = utilityType === 'electricity' ? prop.meter_groups.electricity : prop.meter_groups.water}
+              {@const isMainMeter = typeof meterEntry === 'string' ? false : meterEntry?.is_main_meter ?? false}
+              {#if isMainMeter}
+                <option value={prop.id}>{prop.room_name}</option>
+              {/if}
+            {/each}
+          </select>
+        </div>
+
+        <div>
+          <label for="seed-reading-amount" class="block text-sm font-medium text-gray-700">Reading Amount *</label>
+          <input
+            id="seed-reading-amount"
+            type="number"
+            bind:value={seedForm.reading_amount}
+            min="0"
+            step="0.01"
+            disabled={seedLoading}
+            class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
+          />
+        </div>
+
+        <div>
+          <label for="seed-reading-date" class="block text-sm font-medium text-gray-700">Reading Date *</label>
+          <input
+            id="seed-reading-date"
+            type="date"
+            bind:value={seedForm.reading_date}
+            disabled={seedLoading}
+            class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
+          />
+        </div>
+      </div>
+
+      <div class="flex gap-2">
+        <button
+          onclick={handleCreateSeedReading}
+          disabled={!seedForm.meter_group_id || !seedForm.property_id || seedLoading}
+          class="rounded px-4 py-2 text-white font-medium disabled:opacity-50"
+          style="background-color: var(--color-accent)"
+        >
+          {seedLoading ? 'Creating...' : 'Create Seed Reading'}
+        </button>
+        <button
+          onclick={() => (seedFormOpen = false)}
+          disabled={seedLoading}
+          class="rounded px-4 py-2 border border-gray-300 bg-white text-gray-700 font-medium hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   {/if}
 
