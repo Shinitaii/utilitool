@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getBillingCycles, createBillingCycle, ocrBillingCycle } from '$lib/api/billing-cycles';
+  import { getBillingCycles, createBillingCycle, ocrBillingCycle, softDeleteBillingCycle } from '$lib/api/billing-cycles';
   import { getBillings, createBilling, updateBilling, softDeleteBilling } from '$lib/api/billings';
   import { getReadings } from '$lib/api/readings';
   import { getProperties } from '$lib/api/properties';
@@ -983,7 +983,7 @@
                   </div>
                 </button>
 
-                {#if expandedCycleId === cycle.id && (billings.get(cycle.id)?.length ?? 0) > 0}
+                {#if expandedCycleId === cycle.id}
                   <button
                     onclick={(e) => {
                       e.stopPropagation();
@@ -993,6 +993,24 @@
                     title="Print receipts"
                   >
                     <Printer size={20} />
+                  </button>
+                {/if}
+                {#if expandedCycleId === cycle.id}
+                  <button
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      if (confirm('Archive this billing cycle and all its billings? They can be restored from the archive.')) {
+                        softDeleteBillingCycle(cycle.id)
+                          .then(() => loadData())
+                          .catch((err) => {
+                            error = err instanceof Error ? err.message : 'Failed to archive billing cycle';
+                          });
+                      }
+                    }}
+                    class="ml-2 p-2 rounded hover:bg-red-100 text-red-700"
+                    title="Archive billing cycle"
+                  >
+                    <Archive size={20} />
                   </button>
                 {/if}
               </div>
