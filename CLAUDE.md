@@ -12,7 +12,7 @@ Welcome to the Utilitool project. This document guides you through the repo stru
 - **Working on the API**: Read `api/CLAUDE.md` → covers backend architecture, API specs (Swagger), and feature-by-feature file locations
 - **Working on the UI**: Read `ui/CLAUDE.md` → covers frontend architecture, component structure, and which API endpoints each page calls
 - **Working on the Mobile app**: Read `mobile/CLAUDE.md` → covers Capacitor + Svelte SPA, screens, API modules, and navigation
-- **Setting up locally**: See [Docker & Local Development](#docker--local-development) below
+- **Setting up locally**: See [Local Development](#local-development) below
 - **Deploying**: See [CI/CD & Deployment](#cicd--deployment) below
 - **Understanding past decisions**: Check `decisions/` folder → read the **title first** to decide relevance before diving into full file
 
@@ -92,33 +92,29 @@ utilitool/
 
 ---
 
-## Docker & Local Development
+## Local Development
 
 ### Quick Start
 ```bash
-docker-compose up
-```
-
-Starts:
-- **API** (port 5002) — Express server connected to utilitool-staging Firebase, watch mode
-- **UI** (port 5173) — SvelteKit dev server
-
-See `docker-compose.yml` for full config.
-
-### Manual Setup
-```bash
-# Terminal 1: Start API connected to utilitool-staging
+# Terminal 1 — API (port 5002, watch mode, connected to utilitool-staging)
 cd api/functions
 npm ci
 export APP_ENV=dev
-export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/secrets/utilitool-staging-firebase-adminsdk-fbsvc-1fe128504a.json
+export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/secrets/utilitool-staging-firebase-adminsdk-fbsvc-50221e4bd0.json
 npm run dev:watch
 
-# Terminal 2: Start UI
+# Terminal 2 — UI (port 5173)
 cd ui
 npm ci
 npm run dev
 ```
+
+### Docker alternative
+```bash
+docker-compose up
+```
+
+Starts the API (port 5002) and UI (port 5173) in watch mode. Requires `api/functions/secrets/.env.dev` to exist — see `API_SETUP.md`.
 
 ---
 
@@ -265,8 +261,15 @@ Each page/component is organized by:
 git clone <repo>
 cd new-utility-calculator
 
-# Start dev environment
-docker-compose up
+# Terminal 1 — API
+cd api/functions
+npm ci
+export APP_ENV=dev
+export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/secrets/utilitool-staging-firebase-adminsdk-fbsvc-50221e4bd0.json
+npm run dev:watch
+
+# Terminal 2 — UI
+cd ui && npm ci && npm run dev
 
 # Open in browser
 # UI: http://localhost:5173
@@ -295,7 +298,7 @@ docker-compose up
 
 | File | Why It Matters |
 |------|---|
-| `docker-compose.yml` | Start the whole stack with one command |
+| `docker-compose.yml` | Docker alternative for running the full stack (see Local Development) |
 | `api/functions/src/index.ts` | API entry point — all routes mounted here |
 | `api/functions/src/config/swagger.config.ts` | OpenAPI spec generator — aggregates all `.swagger.ts` files |
 | `ui/src/routes/(app)/+layout.ts` | Auth guard for all protected routes |
