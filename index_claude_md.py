@@ -8,6 +8,7 @@ CLAUDE_MD_FILES = [
     "CLAUDE.md",
     "api/functions/CLAUDE.md",
     "ui/CLAUDE.md",
+    "mobile/CLAUDE.md",
 ]
 
 MAX_CHUNK_CHARS = 800
