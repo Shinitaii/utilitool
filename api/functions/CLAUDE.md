@@ -810,8 +810,8 @@ See `secrets/.env.dev` for all dev variables. Production deployments use `APP_EN
 Run from `api/functions/`:
 
 ```bash
-npm run dev:watch        # Watch mode (standard dev, used via docker-compose)
-npm run serve            # Start emulator + API (manual use only, for integration tests)
+npm run dev:watch        # Watch mode — standard local dev
+npm run serve            # Start emulator + API (for integration tests against local emulator)
 npm run build            # Compile TypeScript
 npm run build:watch      # Watch mode
 npm run lint             # ESLint
@@ -819,9 +819,18 @@ npm test                 # Jest (all tests)
 npm run test:watch       # Jest watch mode
 ```
 
-**Standard dev flow**: Use `docker-compose up` from the repo root. This starts the API with `APP_ENV=dev` connected to `utilitool-staging`.
+**Standard dev flow**:
+```bash
+cd api/functions
+export APP_ENV=dev
+export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/secrets/utilitool-staging-firebase-adminsdk-fbsvc-50221e4bd0.json
+npm run dev:watch
+```
+Connects to `utilitool-staging` Firebase project. Loads additional env vars (GCLOUD_PROJECT, GEMINI_API_KEY) from `secrets/.env.dev` — see `API_SETUP.md`.
 
-**Manual emulator use**: `npm run serve` still works if you need to run integration tests against a local emulator.
+**Docker alternative**: `docker-compose up` from the repo root starts both API and UI. See `docker-compose.yml`.
+
+**Manual emulator use**: `npm run serve` works if you need to run integration tests against a local Firebase emulator.
 
 ---
 

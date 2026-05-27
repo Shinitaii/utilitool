@@ -1,178 +1,186 @@
 # Utilitool
 
-A utility meter reading and billing management system. Automate the workflow from capturing readings to generating accurate per-tenant bills.
+A utility meter reading and billing management system. Automates the workflow from capturing readings to generating accurate per-tenant bills — with a web dashboard and an Android companion app.
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Node.js 24+
-- Docker & Docker Compose (recommended) or Firebase CLI
 
-### 1. Clone & Install (< 2 min)
+### 1. Clone & Start
 ```bash
 git clone <repo>
 cd new-utility-calculator
 
-# Option A: Docker (one command, everything works)
-docker-compose up
+# Terminal 1 — API (port 5002)
+cd api/functions
+npm ci
+export APP_ENV=dev
+export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/secrets/utilitool-staging-firebase-adminsdk-fbsvc-50221e4bd0.json
+npm run dev:watch
 
-# Option B: Manual setup
-# Terminal 1: Start API + emulator
-cd api/functions && npm ci && npm run serve
-
-# Terminal 2: Start UI
+# Terminal 2 — UI (port 5173)
 cd ui && npm ci && npm run dev
 ```
 
-### 2. Open & Login (< 1 min)
+### 2. Open in browser
 - **UI**: http://localhost:5173
 - **Swagger Docs**: http://localhost:5002/docs
-- **Firebase Emulator**: http://localhost:4400
 
 Sign up with any email/password → You're in the dashboard.
 
-### 3. Try an Endpoint (< 2 min)
-Go to Swagger at http://localhost:5002/docs and:
-- POST `/meter-group` → Create a meter group
-- POST `/property` → Create a property
-- POST `/reading` → Log a meter reading
-
-See live request/response shapes and error codes right there.
+### Docker alternative
+```bash
+docker-compose up
+```
+Starts both services in watch mode. Requires `api/functions/secrets/.env.dev` — see `API_SETUP.md`.
 
 ---
 
-## 🔍 Recent Audit (May 2026)
-
-Comprehensive codebase audit completed with **25 fixes** across security, observability, code quality, and API design:
-
-- **Soft-Delete Pattern**: All DELETE endpoints now soft-delete (set `is_deleted` flag) — no hard deletions
-- **Timestamp Serialization**: JSON responses use ISO 8601 strings (prevents Firestore object leakage)
-- **Dynamic Sorting**: All list endpoints support `sortBy` + `sortOrder` parameters
-- **Meter Rollback Prevention**: New validation utility prevents meter reading regression
-- **Query Optimization**: Property duplicate checks now use indexed queries (10x faster)
-- **Structured Logging**: Request/error/query logging with context for debugging
-- **Code Deduplication**: Extracted shared `reading.util.ts` with reusable helpers
-
-**See `api/functions/CLAUDE.md` → "Recent Improvements"** for complete details.
-
----
-
-## 📚 What is This?
+## What is This?
 
 **Utilitool** manages the meter-to-bill workflow:
 
-1. **Capture readings** from your utility meters (electricity, water, etc.)
+1. **Capture readings** from utility meters (electricity, water)
 2. **Create a billing cycle** — validate all readings match consumption (3% tolerance)
-3. **Generate bills** — One bill per tenant, per property, per cycle
-4. **Track payments** — See which bills are paid
+3. **Generate bills** — one bill per tenant, per property, per cycle
+4. **Track payments** — see which bills are paid, pending, or overdue
 
 ### Core Concepts
-- **Meter Groups** — Utility types (electricity, water)
-- **Properties** — Buildings/units consuming utilities
-- **Tenants** — Occupants billed for consumption
-- **Readings** — Snapshots of meter values
-- **Billings** — Individual bills (property + previous/current readings)
-- **Billing Cycles** — Validation periods that enforce business rules
+| Entity | Description |
+|--------|-------------|
+| **Meter Groups** | Utility type containers (electricity, water) |
+| **Properties** | Buildings/units consuming utilities |
+| **Tenants** | Occupants billed for consumption |
+| **Readings** | Snapshots of meter values |
+| **Billings** | Individual bills (property + previous/current reading pair) |
+| **Billing Cycles** | Validation periods that enforce the 3% tolerance rule |
 
 ---
 
-## 🛠 Tech Stack
+## Tech Stack
 
 | Layer | Stack |
 |-------|-------|
-| **Backend** | Express + Firebase Cloud Functions (TypeScript, Firestore) |
-| **Frontend** | SvelteKit 5 + Svelte 5 (TypeScript, Tailwind, Playwright E2E) |
-| **Database** | Firestore (emulated locally, production: Firebase) |
+| **Backend** | Express + Firebase Cloud Functions — TypeScript, Firestore, Zod, custom JWT auth |
+| **Frontend** | SvelteKit 5 + Svelte 5 runes — TypeScript, Tailwind v4, Playwright E2E |
+| **Mobile** | Svelte 5 SPA + Capacitor 6 — TypeScript, Tailwind v4, Android target |
+| **Database** | Firestore (dev: utilitool-staging; production: utilitool-3fe70) |
 | **Deployment** | Firebase (API) + Vercel (UI) |
 
 ---
 
-## 📖 Documentation
+## Feature Status
 
-- **CLAUDE.md** — Full architecture, file layout, deployment, and deep-dive guides
-- **API_SETUP.md** — Environment variables and production config
-- **EMULATOR_SETUP.md** — Firebase emulator details
-- **Swagger UI** (http://localhost:5002/docs when running) — Interactive endpoint docs
-- **api/CLAUDE.md** — Backend architecture & per-feature file map
-- **ui/CLAUDE.md** — Frontend architecture & component structure
+### API
+| Feature | Status |
+|---------|--------|
+| Auth (Firebase Auth) | ✅ Complete |
+| Meter Groups | ✅ Complete — CRUD, batch, reset, dynamic sorting |
+| Properties | ✅ Complete — CRUD, batch, cascade delete/restore |
+| Tenants | ✅ Complete — CRUD, batch |
+| Readings | ✅ Complete — auto-billing on create, anomaly guard, meter rollback prevention |
+| Billings | ✅ Complete — normally auto-created; manual escape hatch available |
+| Billing Cycles | ✅ Complete — validation, OCR autofill via Gemini |
+| Image Extraction | ✅ Complete — `POST /image-extraction/readings` + `/billings` (Gemini Vision) |
+| Reports | ✅ Complete — summary, consumption, billing trends, collection status |
+| Bills | ⚠️ Partial stub — `POST /bills/ocr` exists; no full service layer |
+| Users | ⚠️ Partial stub — `POST /users` for role management |
 
-Start with **CLAUDE.md** for the big picture. New to the API? Hit Swagger for quick reference.
+All DELETE endpoints use soft-delete (no hard removal). `PATCH /:id/restore` reverses it.
+
+### UI (Web)
+| Page | Status |
+|------|--------|
+| Login | ✅ |
+| Dashboard | ✅ Stat cards + properties summary |
+| Meter Groups | ✅ Full CRUD, reset, archive/restore |
+| Properties | ✅ List + detail tabs, archive/restore |
+| Tenants | ✅ Searchable list, archive/restore |
+| Readings | ✅ Batch form + OCR suggest, archive/restore |
+| Billings | ✅ Cycle-centric, OCR autofill, archive/restore |
+| Reports | 🚧 Stub — API ready, UI not built |
+| Bills / OCR | 🚧 Stub — API ready, UI not built |
+| Settings | 🚧 Partial — payment + user management tabs scaffolded |
+
+### Mobile (Android)
+| Screen | Status |
+|--------|--------|
+| Login | ✅ Firebase Auth |
+| Home | ✅ Dashboard + "New Reading Session" CTA |
+| CaptureReadings | ✅ 3-step wizard (select meter group → enter readings + camera → review + submit) |
+| ReadingHistory | ✅ Filterable by utility type + property |
+| Billings | ✅ Grouped overdue/pending/paid; mark-as-paid action |
+| Settings | ✅ Account info + sign out |
 
 ---
 
-## 🔧 Development
+## Documentation
+
+| File | What it covers |
+|------|----------------|
+| `CLAUDE.md` | Project overview, business rules, deployment, CI/CD |
+| `api/functions/CLAUDE.md` | Backend architecture, all API endpoints, feature file map |
+| `ui/CLAUDE.md` | Frontend architecture, component map, page-to-API mapping |
+| `mobile/CLAUDE.md` | Mobile screens, navigation, API modules, session cache |
+| `API_SETUP.md` | Environment variables and Firebase project config |
+| `EMULATOR_SETUP.md` | Firebase emulator manual setup (rarely needed) |
+| `CONTRIBUTING.md` | How to add features, branch conventions, code style |
+| `decisions/` | Architecture decision records |
+| Swagger UI | http://localhost:5002/docs — interactive API reference |
+
+---
+
+## Development Commands
 
 ### API (`api/functions/`)
 ```bash
-npm run serve          # Dev + emulator
-npm run lint           # Check style
-npm test              # Run Jest
-npm run build         # TypeScript → JavaScript
+npm run dev:watch      # Watch mode — standard local dev
+npm run build          # Compile TypeScript
+npm run lint           # ESLint
+npm test               # Jest (all tests)
 ```
 
 ### UI (`ui/`)
 ```bash
-npm run dev           # Dev server
-npm run check         # Type check
-npm run lint          # Format & lint
-npm run test:unit    # Vitest
-npm run test:e2e     # Playwright
+npm run dev            # Dev server (port 5173)
+npm run check          # TypeScript check
+npm run lint           # ESLint + Prettier
+npm run test:unit      # Vitest
+npm run test:e2e       # Playwright E2E
+npm run build          # Production build
+```
+
+### Mobile (`mobile/`)
+```bash
+npm run dev            # Dev server (port 5174)
+npm run build          # Build SPA
+npx cap sync           # Sync to Android
+npx cap open android   # Open in Android Studio
 ```
 
 ---
 
-## 🚢 Deployment
+## Deployment
 
-### Staging (Automatic)
-- **API**: Pushes to `main` in `api/functions/**` auto-deploy to staging
-- **UI**: PRs get preview deploys on Vercel
+### Staging (Automatic on push to `main`)
+- **API**: Deploys to `utilitool-staging` Firebase project
+- **UI**: Preview deploys on Vercel for pull requests
 
 ### Production (Manual)
-- No auto-deploy — deploy via Firebase Console or CLI
-- See `CLAUDE.md` → CI/CD & Deployment for details
+- Firebase project: `utilitool-3fe70`
+- Deploy via Firebase CLI or console
+- See `CLAUDE.md` → CI/CD & Deployment for the full workflow
 
 ---
 
-## 🤔 Common Tasks
+## Common Tasks
 
-| Task | Answer |
-|------|--------|
-| "Where is [feature]?" | CLAUDE.md → file maps |
-| "How do I add a new API endpoint?" | api/CLAUDE.md → "Adding a New Feature" |
-| "How do I add a new UI page?" | ui/CLAUDE.md → "Adding a New Page" |
-| "What does this endpoint do?" | Swagger UI at http://localhost:5002/docs |
-| "How do I debug a failed test?" | engineering:debug skill in Cowork |
-
----
-
-## 📝 Feature Status
-
-**API** ✅ Complete + Audited
-- Auth (Firebase Auth: sign up, login, logout)
-- Meter Groups, Properties, Tenants, Readings, Billings, Billing Cycles
-- Full CRUD + batch operations
-- Dynamic sorting on list endpoints
-- Meter rollback prevention + anomaly guard
-- Soft-delete pattern (no hard delete)
-- Structured logging + error handling
-
-**UI** ✅ Mostly Complete + Audited
-- Login/Register, Dashboard
-- Meter Groups (full CRUD + Reset)
-- Tenants, Readings, Billings, Billing Cycles (read/create)
-- 🚧 Bills OCR upload, Reports, Property detail (in progress)
-
-**May 2026 Audit**: 25 fixes covering security, observability, code quality, and API design standards. See `CLAUDE.md` for details.
-
----
-
-## 🎯 Questions?
-
-- **Technical deep-dive?** → Read `CLAUDE.md`
-- **Stuck on something?** → Check relevant `api/CLAUDE.md` or `ui/CLAUDE.md`
-- **Need to understand a business rule?** → `CLAUDE.md` → Business Overview
-- **API reference?** → http://localhost:5002/docs (when running)
-
----
-
-**Happy building!** 🚀
+| Task | Where to look |
+|------|--------------|
+| Add a new API endpoint | `api/functions/CLAUDE.md` → "Adding a New Feature" |
+| Add a new UI page | `ui/CLAUDE.md` → "Adding a New Page" |
+| Add a mobile screen | `mobile/CLAUDE.md` → "Adding a New Screen" |
+| Understand a business rule | `CLAUDE.md` → Business Overview |
+| Interactive API reference | http://localhost:5002/docs |
+| Contribute to this project | `CONTRIBUTING.md` |
