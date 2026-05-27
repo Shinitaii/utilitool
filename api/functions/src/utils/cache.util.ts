@@ -59,3 +59,29 @@ export async function cacheDel(key: string): Promise<void> {
     logger.warn({ err, key }, 'Cache del failed');
   }
 }
+
+export async function cacheDelPattern(pattern: string): Promise<number> {
+  const client = getRedisClient();
+  if (!client) return 0;
+
+  try {
+    await ensureConnected();
+    let cursor = 0;
+    let deletedCount = 0;
+
+    do {
+      const result = await client.scan(cursor, { MATCH: pattern, COUNT: 100 });
+      cursor = result.cursor as number;
+      const keys = result.keys as string[];
+
+      if (keys.length > 0) {
+        deletedCount += await client.del(keys);
+      }
+    } while (cursor !== 0);
+
+    return deletedCount;
+  } catch (err) {
+    logger.warn({ err, pattern }, 'Cache pattern delete failed');
+    return 0;
+  }
+}

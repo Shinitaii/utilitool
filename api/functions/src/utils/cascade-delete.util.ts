@@ -80,6 +80,8 @@ export async function cascadeDeleteProperty(propertyId: string): Promise<Cascade
  */
 export async function cascadeDeleteMeterGroup(meterGroupId: string): Promise<CascadeDeleteSummary> {
   let summary: CascadeDeleteSummary = { primary: 1, readings: 0, billings: 0 };
+  const readingIds: string[] = [];
+  const billingIds: string[] = [];
 
   await firestore.runTransaction(async (txn) => {
     const meterGroupRef = firestore.collection(COLLECTIONS.METER_GROUPS).doc(meterGroupId);
@@ -98,17 +100,18 @@ export async function cascadeDeleteMeterGroup(meterGroupId: string): Promise<Cas
       .where("is_deleted", "==", false)
       .get();
 
-    const readingIds = readingsSnap.docs.map((doc) => doc.id);
-    summary.readings = readingIds.length;
+    const foundReadingIds = readingsSnap.docs.map((doc) => doc.id);
+    readingIds.push(...foundReadingIds);
+    summary.readings = foundReadingIds.length;
 
     // Soft-delete all readings
-    for (const readingId of readingIds) {
+    for (const readingId of foundReadingIds) {
       const readingRef = firestore.collection(COLLECTIONS.READINGS).doc(readingId);
       txn.update(readingRef, { is_deleted: true, deleted_at: new Date() });
     }
 
     // Find all billings that reference these readings
-    if (readingIds.length > 0) {
+    if (foundReadingIds.length > 0) {
       const billingsSnap = await collectionRef(COLLECTIONS.BILLINGS)
         .where("is_deleted", "==", false)
         .get();
@@ -116,11 +119,13 @@ export async function cascadeDeleteMeterGroup(meterGroupId: string): Promise<Cas
       const billingsToDelete = billingsSnap.docs.filter((doc) => {
         const billing = doc.data();
         return (
-          readingIds.includes(billing.previous_reading_id) ||
-          readingIds.includes(billing.current_reading_id)
+          foundReadingIds.includes(billing.previous_reading_id) ||
+          foundReadingIds.includes(billing.current_reading_id)
         );
       });
 
+      const foundBillingIds = billingsToDelete.map((doc) => doc.id);
+      billingIds.push(...foundBillingIds);
       summary.billings = billingsToDelete.length;
 
       // Soft-delete all related billings
@@ -129,6 +134,15 @@ export async function cascadeDeleteMeterGroup(meterGroupId: string): Promise<Cas
       }
     }
   });
+
+  // Clear caches after txn commits
+  await cacheDel(`utilitool:meter-groups:id:${meterGroupId}`);
+  for (const readingId of readingIds) {
+    await cacheDel(`utilitool:readings:id:${readingId}`);
+  }
+  for (const billingId of billingIds) {
+    await cacheDel(`utilitool:billings:id:${billingId}`);
+  }
 
   return summary;
 }
