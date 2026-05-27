@@ -74,3 +74,7 @@ export interface BillingCycleOcrResult {
 export async function ocrBillingCycle(imageUrl: string): Promise<BillingCycleOcrResult> {
   return apiPost<BillingCycleOcrResult>('/billing-cycles/ocr', { image_url: imageUrl });
 }
+
+export async function clearCache(): Promise<{ message: string }> {
+  return apiPost<{ message: string }>('/billing-cycles/cache/clear', {});
+}

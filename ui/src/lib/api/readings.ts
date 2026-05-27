@@ -5,6 +5,8 @@ import type { PaginatedResult } from '$lib/types/api.types';
 export async function getReadings(params?: {
   meterGroupId?: string;
   propertyId?: string;
+  startDate?: string;
+  endDate?: string;
   limit?: number;
   cursor?: string;
   archived?: boolean;
@@ -12,6 +14,8 @@ export async function getReadings(params?: {
   const query = new URLSearchParams();
   if (params?.meterGroupId) query.set('meterGroupId', params.meterGroupId);
   if (params?.propertyId) query.set('propertyId', params.propertyId);
+  if (params?.startDate) query.set('startDate', params.startDate);
+  if (params?.endDate) query.set('endDate', params.endDate);
   if (params?.limit) query.set('limit', params.limit.toString());
   if (params?.cursor) query.set('cursor', params.cursor);
   if (params?.archived) query.set('archived', 'true');
