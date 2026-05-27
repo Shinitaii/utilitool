@@ -10,6 +10,7 @@ import {
   UpdatePropertyDTO,
 } from "./property.dto";
 import {AppError} from "../../utils/error.util";
+import {cacheDelPattern} from "../../utils/cache.util";
 
 export const createProperty = async (
   req: AuthenticatedRequest,
@@ -124,4 +125,12 @@ export const restoreProperty = async (
   if (!userId) throw new AppError(401, "User not authenticated");
   const result = await propertyService.restore(userId, id);
   res.status(200).json(result);
+};
+
+export const clearCache = async (
+  _req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  const deletedCount = await cacheDelPattern('utilitool:properties:*');
+  res.status(200).json({ message: `Cleared ${deletedCount} cache entries for properties` });
 };

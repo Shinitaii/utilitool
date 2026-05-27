@@ -11,6 +11,7 @@ import {
 } from "./reading.dto";
 import {AppError} from "../../utils/error.util";
 import {ImageExtractionService} from "../image-extraction/image-extraction.service";
+import {cacheDelPattern} from "../../utils/cache.util";
 
 export const createReading = async (
   req: AuthenticatedRequest,
@@ -72,6 +73,8 @@ export const getReadings = async (
   const result = await readingService.search(userId, {
     meterGroupId: query.meterGroupId,
     propertyId: query.propertyId,
+    startDate: query.startDate,
+    endDate: query.endDate,
     sortBy: query.sortBy,
     sortOrder: query.sortOrder,
     limit: query.limit,
@@ -144,4 +147,12 @@ export const ocrReading = async (
   const data = req.body as OcrReadingDTO;
   const extracted = await ImageExtractionService.extractReadingFromImage(data.image_url);
   res.status(200).json({ suggested_reading_amount: extracted.reading_amount });
+};
+
+export const clearCache = async (
+  _req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  const deletedCount = await cacheDelPattern('utilitool:readings:*');
+  res.status(200).json({ message: `Cleared ${deletedCount} cache entries for readings` });
 };

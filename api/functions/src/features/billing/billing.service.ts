@@ -175,6 +175,8 @@ export const billingService = {
    *
    * Applies the meter_version rollback bypass: if currReading.meter_version differs
    * from prevReading.meter_version the reading_amount comparison is not enforced.
+   *
+   * Returns the newly generated billing ID for cache population post-transaction.
    */
   createFromReadings(
     txn: Transaction,
@@ -183,7 +185,7 @@ export const billingService = {
     currReadingId: string,
     prevReading: DocumentData,
     currReading: DocumentData,
-  ): void {
+  ): string {
     if (prevReading.meter_group_id !== currReading.meter_group_id) {
       throw new AppError(400, "Previous and current readings must belong to the same meter group");
     }
@@ -206,5 +208,6 @@ export const billingService = {
       is_deleted: false,
       deleted_at: null,
     });
+    return newRef.id;
   },
 };

@@ -11,6 +11,7 @@ import {
 } from "./billing-cycle.dto";
 import {AppError} from "../../utils/error.util";
 import {ImageExtractionService} from "../image-extraction/image-extraction.service";
+import {cacheDelPattern} from "../../utils/cache.util";
 
 export const createBillingCycle = async (
   req: AuthenticatedRequest,
@@ -140,4 +141,12 @@ export const ocrBillingCycle = async (
     raw_amount: extracted.billing_rate * extracted.billing_consumption,
   });
   res.status(200).json(validated);
+};
+
+export const clearCache = async (
+  _req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  const deletedCount = await cacheDelPattern('utilitool:billing-cycles:*');
+  res.status(200).json({ message: `Cleared ${deletedCount} cache entries for billing cycles` });
 };

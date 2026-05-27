@@ -10,6 +10,7 @@ import {
   UpdateTenantDTO,
 } from "./tenant.dto";
 import {AppError} from "../../utils/error.util";
+import {cacheDelPattern} from "../../utils/cache.util";
 
 export const createTenant = async (
   req: AuthenticatedRequest,
@@ -124,4 +125,12 @@ export const restoreTenant = async (
   if (!userId) throw new AppError(401, "User not authenticated");
   const result = await tenantService.restore(userId, id);
   res.status(200).json(result);
+};
+
+export const clearCache = async (
+  _req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  const deletedCount = await cacheDelPattern('utilitool:tenants:*');
+  res.status(200).json({ message: `Cleared ${deletedCount} cache entries for tenants` });
 };

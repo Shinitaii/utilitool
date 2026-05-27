@@ -19,6 +19,7 @@ const BillingCycleBaseSchema = z.object({
   billing_end_date: z.unknown()
     .refine((v) => v !== undefined && v !== null, { message: "billing_end_date is required" })
     .transform((val) => parseTimestamp(val as NonNullable<unknown>)),
+  overdue_date: z.unknown().transform((val) => val ? parseTimestamp(val) : undefined).optional(),
 });
 
 export const CreateBillingCycleDTOSchema = BillingCycleBaseSchema.refine(
@@ -45,6 +46,7 @@ const UpdateBillingCycleBaseSchema = z.object({
   billing_consumption: z.number().nonnegative().optional(),
   billing_start_date: z.unknown().transform((val) => val ? parseTimestamp(val) : undefined).optional(),
   billing_end_date: z.unknown().transform((val) => val ? parseTimestamp(val) : undefined).optional(),
+  overdue_date: z.unknown().transform((val) => val ? parseTimestamp(val) : undefined).optional(),
 });
 
 export const UpdateBillingCycleDTOSchema = UpdateBillingCycleBaseSchema.refine(

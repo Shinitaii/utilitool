@@ -4,7 +4,9 @@ import {firestore} from "../../config/firebase.config";
 import {COLLECTIONS} from "../../constants/collection.constants";
 import {snapshotToModel} from "../../utils/firestore.util";
 import {cacheSet} from "../../utils/cache.util";
+import {listAppend} from "../../utils/list-cache.util";
 import {billingService} from "../billing/billing.service";
+import {billingRepository} from "../billing/billing.repository";
 import {readingRepository} from "./reading.repository";
 import {CachedRepository} from "../../lib/cached-repository.lib";
 import type {CreateReadingDTO} from "./reading.dto";
@@ -146,10 +148,11 @@ export async function createReadingWithAutoBilling(
     meter_version: meterVersion,
   };
 
+  let billingIds: string[] = [];
   await firestore.runTransaction(async (txn) => {
     txn.set(newReadingRef, newReadingData);
     for (const propertyDoc of properties) {
-      billingService.createFromReadings(
+      const billingId = billingService.createFromReadings(
         txn,
         propertyDoc.id,
         prevReadingId,
@@ -157,12 +160,24 @@ export async function createReadingWithAutoBilling(
         prevReadingData,
         newReadingForBilling,
       );
+      billingIds.push(billingId);
     }
   });
 
   const snap = await newReadingRef.get();
   const reading = snapshotToModel<Reading>(snap);
   await cacheSet(`utilitool:readings:id:${reading.id}`, reading, CACHE_TTL);
+  await listAppend(`utilitool:readings:all:${userId}`, reading);
+
+  // Cache auto-created billings
+  for (const billingId of billingIds) {
+    const billing = await billingRepository.getById(billingId);
+    if (billing) {
+      await cacheSet(`utilitool:billings:id:${billing.id}`, billing, 10 * 60);
+      await listAppend(`utilitool:billings:all:${userId}`, billing);
+    }
+  }
+
   return reading;
 }
 
@@ -207,9 +222,10 @@ export async function createBatchReadingsWithAutoBilling(
       meter_version: readingData.meter_version,
     };
 
+    let billingId: string | undefined;
     await firestore.runTransaction(async (txn) => {
       txn.set(newReadingRef, newReadingDoc);
-      billingService.createFromReadings(
+      billingId = billingService.createFromReadings(
         txn,
         readingData.property_id,
         prevReadingId,
@@ -222,6 +238,17 @@ export async function createBatchReadingsWithAutoBilling(
     const snap = await newReadingRef.get();
     const reading = snapshotToModel<Reading>(snap);
     await cacheSet(`utilitool:readings:id:${reading.id}`, reading, CACHE_TTL);
+    await listAppend(`utilitool:readings:all:${userId}`, reading);
+
+    // Cache auto-created billing
+    if (billingId) {
+      const billing = await billingRepository.getById(billingId);
+      if (billing) {
+        await cacheSet(`utilitool:billings:id:${billing.id}`, billing, 10 * 60);
+        await listAppend(`utilitool:billings:all:${userId}`, billing);
+      }
+    }
+
     return reading;
   });
 

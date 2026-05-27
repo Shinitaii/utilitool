@@ -7,11 +7,14 @@ import {AppError} from "../../utils/error.util";
 import {meterGroupRepository} from "../meter-group/meter-group.repository";
 import {MeterGroup} from "../meter-group/meter-group.model";
 import {cacheSet, cacheDel} from "../../utils/cache.util";
-import {listRemove} from "../../utils/list-cache.util";
+import {listRemove, listAppend} from "../../utils/list-cache.util";
 import {cascadeDeleteReading, cascadeRestoreReading} from "../../utils/cascade-delete.util";
 import {CachedRepository} from "../../lib/cached-repository.lib";
 import {createReadingWithAutoBilling, createBatchReadingsWithAutoBilling} from "./reading.util";
 import {propertyRepository} from "../property/property.repository";
+import {collectionRef} from "../../lib/firestore.lib";
+import {snapshotToModel} from "../../utils/firestore.util";
+import type {Query} from "firebase-admin/firestore";
 
 const validator = new ReadingValidator();
 const CACHE_TTL = 10 * 60; // 10 minutes
@@ -22,6 +25,8 @@ type ReadingCreatePayload = CreateReadingDTO & { meter_version: number };
 type ReadingSearchOptions = {
   meterGroupId?: string;
   propertyId?: string;
+  startDate?: string;
+  endDate?: string;
   sortBy?: string;
   sortOrder?: "asc" | "desc";
   limit: number;
@@ -47,6 +52,13 @@ export const readingService = {
     const meterGroup = await meterGroupRepository.getById(data.meter_group_id);
     const meter_version = meterGroup!.current_version ?? 1;
     await validator.validateAnomalous(data.meter_group_id, data.reading_amount, meter_version);
+    await validator.validateMeterRollback(
+      data.meter_group_id,
+      data.property_id,
+      data.reading_amount,
+      meter_version,
+      data.reading_date
+    );
 
     return createReadingWithAutoBilling(userId, data, meter_version);
   },
@@ -55,6 +67,9 @@ export const readingService = {
    * Batch create with simple auto-billing: for each reading, if a previous-month
    * reading exists for that meter group, create a billing automatically.
    * Uses atomic transactions per reading to ensure consistency.
+   *
+   * All validations (including meter rollback) are performed BEFORE any writes,
+   * ensuring that if any reading fails validation, the entire batch fails atomically.
    */
   async createBatch(userId: string, data: CreateReadingDTO[]): Promise<Reading[]> {
     await validator.validateBatch(data);
@@ -87,8 +102,21 @@ export const readingService = {
       meter_version: meterGroupMap.get(r.meter_group_id)?.current_version ?? 1,
     }));
 
+    // Validate ALL readings for anomalies before any writes
     for (const r of readingsWithVersion) {
       await validator.validateAnomalous(r.meter_group_id, r.reading_amount, r.meter_version);
+    }
+
+    // Validate ALL readings for meter rollback before any writes
+    // This ensures if ANY reading would violate meter rollback, the entire batch fails
+    for (const r of readingsWithVersion) {
+      await validator.validateMeterRollback(
+        r.meter_group_id,
+        r.property_id,
+        r.reading_amount,
+        r.meter_version,
+        r.reading_date
+      );
     }
 
     return createBatchReadingsWithAutoBilling(userId, readingsWithVersion);
@@ -104,6 +132,41 @@ export const readingService = {
   },
 
   async search(userId: string, options: ReadingSearchOptions): Promise<PaginatedResult<Reading>> {
+    // If date range filters are present, use custom query logic
+    if (options.startDate || options.endDate) {
+      let query: Query = collectionRef("readings") as Query;
+
+      if (options.meterGroupId) {
+        query = query.where("meter_group_id", "==", options.meterGroupId);
+      }
+      if (options.propertyId) {
+        query = query.where("property_id", "==", options.propertyId);
+      }
+      query = query.where("is_deleted", "==", options.archived ?? false);
+
+      if (options.startDate) {
+        const startDate = new Date(options.startDate);
+        query = query.where("reading_date", ">=", startDate);
+      }
+      if (options.endDate) {
+        const endDate = new Date(options.endDate);
+        endDate.setHours(23, 59, 59, 999);
+        query = query.where("reading_date", "<=", endDate);
+      }
+
+      query = query.orderBy(options.sortBy ?? "created_at", options.sortOrder ?? "desc");
+
+      const snapshot = await query.limit(options.limit + 1).get();
+      const hasMore = snapshot.docs.length > options.limit;
+      const docs = hasMore ? snapshot.docs.slice(0, options.limit) : snapshot.docs;
+
+      return {
+        data: docs.map((doc) => snapshotToModel(doc)),
+        hasMore,
+        nextCursor: hasMore ? docs[docs.length - 1].id : null,
+      };
+    }
+
     const cachedRepo = new CachedRepository(readingRepository, userId, 'readings', CACHE_TTL);
     return cachedRepo.search({
       limit: options.limit,
@@ -164,6 +227,7 @@ export const readingService = {
     await cascadeRestoreReading(id);
     const restored = await readingRepository.getById(id);
     await cacheSet(`utilitool:readings:id:${restored!.id}`, restored!, CACHE_TTL);
+    await listAppend(`utilitool:readings:all:${userId}`, restored!);
     return restored!;
   },
 };

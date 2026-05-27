@@ -8,4 +8,5 @@ export interface BillingCycle extends BaseModel {
     billing_consumption: number;
     billing_start_date: Timestamp;
     billing_end_date: Timestamp;
+    overdue_date?: Timestamp;
 }

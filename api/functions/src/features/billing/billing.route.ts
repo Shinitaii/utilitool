@@ -9,6 +9,7 @@ import {
   restoreBilling,
   createBatchBillings,
   updateBatchBillings,
+  clearCache,
 } from "./billing.controller";
 import {
   CreateBillingBatchDTOSchema,
@@ -22,6 +23,12 @@ import {validateRequest} from "../../middlewares/validate-request.middleware";
 import {requireRole} from "../../middlewares/require-role.middleware";
 
 const router = Router();
+
+router.post(
+  "/cache/clear",
+  requireRole('admin'),
+  clearCache
+);
 
 router.post(
   "/batch",

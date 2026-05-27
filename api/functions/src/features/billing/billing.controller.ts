@@ -8,6 +8,7 @@ import {
   UpdateBillingDTO,
 } from "./billing.dto";
 import {AppError} from "../../utils/error.util";
+import {cacheDelPattern} from "../../utils/cache.util";
 
 export const createBilling = async (
   req: AuthenticatedRequest,
@@ -120,4 +121,12 @@ export const restoreBilling = async (
   if (!userId) throw new AppError(401, "User not authenticated");
   const result = await billingService.restore(userId, id);
   res.status(200).json(result);
+};
+
+export const clearCache = async (
+  _req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  const deletedCount = await cacheDelPattern('utilitool:billings:*');
+  res.status(200).json({ message: `Cleared ${deletedCount} cache entries for billings` });
 };

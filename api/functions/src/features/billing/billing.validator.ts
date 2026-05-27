@@ -2,6 +2,7 @@ import {CreateBillingDTO} from "./billing.dto";
 import {AppError} from "../../utils/error.util";
 import {propertyRepository} from "../property/property.repository";
 import {readingRepository} from "../reading/reading.repository";
+import {billingRepository} from "./billing.repository";
 
 export class BillingValidator {
   private async validatePropertyExists(propertyId: string): Promise<void> {
@@ -73,6 +74,27 @@ export class BillingValidator {
     }
   }
 
+  private async ensureNoDuplicateBilling(
+    propertyId: string,
+    currentReadingId: string
+  ): Promise<void> {
+    const {data: existing} = await billingRepository.search({
+      limit: 1,
+      orderBy: "created_at",
+      filters: {
+        property_id: propertyId,
+        current_reading_id: currentReadingId
+      }
+    });
+
+    if (existing.length > 0) {
+      throw new AppError(
+        409,
+        "A billing for this property with this reading already exists"
+      );
+    }
+  }
+
   async validateCreate(data: CreateBillingDTO): Promise<void> {
     await this.validatePropertyExists(data.property_id);
     await this.validateReadingExists(data.previous_reading_id);
@@ -86,6 +108,7 @@ export class BillingValidator {
     if (currReading) {
       await this.ensurePropertyIsNotMainMeter(data.property_id, currReading.meter_group_id);
     }
+    await this.ensureNoDuplicateBilling(data.property_id, data.current_reading_id);
   }
 
   async validateBatch(data: CreateBillingDTO[]): Promise<void> {
@@ -115,6 +138,7 @@ export class BillingValidator {
       if (currReading) {
         await this.ensurePropertyIsNotMainMeter(item.property_id, currReading.meter_group_id);
       }
+      await this.ensureNoDuplicateBilling(item.property_id, item.current_reading_id);
     }
   }
 

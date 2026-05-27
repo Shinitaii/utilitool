@@ -4,8 +4,8 @@ import {propertyRepository} from "./property.repository";
 import {CreatePropertyDTO, UpdatePropertyDTO} from "./property.dto";
 import {Property} from "./property.model";
 import {PropertyValidator} from "./property.validator";
-import {listRemove} from "../../utils/list-cache.util";
-import {cacheDel} from "../../utils/cache.util";
+import {listRemove, listAppend} from "../../utils/list-cache.util";
+import {cacheDel, cacheSet} from "../../utils/cache.util";
 import {cascadeDeleteProperty, cascadeRestoreProperty} from "../../utils/cascade-delete.util";
 import {CachedRepository} from "../../lib/cached-repository.lib";
 
@@ -122,6 +122,8 @@ export const propertyService = {
 
     await cascadeRestoreProperty(id);
     const restored = await propertyRepository.getById(id);
+    await cacheSet(`utilitool:properties:id:${id}`, restored!, CACHE_TTL);
+    await listAppend(`utilitool:properties:all:${userId}`, restored!);
     return restored!;
   },
 };

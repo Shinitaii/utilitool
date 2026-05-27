@@ -8,8 +8,8 @@ import {MeterGroupValidator} from "./meter-group.validator";
 import {AppError} from "../../utils/error.util";
 import {collectionRef} from "../../lib/firestore.lib";
 import {COLLECTIONS} from "../../constants/collection.constants";
-import {listRemove} from "../../utils/list-cache.util";
-import {cacheDel} from "../../utils/cache.util";
+import {listRemove, listAppend} from "../../utils/list-cache.util";
+import {cacheDel, cacheSet} from "../../utils/cache.util";
 import {cascadeDeleteMeterGroup, cascadeRestoreMeterGroup} from "../../utils/cascade-delete.util";
 import {CachedRepository} from "../../lib/cached-repository.lib";
 
@@ -147,7 +147,7 @@ export const meterGroupService = {
 
     await cascadeDeleteMeterGroup(id);
     const deleted = await meterGroupRepository.getById(id);
-    await listRemove(`utilitool:meter-groups:all:${id}`, id);
+    await listRemove(`utilitool:meter-groups:all:${userId}`, id);
     await cacheDel(`utilitool:meter-groups:id:${id}`);
     return deleted!;
   },
@@ -159,6 +159,8 @@ export const meterGroupService = {
     }
     await cascadeRestoreMeterGroup(id);
     const restored = await meterGroupRepository.getById(id);
+    await cacheSet(`utilitool:meter-groups:id:${id}`, restored!, CACHE_TTL);
+    await listAppend(`utilitool:meter-groups:all:${userId}`, restored!);
     return restored!;
   },
 

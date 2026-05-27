@@ -8,6 +8,7 @@ import {
   UpdateMeterGroupDTO,
 } from "./meter-group.dto";
 import {AppError} from "../../utils/error.util";
+import {cacheDelPattern} from "../../utils/cache.util";
 
 export const createMeterGroup = async (
   req: AuthenticatedRequest,
@@ -133,4 +134,12 @@ export const recordMeterGroupReset = async (
   if (!userId) throw new AppError(401, "User not authenticated");
   const result = await meterGroupService.recordReset(userId, id);
   res.status(200).json(result);
+};
+
+export const clearCache = async (
+  _req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  const deletedCount = await cacheDelPattern('utilitool:meter-groups:*');
+  res.status(200).json({ message: `Cleared ${deletedCount} cache entries for meter groups` });
 };

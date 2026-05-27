@@ -3,6 +3,7 @@ import {readingRepository} from "./reading.repository";
 import {AppError} from "../../utils/error.util";
 import {meterGroupRepository} from "../meter-group/meter-group.repository";
 import {propertyRepository} from "../property/property.repository";
+import {findPreviousMonthReading} from "./reading.util";
 import {Timestamp} from "firebase-admin/firestore";
 
 const MAX_READINGS_PER_METER_GROUP = 1000;
@@ -112,6 +113,30 @@ export class ReadingValidator {
   ): Promise<void> {
     for (const {data} of updates) {
       await this.validateUpdate(data);
+    }
+  }
+
+  async validateMeterRollback(
+    meterGroupId: string,
+    propertyId: string,
+    newReadingAmount: number,
+    meterVersion: number,
+    readingDate: Timestamp
+  ): Promise<void> {
+    // Look for previous-month reading to check meter rollback
+    const prevReading = await findPreviousMonthReading(meterGroupId, propertyId, readingDate);
+
+    if (!prevReading) return; // No previous reading, no rollback check needed
+
+    const prevReadingData = prevReading.data;
+    const prevMeterVersion = prevReadingData.meter_version ?? 1;
+
+    // Only enforce rollback check when both readings have same meter version
+    if (meterVersion === prevMeterVersion && newReadingAmount <= prevReadingData.reading_amount) {
+      throw new AppError(
+        400,
+        "Current reading must be greater than previous reading (meter rollback not allowed)"
+      );
     }
   }
 

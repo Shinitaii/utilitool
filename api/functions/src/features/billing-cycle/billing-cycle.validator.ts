@@ -4,6 +4,7 @@ import {logger} from "../../utils/logger.util";
 import {billingRepository} from "../billing/billing.repository";
 import {readingRepository} from "../reading/reading.repository";
 import {meterGroupRepository} from "../meter-group/meter-group.repository";
+import {billingCycleRepository} from "./billing-cycle.repository";
 import {MeterGroup} from "../meter-group/meter-group.model";
 import {Timestamp} from "firebase-admin/firestore";
 
@@ -118,6 +119,27 @@ export class BillingCycleValidator {
     }
   }
 
+  private async ensureBillingCycleNotDuplicate(
+    meterGroupId: string,
+    billingStartDate: Timestamp
+  ): Promise<void> {
+    const {data: existing} = await billingCycleRepository.search({
+      limit: 1,
+      orderBy: "created_at",
+      filters: {
+        meter_group_id: meterGroupId,
+        billing_start_date: billingStartDate
+      }
+    });
+
+    if (existing.length > 0) {
+      throw new AppError(
+        409,
+        "A billing cycle for this meter group with this start date already exists"
+      );
+    }
+  }
+
   async validateCreate(data: CreateBillingCycleDTO): Promise<void> {
     const billingIds = Object.keys(data.billing_ids);
 
@@ -127,6 +149,7 @@ export class BillingCycleValidator {
 
     await this.validateBillingIdsExist(billingIds);
     await this.validateBillingConsumptionAmounts(data.billing_ids);
+    await this.ensureBillingCycleNotDuplicate(data.meter_group_id, data.billing_start_date);
 
     this.validateBillingDates(
       data.billing_start_date,
@@ -153,6 +176,8 @@ export class BillingCycleValidator {
       }
 
       billingIds.forEach((id) => allBillingIds.add(id));
+
+      await this.ensureBillingCycleNotDuplicate(cycle.meter_group_id, cycle.billing_start_date);
 
       this.validateBillingDates(cycle.billing_start_date, cycle.billing_end_date);
       this.validateBillingRate(cycle.billing_rate);

@@ -8,8 +8,6 @@ import {propertyService} from "../property/property.service";
 import {readingService} from "../reading/reading.service";
 import {billingRepository} from "../billing/billing.repository";
 import {findPreviousMonthReading} from "../reading/reading.util";
-import {listRemove} from "../../utils/list-cache.util";
-import {cacheDel} from "../../utils/cache.util";
 import {CachedRepository} from "../../lib/cached-repository.lib";
 
 const validator = new BillingCycleValidator();
