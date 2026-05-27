@@ -24,6 +24,7 @@ import billingCycleRoutes from './features/billing-cycle/billing-cycle.route';
 import billsRoutes from './features/bills/bills.route';
 import userRoutes from './features/user/user.route';
 import {imageExtractionRouter} from './features/image-extraction/image-extraction.route';
+import reportsRoutes from './features/reports/reports.route';
 
 const app = express();
 
@@ -88,6 +89,7 @@ app.use('/billing-cycles', billingCycleRoutes);
 app.use('/bills', billsRoutes);
 app.use('/users', userRoutes);
 app.use('/image-extraction', imageExtractionRouter);
+app.use('/reports', reportsRoutes);
 
 // Error handling
 app.use(errorHandler);
