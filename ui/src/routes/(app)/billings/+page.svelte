@@ -48,7 +48,6 @@
   let cycleFormRate = $state(0);
   let cycleFormDiscoveredBillings = $state<DiscoveredBilling[]>([]);
   let cycleFormTotalConsumption = $state(0);
-  let cycleFormConsumptionEdited = $state(false);
   let isCreatingCycle = $state(false);
 
   // OCR state
@@ -72,8 +71,12 @@
   let isUpdating = $state(false);
   let isCreating = $state(false);
   let markingAsPaidId = $state<string | null>(null);
+  let selectedCyclesForPrint = $state<string[]>([]);
 
   let auth = $state<AuthState>({ isAuthenticated: false, user: null, isLoading: false, error: null });
+
+  // Round to 2 decimal places to avoid floating-point precision errors
+  const round = (value: number, decimals = 2) => Math.round(value * Math.pow(10, decimals)) / Math.pow(10, decimals);
 
   // Filter readings for manual billing form based on selected property's meter groups
   const manualBillingReadings = $derived.by(() => {
@@ -81,7 +84,9 @@
     const selectedProp = properties.find(p => p.id === createFormData.property_id);
     if (!selectedProp) return readings;
 
-    const meterGroupIds = [selectedProp.meter_groups.electricity, selectedProp.meter_groups.water].filter(Boolean);
+    const meterGroupIds = Object.values(selectedProp.meter_groups || {})
+      .filter((e): e is any => e !== undefined && e !== null)
+      .map(e => e.meter_group_id);
     return readings.filter(r => meterGroupIds.includes(r.meter_group_id) && r.property_id === createFormData.property_id);
   });
 
@@ -91,7 +96,9 @@
     const selectedProp = properties.find(p => p.id === editData.property_id);
     if (!selectedProp) return readings;
 
-    const meterGroupIds = [selectedProp.meter_groups.electricity, selectedProp.meter_groups.water].filter(Boolean);
+    const meterGroupIds = Object.values(selectedProp.meter_groups || {})
+      .filter((e): e is any => e !== undefined && e !== null)
+      .map(e => e.meter_group_id);
     return readings.filter(r => meterGroupIds.includes(r.meter_group_id) && r.property_id === editData.property_id);
   });
 
@@ -251,13 +258,13 @@
         // versions). The billing cycle server validation handles the true value; here we fall back
         // to the naive diff so the preview is at least a reasonable estimate. The confirmed
         // consumption value stored in cycle.billing_ids is always authoritative after cycle creation.
-        const consumption = currAmount - prevAmount;
+        const consumption = round(currAmount - prevAmount);
 
         return {
           billingId: billing.id,
           propertyName: property?.room_name ?? billing.property_id.slice(0, 8),
           consumption,
-          amount: consumption * cycleFormRate,
+          amount: round(consumption * cycleFormRate),
         };
       });
   }
@@ -265,9 +272,6 @@
   function handleDiscoverBillings() {
     error = '';
     cycleFormDiscoveredBillings = discoverBillings();
-    const total = cycleFormDiscoveredBillings.reduce((sum, d) => sum + d.consumption, 0);
-    cycleFormTotalConsumption = total;
-    cycleFormConsumptionEdited = false;
   }
 
   function resetCycleForm() {
@@ -278,7 +282,6 @@
     cycleFormRate = 0;
     cycleFormDiscoveredBillings = [];
     cycleFormTotalConsumption = 0;
-    cycleFormConsumptionEdited = false;
     billPhotoUrl = null;
     isBillOcrLoading = false;
     billOcrRawAmount = null;
@@ -355,7 +358,6 @@
       cycleFormEndDate = result.billing_end_date;
       cycleFormRate = result.billing_rate;
       cycleFormTotalConsumption = result.billing_consumption;
-      cycleFormConsumptionEdited = true;
       billOcrRawAmount = result.raw_amount;
     } catch (err) {
       billPhotoUrl = null;  // Clear on error
@@ -389,9 +391,7 @@
         billing_ids[d.billingId] = d.consumption;
       }
 
-      const totalConsumption = cycleFormConsumptionEdited
-        ? cycleFormTotalConsumption
-        : discovered.reduce((sum, d) => sum + d.consumption, 0);
+      const totalConsumption = cycleFormTotalConsumption;
 
       const startTs = {
         _seconds: Math.floor(new Date(cycleFormStartDate).getTime() / 1000),
@@ -502,71 +502,106 @@
     }));
   });
 
-  function printReceipts(cycle: BillingCycle) {
-    const cycleBillings = billings.get(cycle.id) || [];
-    // Determine utility type from first billing's reading
+  function printReceipts(cyclesToPrint: BillingCycle[]) {
+    const receiptRows: string[] = [];
+    let currentRow: string[] = [];
     let utilityType = 'electricity';
-    if (cycleBillings.length > 0) {
-      const firstBilling = cycleBillings[0];
-      const firstReading = readings.find(r => r.id === firstBilling.current_reading_id);
-      if (firstReading) {
-        const meterGroup = meterGroups.find(m => m.id === firstReading.meter_group_id);
-        utilityType = meterGroup?.utility_type || 'electricity';
+    let pdfFileName = '';
+
+    // Determine utility type and filename from first cycle
+    if (cyclesToPrint.length > 0) {
+      const firstCycle = cyclesToPrint[0];
+      const cycleBillings = billings.get(firstCycle.id) || [];
+      if (cycleBillings.length > 0) {
+        const firstBilling = cycleBillings[0];
+        const firstReading = readings.find(r => r.id === firstBilling.current_reading_id);
+        if (firstReading) {
+          const meterGroup = meterGroups.find(m => m.id === firstReading.meter_group_id);
+          utilityType = meterGroup?.utility_type || 'electricity';
+        }
       }
+
+      // Generate filename: MONTH_YEAR-UTILITYTYPE_BILLINGS.pdf
+      const endDate = toDate(firstCycle.billing_end_date);
+      const monthName = endDate.toLocaleString('en-US', { month: 'long' }).toUpperCase();
+      const year = endDate.getFullYear();
+      pdfFileName = `${monthName}_${year}-${utilityType.toUpperCase()}_BILLINGS.pdf`;
     }
 
     const unit = getReadingUnit(utilityType);
 
-    const receiptHTML = cycleBillings.map(billing => {
-      const property = properties.find(p => p.id === billing.property_id);
-      const consumption = cycle.billing_ids[billing.id] ?? 0;
-      const amount = consumption * cycle.billing_rate;
-      const roomName = escHtml(property?.room_name || 'N/A');
-      const qrUrl = auth?.user?.qr_payment_url ? escHtml(auth.user.qr_payment_url) : null;
-      const statusColor = billing.payment_status === 'paid' ? '#2c6b3a' : '#8b5a3c';
-      const statusLabel = billing.payment_status === 'paid' ? 'PAID' : 'PENDING';
-      const paidOnLine = billing.paid_at
-        ? `<p style="margin: 0; font-size: 12px; color: #666;">Paid on: ${escHtml(new Date(billing.paid_at).toLocaleDateString())}</p>`
-        : '';
-      const qrBlock = qrUrl
-        ? `<div style="text-align: center; margin: 40px 0;">
-              <p style="margin-bottom: 15px;"><strong>Scan to Pay:</strong></p>
-              <img src="${qrUrl}" alt="Payment QR Code" style="max-width: 200px; height: auto; border: 1px solid #ddd; padding: 10px; background: white;" />
+    for (const cycle of cyclesToPrint) {
+      const cycleBillings = billings.get(cycle.id) || [];
+      for (const billing of cycleBillings) {
+        const property = properties.find(p => p.id === billing.property_id);
+        const currReading = readings.find(r => r.id === billing.current_reading_id);
+        const prevReading = readings.find(r => r.id === billing.previous_reading_id);
+
+        const consumption = cycle.billing_ids[billing.id] ?? 0;
+        const billRate = cycle.billing_rate;
+        const amount = consumption * billRate;
+
+        const roomName = escHtml(property?.room_name || 'N/A');
+        const currReadingAmount = currReading?.reading_amount ?? 0;
+        const prevReadingAmount = prevReading?.reading_amount ?? 0;
+        const startDateStr = escHtml(formatDate(toDate(cycle.billing_start_date)));
+        const endDateStr = escHtml(formatDate(toDate(cycle.billing_end_date)));
+
+        const receipt = `
+          <div style="border: 2px dashed #333; padding: 8px; page-break-inside: avoid; background: white;">
+            <!-- Header -->
+            <div style="margin-bottom: 8px; font-family: Helvetica, Arial, sans-serif;">
+              <h3 style="margin: 0 0 2px 0; font-size: 23px; font-weight: bold;">${roomName}</h3>
+              <p style="margin: 0; font-size: 18px;"><span style="text-transform: capitalize;">${utilityType}</span> (${startDateStr} - ${endDateStr})</p>
+            </div>
+
+            <!-- Reading Calculation -->
+            <div style="margin-bottom: 8px; line-height: 1.3;">
+              <div style="font-size: 15px; margin-bottom: 2px; font-family: 'Courier New', monospace;">
+                ${currReadingAmount.toFixed(2)} ${unit} - ${prevReadingAmount.toFixed(2)} ${unit} = <span style="font-weight: bold;">${consumption.toFixed(2)} ${unit}</span>
+              </div>
+              <div style="font-size: 12px; color: #666; font-style: italic; font-family: Montserrat, sans-serif;">
+                Current Reading (${unit}) - Previous Reading (${unit}) = Consumption (${unit})
+              </div>
+            </div>
+
+            <!-- Bill Calculation -->
+            <div style="margin-bottom: 8px; line-height: 1.3;">
+              <div style="font-size: 15px; margin-bottom: 2px; font-family: 'Courier New', monospace;">
+                ${consumption.toFixed(2)} ${unit} × ₱${billRate.toFixed(2)} = <span style="font-weight: bold;">₱${amount.toFixed(2)}</span>
+              </div>
+              <div style="font-size: 12px; color: #666; font-style: italic; font-family: Montserrat, sans-serif;">
+                Consumption (${unit}) × Bill Rate (₱) = Total Bill (₱)
+              </div>
+            </div>
+
+            <!-- Total Bill -->
+            <div style="border-top: 2px solid #333; padding-top: 6px; text-align: center; font-family: Helvetica, Arial, sans-serif;">
+              <div style="font-size: 23px; font-weight: bold;">Total Bill: ₱${amount.toFixed(2)}</div>
+            </div>
+          </div>
+        `;
+
+        currentRow.push(receipt);
+        if (currentRow.length === 2) {
+          receiptRows.push(
+            `<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-bottom: 0; page-break-inside: avoid;">
+              ${currentRow.join('')}
             </div>`
-        : '';
+          );
+          currentRow = [];
+        }
+      }
+    }
 
-      return `
-        <div style="page-break-after: always; padding: 40px; font-family: 'Courier New', monospace; background: white; min-height: 100vh;">
-          <div style="text-align: center; margin-bottom: 40px;">
-            <h1 style="margin: 0; font-size: 24px; font-weight: bold;">UTILITY PAYMENT RECEIPT</h1>
-          </div>
-
-          <div style="margin-bottom: 30px; line-height: 1.8;">
-            <p><strong>Property:</strong> ${roomName}</p>
-            <p><strong>Billing Period:</strong> ${escHtml(formatDate(toDate(cycle.billing_start_date)))} to ${escHtml(formatDate(toDate(cycle.billing_end_date)))}</p>
-            ${cycle.overdue_date ? `<p><strong>Due Date:</strong> ${escHtml(formatDate(toDate(cycle.overdue_date)))}</p>` : ''}
-            <p><strong>Consumption:</strong> ${escHtml(consumption.toLocaleString())} ${unit}</p>
-            <p><strong>Rate:</strong> ₱${escHtml(cycle.billing_rate.toFixed(2))}/${unit}</p>
-          </div>
-
-          <div style="border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 20px 0; margin: 30px 0; font-size: 20px; font-weight: bold;">
-            <p style="margin: 0; text-align: right;">Amount Due: ${escHtml(formatCurrency(amount))}</p>
-          </div>
-
-          <div style="margin-bottom: 30px; padding: 20px; background: #f5f5f5; border-radius: 4px;">
-            <p style="margin: 0; margin-bottom: 10px;"><strong>Status: <span style="color: ${statusColor};">${statusLabel}</span></strong></p>
-            ${paidOnLine}
-          </div>
-
-          ${qrBlock}
-
-          <div style="margin-top: 40px; text-align: center; font-size: 12px; color: #666;">
-            <p style="margin: 5px 0;">Thank you for your payment!</p>
-            <p style="margin: 5px 0; margin-top: 15px;">For inquiries, please contact your property management.</p>
-          </div>
-        </div>
-      `;
-    }).join('');
+    // Add remaining receipts if odd number
+    if (currentRow.length > 0) {
+      receiptRows.push(
+        `<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-bottom: 0; page-break-inside: avoid;">
+          ${currentRow.join('')}
+        </div>`
+      );
+    }
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -574,23 +609,37 @@
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Payment Receipts</title>
+        <title>${pdfFileName}</title>
+        <style>
+          @media print {
+            body { margin: 0; padding: 5px; }
+            .no-print { display: none; }
+          }
+        </style>
       </head>
-      <body style="margin: 0; padding: 0; background: #f9f9f9;">
-        ${receiptHTML}
+      <body style="margin: 0; padding: 5px; background: white; font-family: 'Courier New', monospace;">
+        ${receiptRows.join('')}
       </body>
       </html>
     `;
 
+    if (receiptRows.length === 0) {
+      error = 'No receipts to print. Make sure cycles are selected and have billings.';
+      return;
+    }
+
     const blob = new Blob([htmlContent], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
-    const printWindow = window.open(url, '_blank', 'width=800,height=600');
+    const printWindow = window.open(url, '_blank', 'width=1000,height=800');
 
-    if (printWindow) {
-      setTimeout(() => {
-        printWindow.print();
-      }, 500);
+    if (!printWindow) {
+      error = 'Failed to open print window. Please check your browser popup settings.';
+      return;
     }
+
+    setTimeout(() => {
+      printWindow.print();
+    }, 500);
   }
 </script>
 
@@ -741,6 +790,34 @@
         </div>
       </div>
 
+      <!-- Total Consumption (Source of Truth) — Always Visible -->
+      <div class="mt-4 rounded-lg border-2 border-blue-200 bg-blue-50 p-4">
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label for="cycle-total-consumption" class="block text-sm font-medium text-blue-900">
+                Total Consumption ({getReadingUnit(cycleFormUtilityType)}) — Source of Truth
+              </label>
+              <input
+                id="cycle-total-consumption"
+                type="number"
+                step="0.01"
+                min="0"
+                bind:value={cycleFormTotalConsumption}
+                class="mt-2 block w-full rounded border border-blue-300 px-3 py-2 font-mono bg-white"
+              />
+              <p class="mt-1 text-xs text-blue-700">
+                Enter the total consumption from main meter reading (current - previous). Sub-meter billings are validated against this.
+              </p>
+            </div>
+            <div>
+              <div class="block text-sm font-medium text-blue-900">Total Bill Amount</div>
+              <div class="mt-2 px-3 py-2 font-mono font-semibold text-lg text-blue-900 bg-white rounded border border-blue-300">
+                {formatCurrency(round(cycleFormTotalConsumption * cycleFormRate))}
+              </div>
+            </div>
+          </div>
+        </div>
+
       <div class="mt-4">
         <button
           type="button"
@@ -753,51 +830,32 @@
       </div>
 
       {#if cycleFormDiscoveredBillings.length > 0}
-        <div class="mt-4 overflow-x-auto rounded border border-gray-200">
-          <table class="w-full text-sm">
-            <thead class="border-b border-gray-200 bg-gray-50">
-              <tr>
-                <th scope="col" class="px-4 py-2 text-left font-semibold text-gray-700">Property</th>
-                <th scope="col" class="px-4 py-2 text-right font-semibold text-gray-700">Consumption</th>
-                <th scope="col" class="px-4 py-2 text-right font-semibold text-gray-700">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each cycleFormDiscoveredBillings as d (d.billingId)}
-                <tr class="border-b border-gray-100">
-                  <td class="px-4 py-2 text-gray-900">{d.propertyName}</td>
-                  <td class="px-4 py-2 text-right font-mono text-gray-700">{d.consumption.toLocaleString()} {getReadingUnit(cycleFormUtilityType)}</td>
-                  <td class="px-4 py-2 text-right font-mono text-gray-900">{formatCurrency(d.amount)}</td>
+        <!-- Consumption Breakdown -->
+        <div class="mt-6">
+          <h3 class="text-sm font-semibold text-gray-700 mb-3">Consumption Breakdown</h3>
+          <div class="overflow-x-auto rounded border border-gray-200">
+            <table class="w-full text-sm">
+              <thead class="border-b border-gray-200 bg-gray-50">
+                <tr>
+                  <th scope="col" class="px-4 py-2 text-left font-semibold text-gray-700">Property</th>
+                  <th scope="col" class="px-4 py-2 text-right font-semibold text-gray-700">Consumption</th>
+                  <th scope="col" class="px-4 py-2 text-right font-semibold text-gray-700">Amount</th>
                 </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
-
-        <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div>
-            <label for="cycle-total-consumption" class="block text-sm font-medium text-gray-700">
-              Total Consumption ({getReadingUnit(cycleFormUtilityType)})
-            </label>
-            <input
-              id="cycle-total-consumption"
-              type="number"
-              step="0.01"
-              min="0"
-              bind:value={cycleFormTotalConsumption}
-              oninput={() => (cycleFormConsumptionEdited = true)}
-              class="mt-1 block w-full rounded border border-gray-300 px-3 py-2 font-mono"
-            />
-            <p class="mt-1 text-xs text-gray-500">
-              Auto-calculated from discovered billings; you can override.
-            </p>
+              </thead>
+              <tbody>
+                {#each cycleFormDiscoveredBillings as d (d.billingId)}
+                  <tr class="border-b border-gray-100">
+                    <td class="px-4 py-2 text-gray-900">{d.propertyName}</td>
+                    <td class="px-4 py-2 text-right font-mono text-gray-700">{d.consumption.toLocaleString()} {getReadingUnit(cycleFormUtilityType)}</td>
+                    <td class="px-4 py-2 text-right font-mono text-gray-900">{formatCurrency(d.amount)}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
           </div>
-          <div>
-            <div class="block text-sm font-medium text-gray-700">Total Amount</div>
-            <div class="mt-1 px-3 py-2 font-mono font-semibold text-gray-900">
-              {formatCurrency(cycleFormTotalConsumption * cycleFormRate)}
-            </div>
-          </div>
+          <p class="mt-2 text-xs text-gray-500">
+            Sub-meter billings (regular properties). Main meter automatically receives the remainder.
+          </p>
         </div>
       {:else if cycleFormMeterGroup && cycleFormEndDate}
         <p class="mt-4 text-sm text-gray-500">
@@ -908,6 +966,64 @@
 
 
   <div class="space-y-4">
+    {#if selectedCyclesForPrint.length > 0}
+      <div class="flex gap-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+        <div class="flex-1">
+          <p class="text-sm font-medium text-blue-900">
+            {selectedCyclesForPrint.length} cycle(s) selected
+          </p>
+        </div>
+        <div class="flex gap-2">
+          <button
+            onclick={async () => {
+              const cyclesToPrint = cycles.data.filter(c => selectedCyclesForPrint.includes(c.id));
+              // Load billings for any cycles that don't have data yet
+              for (const cycle of cyclesToPrint) {
+                if (!billings.has(cycle.id)) {
+                  const cycleBillings = allBillings.filter(b => b.id in cycle.billing_ids);
+                  billings.set(cycle.id, cycleBillings);
+                }
+              }
+              billings = billings;
+              printReceipts(cyclesToPrint);
+            }}
+            class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium flex items-center gap-2"
+          >
+            <Printer size={16} />
+            Print ({selectedCyclesForPrint.length})
+          </button>
+          <button
+            onclick={() => {
+              if (confirm(`Archive ${selectedCyclesForPrint.length} billing cycle(s)? They can be restored from the archive.`)) {
+                Promise.all(
+                  selectedCyclesForPrint.map(cycleId => softDeleteBillingCycle(cycleId))
+                )
+                  .then(() => {
+                    selectedCyclesForPrint = [];
+                    loadData();
+                  })
+                  .catch((err) => {
+                    error = err instanceof Error ? err.message : 'Failed to archive cycles';
+                  });
+              }
+            }}
+            class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 font-medium flex items-center gap-2"
+          >
+            <Archive size={16} />
+            Archive
+          </button>
+          <button
+            onclick={() => {
+              selectedCyclesForPrint = [];
+            }}
+            class="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 font-medium"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+    {/if}
+
     {#if cycles.data.length === 0}
       <div class="rounded-lg border border-gray-200 bg-white p-6">
         <EmptyState title="No billing cycles" message="Create cycles to manage billing periods" />
@@ -925,76 +1041,77 @@
             <div class="rounded-lg border border-gray-200 bg-white">
               <!-- Cycle Header Row -->
               <div class="px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition">
-                <button
-                  onclick={() => toggleCycleExpand(cycle.id)}
-                  class="flex-1 text-left"
-                  aria-expanded={expandedCycleId === cycle.id}
-                  aria-controls={`cycle-detail-${cycle.id}`}
-                >
-                  <div class="flex items-center justify-between">
-                    <div class="flex-1">
-                      <div class="flex items-center gap-3">
-                        <div
-                          class="text-gray-400 transition {expandedCycleId === cycle.id ? 'rotate-90' : ''}"
-                        >
-                          <ChevronRight size={20} />
+                <div class="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedCyclesForPrint.includes(cycle.id)}
+                    onchange={(e) => {
+                      if ((e.target as HTMLInputElement).checked) {
+                        selectedCyclesForPrint = [...selectedCyclesForPrint, cycle.id];
+                      } else {
+                        selectedCyclesForPrint = selectedCyclesForPrint.filter(id => id !== cycle.id);
+                      }
+                    }}
+                    class="w-4 h-4"
+                  />
+                  <button
+                    onclick={() => toggleCycleExpand(cycle.id)}
+                    class="flex-1 text-left"
+                    aria-expanded={expandedCycleId === cycle.id}
+                    aria-controls={`cycle-detail-${cycle.id}`}
+                  >
+                    <div class="flex items-center justify-between">
+                      <div class="flex-1">
+                        <div class="flex items-center gap-3">
+                          <div
+                            class="text-gray-400 transition {expandedCycleId === cycle.id ? 'rotate-90' : ''}"
+                          >
+                            <ChevronRight size={20} />
+                          </div>
+                          <div>
+                            <div class="font-medium text-gray-900">
+                              {formatDate(toDate(cycle.billing_start_date))} –
+                              {formatDate(toDate(cycle.billing_end_date))}
+                            </div>
+                            <div class="text-sm text-gray-500">
+                              {Object.keys(cycle.billing_ids).length} billing
+                              {Object.keys(cycle.billing_ids).length === 1 ? 'record' : 'records'}
+                              {#if cycle.overdue_date}
+                                • Due: {formatDate(toDate(cycle.overdue_date))}
+                              {/if}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="ml-6 grid grid-cols-4 gap-8 text-right">
+                        <div>
+                          <div class="text-xs font-medium text-gray-600">Consumption</div>
+                          <div class="font-mono font-semibold text-gray-900">
+                            {cycle.billing_consumption.toLocaleString()} {getReadingUnit(getCycleUtilityType(cycle))}
+                          </div>
                         </div>
                         <div>
-                          <div class="font-medium text-gray-900">
-                            {formatDate(toDate(cycle.billing_start_date))} –
-                            {formatDate(toDate(cycle.billing_end_date))}
+                          <div class="text-xs font-medium text-gray-600">Rate</div>
+                          <div class="font-mono font-semibold text-gray-900">
+                            ₱{cycle.billing_rate.toFixed(2)}/{getReadingUnit(getCycleUtilityType(cycle))}
                           </div>
-                          <div class="text-sm text-gray-500">
-                            {Object.keys(cycle.billing_ids).length} billing
-                            {Object.keys(cycle.billing_ids).length === 1 ? 'record' : 'records'}
-                            {#if cycle.overdue_date}
-                              • Due: {formatDate(toDate(cycle.overdue_date))}
-                            {/if}
+                        </div>
+                        <div>
+                          <div class="text-xs font-medium text-gray-600">Total Amount</div>
+                          <div class="font-mono font-semibold text-gray-900">
+                            {formatCurrency(cycle.billing_consumption * cycle.billing_rate)}
+                          </div>
+                        </div>
+                        <div>
+                          <div class="text-xs font-medium text-gray-600">Currently Paid</div>
+                          <div class="font-mono font-semibold text-green-700">
+                            {formatCurrency(getCyclePaidAmount(cycle))}
                           </div>
                         </div>
                       </div>
                     </div>
-                    <div class="ml-6 grid grid-cols-4 gap-8 text-right">
-                      <div>
-                        <div class="text-xs font-medium text-gray-600">Consumption</div>
-                        <div class="font-mono font-semibold text-gray-900">
-                          {cycle.billing_consumption.toLocaleString()} {getReadingUnit(getCycleUtilityType(cycle))}
-                        </div>
-                      </div>
-                      <div>
-                        <div class="text-xs font-medium text-gray-600">Rate</div>
-                        <div class="font-mono font-semibold text-gray-900">
-                          ₱{cycle.billing_rate.toFixed(2)}/{getReadingUnit(getCycleUtilityType(cycle))}
-                        </div>
-                      </div>
-                      <div>
-                        <div class="text-xs font-medium text-gray-600">Total Amount</div>
-                        <div class="font-mono font-semibold text-gray-900">
-                          {formatCurrency(cycle.billing_consumption * cycle.billing_rate)}
-                        </div>
-                      </div>
-                      <div>
-                        <div class="text-xs font-medium text-gray-600">Currently Paid</div>
-                        <div class="font-mono font-semibold text-green-700">
-                          {formatCurrency(getCyclePaidAmount(cycle))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </button>
-
-                {#if expandedCycleId === cycle.id}
-                  <button
-                    onclick={(e) => {
-                      e.stopPropagation();
-                      printReceipts(cycle);
-                    }}
-                    class="ml-4 p-2 rounded hover:bg-gray-100 text-gray-700"
-                    title="Print receipts"
-                  >
-                    <Printer size={20} />
                   </button>
-                {/if}
+                </div>
                 {#if expandedCycleId === cycle.id}
                   <button
                     onclick={(e) => {
@@ -1007,7 +1124,7 @@
                           });
                       }
                     }}
-                    class="ml-2 p-2 rounded hover:bg-red-100 text-red-700"
+                    class="ml-4 p-2 rounded hover:bg-red-100 text-red-700"
                     title="Archive billing cycle"
                   >
                     <Archive size={20} />

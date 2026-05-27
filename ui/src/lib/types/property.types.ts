@@ -14,7 +14,7 @@ export interface Property extends BaseModel {
 export interface CreatePropertyRequest {
   room_name: string;
   tenant_amount: number;
-  meter_groups: Record<string, MeterGroupEntry>; // must include "electricity" and "water"
+  meter_groups: Record<string, MeterGroupEntry>; // at least one of "electricity" or "water" required
 }
 
 export interface UpdatePropertyRequest {

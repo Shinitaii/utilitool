@@ -40,6 +40,9 @@
   let isLoading = $state(false);
   let error = $state('');
   let selectedMeterGroup = $state('');
+  let selectedProperty = $state('');
+  let filterStartDate = $state('');
+  let filterEndDate = $state('');
   let createFormOpen = $state(false);
 
   // Batch reading form
@@ -77,20 +80,37 @@
     await loadData();
   });
 
+  async function applyFilters() {
+    isLoading = true;
+    error = '';
+    try {
+      const readingsResult = await getReadings({
+        meterGroupId: selectedMeterGroup || undefined,
+        propertyId: selectedProperty || undefined,
+        startDate: filterStartDate || undefined,
+        endDate: filterEndDate || undefined,
+        limit: 100
+      });
+      readings = readingsResult;
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to load readings';
+    } finally {
+      isLoading = false;
+    }
+  }
+
   async function loadData() {
     isLoading = true;
     error = '';
     try {
-      const [meterGroupsResult, propertiesResult] = await Promise.all([
+      const [meterGroupsResult, propertiesResult, readingsResult] = await Promise.all([
         getMeterGroups({ limit: 100 }),
-        getProperties({ limit: 100 })
+        getProperties({ limit: 100 }),
+        getReadings({ limit: 100 })
       ]);
       meterGroups = meterGroupsResult.data;
       properties = propertiesResult.data;
-
-      if (selectedMeterGroup) {
-        readings = await getReadings({ meterGroupId: selectedMeterGroup, limit: 100 });
-      }
+      readings = readingsResult;
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load readings';
     } finally {
@@ -99,16 +119,18 @@
   }
 
   async function handleMeterGroupChange() {
+    // Load batch properties for the selected meter group
     if (selectedMeterGroup) {
-      isLoading = true;
-      try {
-        readings = await getReadings({ meterGroupId: selectedMeterGroup, limit: 100 });
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'Failed to load readings';
-      } finally {
-        isLoading = false;
-      }
+      await loadBatchProperties();
+    } else {
+      batchRows = [];
     }
+    // Apply filter to readings
+    await applyFilters();
+  }
+
+  async function handleFilterChange() {
+    await applyFilters();
   }
 
   function openCreateForm() {
@@ -600,22 +622,83 @@
     </div>
   {/if}
 
-  <div class="rounded-lg border border-gray-200 bg-white p-4">
-    <label for="meter-filter" class="block text-sm font-medium text-gray-700">Filter by Meter Group</label>
-    <select
-      id="meter-filter"
-      bind:value={selectedMeterGroup}
-      onchange={handleMeterGroupChange}
-      class="mt-2 block w-full rounded border border-gray-300 px-3 py-2 md:w-80"
-      disabled={isLoading}
-    >
-      <option value="">Select meter option</option>
-      {#each meterGroups as group (group.id)}
-        <option value={group.id}>
-          {group.meter_name} ({group.utility_type})
-        </option>
-      {/each}
-    </select>
+  <div class="rounded-lg border border-gray-200 bg-white p-4 space-y-4">
+    <h2 class="font-semibold text-gray-900">Filters</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label for="meter-filter" class="block text-sm font-medium text-gray-700">Meter Group</label>
+        <select
+          id="meter-filter"
+          bind:value={selectedMeterGroup}
+          onchange={handleMeterGroupChange}
+          class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
+          disabled={isLoading}
+        >
+          <option value="">All meters</option>
+          {#each meterGroups as group (group.id)}
+            <option value={group.id}>
+              {group.meter_name} ({group.utility_type})
+            </option>
+          {/each}
+        </select>
+      </div>
+
+      <div>
+        <label for="property-filter" class="block text-sm font-medium text-gray-700">Property</label>
+        <select
+          id="property-filter"
+          bind:value={selectedProperty}
+          onchange={handleFilterChange}
+          class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
+          disabled={isLoading}
+        >
+          <option value="">All properties</option>
+          {#each properties as prop (prop.id)}
+            <option value={prop.id}>{prop.room_name}</option>
+          {/each}
+        </select>
+      </div>
+
+      <div>
+        <label for="start-date-filter" class="block text-sm font-medium text-gray-700">Start Date</label>
+        <input
+          id="start-date-filter"
+          type="date"
+          bind:value={filterStartDate}
+          onchange={handleFilterChange}
+          class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
+          disabled={isLoading}
+        />
+      </div>
+
+      <div>
+        <label for="end-date-filter" class="block text-sm font-medium text-gray-700">End Date</label>
+        <input
+          id="end-date-filter"
+          type="date"
+          bind:value={filterEndDate}
+          onchange={handleFilterChange}
+          class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
+          disabled={isLoading}
+        />
+      </div>
+
+      <div class="flex items-end">
+        <button
+          onclick={async () => {
+            selectedMeterGroup = '';
+            selectedProperty = '';
+            filterStartDate = '';
+            filterEndDate = '';
+            await applyFilters();
+          }}
+          class="w-full rounded bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+          disabled={isLoading}
+        >
+          Clear Filters
+        </button>
+      </div>
+    </div>
   </div>
 
   <div class="overflow-x-auto rounded-lg border border-gray-200">
