@@ -77,20 +77,32 @@ ui/src/
 │   ├── +page.svelte                (Root page — redirect to /dashboard)
 │   ├── (auth)/                     (Auth layout group — centered card)
 │   │   ├── +layout.svelte
-│   │   ├── login/+page.svelte
-│   │   └── register/+page.svelte
+│   │   └── login/+page.svelte
 │   └── (app)/                      (Protected app layout group — sidebar + main + right panel)
 │       ├── +layout.ts              (Auth guard — redirects to /login if no token)
 │       ├── +layout.svelte          (3-column shell: Sidebar | Main | RightPanel)
 │       ├── dashboard/+page.svelte  (Stat cards + properties table)
-│       ├── meter-groups/+page.svelte
-│       ├── properties/+page.svelte
-│       ├── tenants/+page.svelte
-│       ├── readings/+page.svelte
-│       ├── billings/+page.svelte
-│       ├── billing-cycles/+page.svelte
-│       ├── bills/+page.svelte      (OCR upload stub)
-│       └── reports/+page.svelte    (Reports stub)
+│       ├── meter-groups/
+│       │   ├── +page.svelte
+│       │   └── archive/+page.svelte   (Archived meter groups recovery)
+│       ├── properties/
+│       │   ├── +page.svelte
+│       │   └── archive/+page.svelte   (Archived properties recovery)
+│       ├── tenants/
+│       │   ├── +page.svelte
+│       │   └── archive/+page.svelte   (Archived tenants recovery)
+│       ├── readings/
+│       │   ├── +page.svelte
+│       │   └── archive/+page.svelte   (Archived readings recovery)
+│       ├── billings/
+│       │   ├── +page.svelte
+│       │   └── archive/+page.svelte   (Archived billings recovery)
+│       ├── bills/+page.svelte      (OCR bill upload — stub)
+│       ├── reports/+page.svelte    (Analytics dashboard — stub)
+│       └── settings/
+│           ├── +page.svelte        (Account settings root)
+│           ├── payment/+page.svelte (Payment settings)
+│           └── users/+page.svelte  (User management — create users, assign roles)
 │
 ├── lib/
 │   ├── api/                         (API client modules — one per feature)
@@ -101,20 +113,30 @@ ui/src/
 │   │   ├── tenants.ts
 │   │   ├── readings.ts
 │   │   ├── billings.ts
-│   │   └── billing-cycles.ts
+│   │   ├── billing-cycles.ts
+│   │   ├── bills.ts                (ocrBill — POST /bills/ocr)
+│   │   ├── users.ts                (createUser — POST /users)
+│   │   ├── reports.ts              (getSummaryReport, getConsumptionReport, getBillingTrendsReport, getCollectionStatusReport)
+│   │   └── cache.ts                (clearAllCaches — clears all feature caches in parallel)
 │   │
 │   ├── types/                       (TypeScript types — mirror API models)
 │   │   ├── api.types.ts            (Shared: PaginatedResult, BaseModel, FirestoreTimestamp)
 │   │   ├── auth.types.ts
+│   │   ├── bill.types.ts           (OcrBillResponse)
 │   │   ├── meter-group.types.ts
 │   │   ├── property.types.ts
 │   │   ├── tenant.types.ts
 │   │   ├── reading.types.ts
 │   │   ├── billing.types.ts
-│   │   └── billing-cycle.types.ts
+│   │   ├── billing-cycle.types.ts
+│   │   └── reports.types.ts        (ReportSummary, ConsumptionReport, BillingTrendsReport, CollectionStatusReport, ReportQueryParams)
 │   │
-│   ├── stores/                      (Svelte writable stores)
-│   │   └── auth.svelte.ts          (isAuthenticated, user, isLoading, error)
+│   ├── stores/                      (Svelte 5 runes-based stores)
+│   │   ├── auth.svelte.ts          (isAuthenticated, user, isLoading, error)
+│   │   ├── crud.svelte.ts          (Generic CRUD store factory: selection, soft-delete, batch-delete, edit modal)
+│   │   ├── meter-groups.svelte.ts  (Meter group list state)
+│   │   ├── properties.svelte.ts    (Property list state)
+│   │   └── tenants.svelte.ts       (Tenant list state)
 │   │
 │   ├── utils/                       (Formatting + conversion utilities)
 │   │   ├── format.ts               (formatCurrency, formatDate, formatKwh, relativeTime, getInitials)
@@ -127,10 +149,15 @@ ui/src/
 │       │   └── RightPanel.svelte   (280px selection-driven detail panel)
 │       │
 │       └── shared/                  (Reusable UI components)
-│           ├── StatusPill.svelte   (Colored status badges)
-│           ├── StatCard.svelte     (Metric card with value + sub)
-│           ├── EmptyState.svelte   (No data placeholder)
-│           └── ToBeFinished.svelte (Stub placeholder with build hammer icon)
+│           ├── ActionButtons.svelte     (Standardized row action buttons: edit, archive, restore)
+│           ├── ArchivePageTemplate.svelte (Reusable layout for all archive/restore pages)
+│           ├── EditModal.svelte         (Generic edit modal — wraps form with save/cancel)
+│           ├── EmptyState.svelte        (No data placeholder)
+│           ├── ImagePreview.svelte      (Inline image preview widget)
+│           ├── SelectionToolbar.svelte  (Multi-select batch action toolbar)
+│           ├── StatCard.svelte          (Metric card with value + sub)
+│           ├── StatusPill.svelte        (Colored status badges)
+│           └── ToBeFinished.svelte      (Stub placeholder with build hammer icon)
 │
 └── routes/layout.css               (Global CSS: @import 'tailwindcss' + theme colors)
 ```
@@ -148,13 +175,6 @@ ui/src/
   - Stores tokens in localStorage + authStore
 - **On success**: Redirect to `/dashboard`
 - **On error**: Display error message, enable retry
-
-#### Register (`/register`)
-- **Component**: `src/routes/(auth)/register/+page.svelte`
-- **API calls**:
-  - `POST /auth/register` ← `register()` from `src/lib/api/auth.ts`
-  - Same token handling as login
-- **Validation**: Password confirmation + min 8 chars (client-side)
 
 ---
 
@@ -238,17 +258,41 @@ ui/src/
 - **Note**: Billings are auto-created when readings are posted — the cycle form just groups them. OCR autofill is optional; all autofilled fields remain editable.
 - **Status**: ✅ Complete (cycle-centric design; auto-billing integration; bill photo OCR)
 
+#### Archive Pages (`/<feature>/archive`)
+Each core feature has an archive page for restoring soft-deleted items. All use `ArchivePageTemplate.svelte`.
+
+| Route | Component | Restore API call |
+|-------|-----------|-----------------|
+| `/meter-groups/archive` | `src/routes/(app)/meter-groups/archive/+page.svelte` | `PATCH /meter-groups/:id/restore` |
+| `/properties/archive` | `src/routes/(app)/properties/archive/+page.svelte` | `PATCH /properties/:id/restore` |
+| `/tenants/archive` | `src/routes/(app)/tenants/archive/+page.svelte` | `PATCH /tenants/:id/restore` |
+| `/readings/archive` | `src/routes/(app)/readings/archive/+page.svelte` | `PATCH /readings/:id/restore` |
+| `/billings/archive` | `src/routes/(app)/billings/archive/+page.svelte` | `PATCH /billings/:id/restore` |
+
+All archive pages: `GET /<feature>?archived=true` to list soft-deleted items, then restore via the respective `restore*` API function.
+
+#### Settings (`/settings`)
+- **Component**: `src/routes/(app)/settings/+page.svelte` — account info root
+- **Sub-routes**:
+  - `/settings/payment` — payment config
+  - `/settings/users` — user management: `POST /users` ← `createUser()` to create accounts with role (`admin`, `landlord`, `assistant`)
+- **Status**: Partial
+
 #### Bills / OCR Upload (`/bills`)
 - **Component**: `src/routes/(app)/bills/+page.svelte`
-- **API calls**: None (stub)
+- **API calls**: `POST /bills/ocr` ← `ocrBill()` from `src/lib/api/bills.ts` (partially wired)
 - **Displays**: "Coming Soon" placeholder with build hammer icon
-- **Status**: 🚧 Stub — waiting for OCR endpoint in API
+- **Status**: 🚧 Stub — UI not yet built out, API endpoint exists
 
 #### Reports (`/reports`)
 - **Component**: `src/routes/(app)/reports/+page.svelte`
-- **API calls**: None (stub)
+- **API calls** (available, not yet wired in UI):
+  - `GET /reports/summary` ← `getSummaryReport()`
+  - `GET /reports/consumption` ← `getConsumptionReport()`
+  - `GET /reports/billing-trends` ← `getBillingTrendsReport()`
+  - `GET /reports/collection-status` ← `getCollectionStatusReport()`
 - **Displays**: "Coming Soon" placeholder
-- **Status**: 🚧 Stub — waiting for analytics design
+- **Status**: 🚧 Stub — API module ready, UI needs build-out
 
 ---
 
@@ -279,6 +323,32 @@ export async function restoreMeterGroup(id: string): Promise<MeterGroup>    // U
 
 (Same pattern for properties, tenants, readings, billings, billing-cycles)
 
+### bills.ts
+```ts
+export async function ocrBill(imageUrl: string): Promise<OcrBillResponse>
+// OcrBillResponse: { billing_start_date, billing_end_date, billing_consumption, billing_rate, raw_amount }
+```
+
+### users.ts
+```ts
+export async function createUser(data: { uid: string; role: 'admin' | 'landlord' | 'assistant' }): Promise<void>
+```
+
+### reports.ts
+```ts
+export async function getSummaryReport(params?: ReportQueryParams): Promise<ReportSummary>
+export async function getConsumptionReport(params?: ReportQueryParams): Promise<ConsumptionReport>
+export async function getBillingTrendsReport(params?: ReportQueryParams): Promise<BillingTrendsReport>
+export async function getCollectionStatusReport(params?: ReportQueryParams): Promise<CollectionStatusReport>
+// ReportQueryParams: { startDate?, endDate?, meterGroupId?, propertyId? }
+```
+
+### cache.ts
+```ts
+export async function clearAllCaches(): Promise<void>
+// Clears all 6 feature caches in parallel: properties, meter-groups, tenants, readings, billings, billing-cycles
+```
+
 ---
 
 ## API Client & Token Management
@@ -302,41 +372,47 @@ const data = await apiGet<MyType>('/my-endpoint');
 const created = await apiPost<MyType>('/my-endpoint', { foo: 'bar' });
 ```
 
-### authStore.svelte.ts (State Management)
+### auth.svelte.ts (Auth State)
 Located: `src/lib/stores/auth.svelte.ts`
 
-**Type**: Svelte writable store
+**State**: `{ isAuthenticated, user: AuthUser | null, isLoading, error }`  
+**Methods**: `setLoading()`, `setError()`, `setUser()`, `login(AuthUser)`, `logout()`, `clearError()`
 
-**State**:
+### crud.svelte.ts (Generic CRUD Store Factory)
+Located: `src/lib/stores/crud.svelte.ts`
+
+Provides a reusable store returned by `createCrudStore<T>()`. Used by pages that need selection, delete, and edit modal state.
+
 ```ts
-interface AuthState {
-  isAuthenticated: boolean;
-  user: AuthUser | null;        // { userId, email }
-  isLoading: boolean;
-  error: string | null;
+interface CrudStore<T> {
+  // Selection
+  selectedIds: Set<string>;
+  toggleSelection(id: string): void;
+  toggleSelectAll(allIds: string[], visibleIds: string[]): void;
+  clearSelection(): void;
+  // Soft-delete
+  isDeleting: boolean;
+  deletingId: string | null;
+  handleSoftDelete(id, deleteFn, reload, confirmFn?): Promise<void>;
+  // Batch delete
+  isBatchDeleting: boolean;
+  handleBatchDelete(deleteFn, reload, confirmFn?): Promise<void>;
+  // Edit modal
+  editModalOpen: boolean;
+  editingItem: T | null;
+  editFormData: Partial<T>;
+  openEditModal(item: T, formData: Partial<T>): void;
+  closeEditModal(): void;
+  // Error
+  error: string;
+  clearError(): void;
 }
 ```
 
-**Methods**:
-- `setLoading(boolean)`
-- `setError(string | null)`
-- `setUser(AuthUser | null)`
-- `login(AuthUser)` — set isAuthenticated to true
-- `logout()` — clear state
-- `clearError()`
+**Usage**: `const crud = createCrudStore<MeterGroup>()`
 
-**Usage in components**:
-```svelte
-<script>
-  import { authStore } from '$lib/stores/auth.svelte';
-  
-  const auth = $state(authStore);  // Subscribe to store
-</script>
-
-{#if auth.state.isAuthenticated}
-  <p>Welcome, {auth.state.user?.email}</p>
-{/if}
-```
+### meter-groups.svelte.ts / properties.svelte.ts / tenants.svelte.ts
+Feature-specific list stores that wrap data fetching and compose `createCrudStore<T>()` for their entity type.
 
 ---
 
@@ -398,6 +474,27 @@ Stub placeholder for incomplete features.
 ```svelte
 <ToBeFinished title="OCR Upload" message="Automatically extract meter readings from photos" />
 ```
+
+### ActionButtons
+Standardized row action buttons: edit (pencil), archive/soft-delete (trash), restore. Accepts handlers as props to decouple display from logic.
+
+### ArchivePageTemplate
+Reusable page layout for all `/<feature>/archive` routes. Handles the list + restore + empty state in a consistent pattern.
+
+### EditModal
+Generic modal wrapper. Accepts an `open` binding, `title`, and a default slot for form content. Provides Save/Cancel buttons.
+
+**Props**: `open: boolean`, `title: string`, `onSave: () => void`, `onClose: () => void`
+
+### ImagePreview
+Inline image preview widget used in readings and billings forms. Shows a thumbnail with a clickable zoom overlay.
+
+**Props**: `src: string`, `alt?: string`
+
+### SelectionToolbar
+Multi-select batch action toolbar. Slides in when `selectedIds.size > 0`. Shows count + "Archive selected" button.
+
+**Props**: `count: number`, `onBatchDelete: () => void`, `isDeleting: boolean`
 
 ---
 

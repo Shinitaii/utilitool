@@ -31,15 +31,11 @@ Don't read this file (CLAUDE.md) again during the session unless you need contex
 Run RAG retrieval on the topic before writing any plan or spec:
 
 ```bash
-# From repo root — requires utilitool.db (run python index_claude_md.py first if missing)
-npx tsx -e "
-import { queryRAG } from './api/functions/src/utils/rag-query.js';
-const results = await queryRAG('YOUR TOPIC HERE', 5);
-results.forEach(r => console.log('[' + r.similarity.toFixed(3) + '] ' + r.source + ' / ' + r.section + '\n' + r.text.slice(0, 200) + '\n'));
-"
+# From repo root
+cd api/functions && npx tsx rag.ts "YOUR TOPIC HERE" 5
 ```
 
-Replace `YOUR TOPIC HERE` with the feature or question being planned (e.g. `"billing cycle validation"`, `"tenant CRUD"`, `"auth middleware"`). Use the returned chunks as grounding context before proposing approaches.
+Replace `YOUR TOPIC HERE` with the feature or question being planned (e.g. `"billing cycle validation"`, `"tenant CRUD"`, `"auth middleware"`). The database (`utilitool.db`) must exist at the repo root; if missing, run `python index_claude_md.py` from the repo root first.
 
 ---
 
@@ -49,6 +45,8 @@ Replace `YOUR TOPIC HERE` with the feature or question being planned (e.g. `"bil
 utilitool/
 ├── api/functions/          → Backend (Express + Firebase Cloud Functions)
 │   └── CLAUDE.md           → Read for API architecture & feature file map
+│   └── src/features        → API Features
+│       └── *.swagger.ts    → Swagger API documentation
 ├── ui/                     → Frontend (SvelteKit + Svelte 5)
 │   └── CLAUDE.md           → Read for UI architecture & component map
 ├── mobile/                 → Mobile app (Svelte 5 SPA + Capacitor, Android)
@@ -222,6 +220,10 @@ Each page/component is organized by:
 - ✅ Billings (CRUD, batch; normally auto-created; meter rollback prevention)
 - ✅ Billing Cycles (CRUD, batch, validation; version-aware consumption; `POST /ocr` bill photo extraction; dynamic sorting)
 - ✅ Auth (Firebase Auth: sign up, login, logout)
+- ✅ Image Extraction (`POST /image-extraction/readings` + `POST /image-extraction/billings` — Gemini Vision OCR)
+- ✅ Reports (`GET /reports/summary`, `/consumption`, `/billing-trends`, `/collection-status`)
+- ⚠️ Bills (`POST /bills/ocr` — partial stub; overlaps with image-extraction)
+- ⚠️ Users (`POST /users` — partial stub for user role management)
 
 **Audit Highlights (25 fixes)**:
 - **D1**: Soft-delete pattern — all DELETE endpoints soft-delete (set `is_deleted` flag), no hard delete
@@ -234,15 +236,16 @@ Each page/component is organized by:
 - **H1–H4**: Consistent pagination, batch ops, archive/restore semantics
 
 ### UI Pages (Complete + Audited May 2026)
-- ✅ Login / Register
+- ✅ Login
 - ✅ Dashboard (stat cards + properties table)
-- ✅ Meter Groups (full CRUD table; Version column; Reset Meter button)
-- ✅ Properties (list + detail with tabs: Tenants | Readings | Billings | History)
-- ✅ Tenants (searchable list)
-- ✅ Readings (filterable list; True Total column; batch form with decoupled OCR suggest)
-- ✅ Billings (cycle-centric: expandable cycles with nested billings; bill photo OCR autofill)
-- 🚧 Bills / OCR upload (stub — "to be finished")
-- 🚧 Reports (stub — "to be finished")
+- ✅ Meter Groups (full CRUD table; Version column; Reset Meter button; archive page)
+- ✅ Properties (list + detail with tabs: Tenants | Readings | Billings | History; archive page)
+- ✅ Tenants (searchable list; archive page)
+- ✅ Readings (filterable list; True Total column; batch form with decoupled OCR suggest; archive page)
+- ✅ Billings (cycle-centric: expandable cycles with nested billings; bill photo OCR autofill; archive page)
+- 🚧 Bills / OCR upload (stub — API module ready, UI not built)
+- 🚧 Reports (stub — API module ready, UI not built)
+- 🚧 Settings (partial — payment + user management tabs scaffolded)
 
 ### Mobile Screens (May 2026)
 - ✅ Login (Firebase Auth)

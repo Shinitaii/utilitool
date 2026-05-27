@@ -103,19 +103,25 @@ This section documents key improvements made during the comprehensive codebase a
 
 ## Feature Layer Pattern
 
-Every API feature lives in `src/features/<name>/` and follows this 8-layer structure:
+Every API feature lives in `src/features/<name>/` and follows this 9-layer structure:
 
 ```
 <name>/
-├── <name>.model.ts        → TypeScript interface (extends BaseModel)
-├── <name>.dto.ts          → Zod validation schemas (request/response shapes)
-├── <name>.repository.ts   → Firestore CRUD (usually: new Repository<T>(collectionName))
-├── <name>.service.ts      → Business logic & validation (throws AppError here)
-├── <name>.controller.ts   → HTTP handlers (thin, no try/catch)
-├── <name>.route.ts        → Express routes (validateRequest() + mounted in src/index.ts)
-├── <name>.swagger.ts      → OpenAPI documentation (Swagger UI + /docs/swagger.json)
-└── <name>.test.ts         → Jest tests (pseudo-TDD spec comments)
+├── <name>.model.ts           → TypeScript interface (extends BaseModel)
+├── <name>.dto.ts             → Zod validation schemas (request/response shapes)
+├── <name>.repository.ts      → Firestore CRUD (usually: new Repository<T>(collectionName))
+├── <name>.service.ts         → Business logic & validation (throws AppError here)
+├── <name>.controller.ts      → HTTP handlers (thin, no try/catch)
+├── <name>.route.ts           → Express routes (validateRequest() + mounted in src/index.ts)
+├── <name>.swagger.ts         → OpenAPI documentation (Swagger UI + /docs/swagger.json)
+├── <name>.validator.ts       → Zod validator instances (present in most features)
+└── <name>.test.ts            → Jest integration tests (pseudo-TDD spec comments)
 ```
+
+**Optional additional files** (present on some features):
+- `<name>.validator.test.ts` — Unit tests for validator logic (billing, billing-cycle, meter-group, reading)
+- `<name>.service.test.ts` — Unit tests for service business logic (meter-group, reading)
+- `<name>.util.ts` — Feature-level shared helpers (reading: `validateMeterRollback`, `calculateTrueReading`, `computeCumulativeOffset`)
 
 **Reference implementation**: `src/features/meter-group/` — use this as a template for all new features.
 
@@ -336,6 +342,60 @@ Represents billing periods with validation and rate calculation.
 
 ---
 
+### Image Extraction (`/image-extraction` — protected)
+
+Located: `src/features/image-extraction/`
+
+Provides Gemini Vision OCR extraction for two use cases: reading meter photos and utility bill photos.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/image-extraction/readings` | OCR meter photo → `{ reading_amount, reading_date, image_url }` |
+| POST | `/image-extraction/billings` | OCR utility bill photo → `{ billing_start_date, billing_end_date, billing_consumption, billing_rate, raw_amount }` |
+
+**Business rules**:
+- Accepts `{ image_url: string }` — data URL or HTTPS URL
+- Returns 400 if extraction fails or image URL is invalid
+- Backed by `src/lib/gemini.lib.ts` (Google Gemini Vision API)
+- Requires authentication (BearerAuth)
+
+---
+
+### Reports (`/reports` — protected)
+
+Located: `src/features/reports/`
+
+Read-only analytics endpoints for billing summaries and trends. Accepts optional date range + meter group / property filters.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/reports/summary` | Key billing metrics: total revenue, collection rate, payment status breakdown |
+| GET | `/reports/consumption` | Consumption breakdown by month and by property |
+| GET | `/reports/billing-trends` | Billing amounts (billed, collected, pending, overdue) grouped by month |
+| GET | `/reports/collection-status` | Billing counts and amounts grouped by payment status |
+
+**Query params** (all optional, all endpoints):
+- `startDate` / `endDate` — ISO 8601 filter on billing cycle dates
+- `meterGroupId` — filter by specific meter group
+- `propertyId` — filter by specific property
+
+---
+
+### Stub & Incomplete Features
+
+The following feature folders exist but are **not fully implemented**:
+
+| Folder | Status | Notes |
+|--------|--------|-------|
+| `bills/` | ⚠️ Partial | `POST /bills/ocr` — OCR via Gemini; no model/service/repository. Functionally overlaps with `image-extraction/billings` |
+| `user/` | ⚠️ Partial | `POST /users` — create user record; no model/service/repository. Auth covered by `auth/` |
+| `audit/` | ❌ Stub | `audit.model.ts` only — not mounted |
+| `model/` | ❌ Empty | Placeholder folder — unused |
+| `ocr/` | ❌ Empty | Placeholder folder — functionality moved to `image-extraction/` |
+| `payment/` | ❌ Empty | Placeholder folder — not yet implemented |
+
+---
+
 ## HTTP Method Semantics
 
 **DELETE = Soft Delete with Cascading (not hard removal)**
@@ -438,6 +498,29 @@ api/functions/src/features/property/
 ```
 
 (Same pattern for tenant, reading, billing, billing-cycle)
+
+### Image Extraction
+```
+api/functions/src/features/image-extraction/
+├── image-extraction.model.ts
+├── image-extraction.dto.ts
+├── image-extraction.service.ts    → Calls gemini.lib.ts for OCR
+├── image-extraction.controller.ts
+├── image-extraction.route.ts
+├── image-extraction.swagger.ts
+└── image-extraction.validator.ts
+```
+
+### Reports
+```
+api/functions/src/features/reports/
+├── reports.model.ts
+├── reports.dto.ts
+├── reports.service.ts             → Aggregates billing + reading data
+├── reports.controller.ts
+├── reports.route.ts
+└── reports.swagger.ts
+```
 
 ### Authentication (special case — public routes)
 ```
@@ -593,12 +676,24 @@ import { myFeatureRouter } from './features/my-feature/<name>.route';
 app.use('/my-features', myFeatureRouter);
 ```
 
-### 8. Create Swagger Documentation
+### 8. Create the Validator
+**File**: `src/features/<name>/<name>.validator.ts`
+
+Create Zod validator instances used by `validateRequest()` middleware in the route file.
+
+```ts
+import { CreateMyFeatureSchema, UpdateMyFeatureSchema } from './<name>.dto';
+
+export const createMyFeatureValidator = CreateMyFeatureSchema;
+export const updateMyFeatureValidator = UpdateMyFeatureSchema.partial();
+```
+
+### 9. Create Swagger Documentation
 **File**: `src/features/<name>/<name>.swagger.ts`
 
 (Reference `meter-group.swagger.ts` for the template)
 
-### 9. Add to Swagger Config
+### 10. Add to Swagger Config
 **File**: `src/config/swagger.config.ts`
 
 ```ts
@@ -610,7 +705,7 @@ let paths: OpenAPI.Paths = {
 };
 ```
 
-### 10. Write Tests
+### 11. Write Tests
 **File**: `src/features/<name>/<name>.test.ts`
 
 (Pseudo-TDD specs only — see `meter-group.test.ts` for example)
