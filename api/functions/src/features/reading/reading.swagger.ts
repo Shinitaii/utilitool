@@ -74,7 +74,7 @@ export const readingPaths = {
       tags: ['Readings'],
       summary: 'List meter readings',
       description:
-        'Retrieve paginated list of readings. Can filter by meter group ID. Note: cursor and meterGroupId filters are mutually exclusive.',
+        'Retrieve paginated list of readings. Can filter by meter group ID, property, and date range. Note: cursor and date filters are mutually exclusive with cursor pagination.',
       security: [{ BearerAuth: [] }],
       parameters: [
         {
@@ -84,6 +84,33 @@ export const readingPaths = {
           schema: {
             type: 'string',
             minLength: 1,
+          },
+        },
+        {
+          name: 'propertyId',
+          in: 'query',
+          description: 'Filter by property ID',
+          schema: {
+            type: 'string',
+            minLength: 1,
+          },
+        },
+        {
+          name: 'startDate',
+          in: 'query',
+          description: 'Filter readings from this date onwards (ISO 8601 date or datetime format)',
+          schema: {
+            type: 'string',
+            format: 'date-time',
+          },
+        },
+        {
+          name: 'endDate',
+          in: 'query',
+          description: 'Filter readings up to this date (ISO 8601 date or datetime format)',
+          schema: {
+            type: 'string',
+            format: 'date-time',
           },
         },
         {
@@ -101,7 +128,7 @@ export const readingPaths = {
           name: 'cursor',
           in: 'query',
           description:
-            'Pagination cursor from previous response. Cannot be combined with meterGroupId.',
+            'Pagination cursor from previous response. Cannot be combined with date filters.',
           schema: {
             type: 'string',
           },

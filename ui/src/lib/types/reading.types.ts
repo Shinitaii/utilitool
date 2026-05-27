@@ -17,6 +17,14 @@ export interface CreateReadingRequest {
   image_url?: string;
 }
 
+export interface CreateSeedReadingRequest {
+  meter_group_id: string;
+  property_id: string;
+  reading_amount: number;
+  reading_date: FirestoreTimestamp | string;
+  image_url?: string;
+}
+
 export interface UpdateReadingRequest {
   meter_group_id?: string;
   reading_amount?: number;

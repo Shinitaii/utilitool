@@ -53,3 +53,7 @@ export async function softDeleteTenant(id: string): Promise<Tenant> {
 export async function restoreTenant(id: string): Promise<Tenant> {
   return apiPatch<Tenant>(`/tenants/${id}/restore`, {});
 }
+
+export async function clearCache(): Promise<{ message: string }> {
+  return apiPost<{ message: string }>('/tenants/cache/clear', {});
+}

@@ -51,3 +51,7 @@ export async function softDeleteBilling(id: string): Promise<Billing> {
 export async function restoreBilling(id: string): Promise<Billing> {
   return apiPatch<Billing>(`/billings/${id}/restore`, {});
 }
+
+export async function clearCache(): Promise<{ message: string }> {
+  return apiPost<{ message: string }>('/billings/cache/clear', {});
+}

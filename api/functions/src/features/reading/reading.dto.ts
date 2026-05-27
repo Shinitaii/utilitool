@@ -5,7 +5,7 @@ import {parseTimestamp} from "../../utils/firestore.util";
 export const CreateReadingDTOSchema = z.object({
   meter_group_id: z.string().trim().min(1),
   property_id: z.string().trim().min(1),
-  reading_amount: z.number().int().min(0),
+  reading_amount: z.number().min(0),
   reading_date: z.unknown()
     .refine(
       (v) => {
@@ -30,7 +30,7 @@ export const OcrReadingDTOSchema = z.object({
 export type OcrReadingDTO = z.infer<typeof OcrReadingDTOSchema>;
 
 export const OcrReadingResponseSchema = z.object({
-  suggested_reading_amount: z.number().int().nullable(),
+  suggested_reading_amount: z.number().nullable(),
 });
 export type OcrReadingResponse = z.infer<typeof OcrReadingResponseSchema>;
 
@@ -61,6 +61,8 @@ export const GetReadingsQueryDTOSchema = z
   .object({
     meterGroupId: z.string().trim().min(1).optional(),
     propertyId: z.string().trim().min(1).optional(),
+    startDate: z.union([z.string().datetime(), z.string().date()]).optional(),
+    endDate: z.union([z.string().datetime(), z.string().date()]).optional(),
     sortBy: z.enum(["created_at", "reading_date"]).optional(),
     sortOrder: z.enum(["asc", "desc"]).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -81,6 +83,13 @@ export const GetReadingsQueryDTOSchema = z
       context.addIssue({
         code: "custom",
         message: "cursor cannot be combined with propertyId",
+        path: ["cursor"],
+      });
+    }
+    if ((value.startDate || value.endDate) && value.cursor) {
+      context.addIssue({
+        code: "custom",
+        message: "cursor cannot be combined with date filters",
         path: ["cursor"],
       });
     }

@@ -24,6 +24,7 @@
   let createFormOpen = $state(false);
   let resettingId = $state<string | null>(null);
   let isUpdating = $state(false);
+  let isCreating = $state(false);
 
   let createFormData = $state<CreateMeterGroupRequest>({
     meter_name: '',
@@ -48,6 +49,7 @@
 
   async function handleCreate(e: SubmitEvent) {
     e.preventDefault();
+    isCreating = true;
     try {
       await createMeterGroup(createFormData);
       createFormOpen = false;
@@ -55,6 +57,8 @@
       await loadData();
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to create meter group';
+    } finally {
+      isCreating = false;
     }
   }
 
@@ -106,7 +110,8 @@
       </a>
       <button
         onclick={() => (createFormOpen = !createFormOpen)}
-        class="p-2 rounded text-white"
+        disabled={isCreating}
+        class="p-2 rounded text-white disabled:opacity-50"
         style="background-color: var(--color-accent)"
         title="Create new meter group"
         aria-label={createFormOpen ? 'Cancel new meter group' : 'Create new meter group'}
@@ -151,15 +156,17 @@
         <div class="flex space-x-2">
           <button
             type="submit"
-            class="rounded px-4 py-2 text-white font-medium"
+            disabled={isCreating}
+            class="rounded px-4 py-2 text-white font-medium disabled:opacity-50"
             style="background-color: var(--color-accent)"
           >
-            Create
+            {isCreating ? 'Creating...' : 'Create'}
           </button>
           <button
             type="button"
+            disabled={isCreating}
             onclick={() => (createFormOpen = false)}
-            class="rounded px-4 py-2 border border-gray-300 bg-white text-gray-700"
+            class="rounded px-4 py-2 border border-gray-300 bg-white text-gray-700 disabled:opacity-50"
           >
             Cancel
           </button>

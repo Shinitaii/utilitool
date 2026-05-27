@@ -3,6 +3,7 @@ import {readingRepository} from "./reading.repository";
 import {AppError} from "../../utils/error.util";
 import {meterGroupRepository} from "../meter-group/meter-group.repository";
 import {propertyRepository} from "../property/property.repository";
+import {findPreviousMonthReading} from "./reading.util";
 import {Timestamp} from "firebase-admin/firestore";
 
 const MAX_READINGS_PER_METER_GROUP = 1000;
@@ -112,6 +113,76 @@ export class ReadingValidator {
   ): Promise<void> {
     for (const {data} of updates) {
       await this.validateUpdate(data);
+    }
+  }
+
+  async validateMeterRollback(
+    meterGroupId: string,
+    propertyId: string,
+    newReadingAmount: number,
+    meterVersion: number,
+    readingDate: Timestamp
+  ): Promise<void> {
+    // Look for previous-month reading to check meter rollback
+    const prevReading = await findPreviousMonthReading(meterGroupId, propertyId, readingDate);
+
+    if (!prevReading) return; // No previous reading, no rollback check needed
+
+    const prevReadingData = prevReading.data;
+    const prevMeterVersion = prevReadingData.meter_version ?? 1;
+
+    // Only enforce rollback check when both readings have same meter version
+    if (meterVersion === prevMeterVersion && newReadingAmount <= prevReadingData.reading_amount) {
+      throw new AppError(
+        400,
+        "Current reading must be greater than previous reading (meter rollback not allowed)"
+      );
+    }
+  }
+
+  async validateAnomalous(
+    meterGroupId: string,
+    newReadingAmount: number,
+    meterVersion: number,
+  ): Promise<void> {
+    const recentResult = await readingRepository.search({
+      limit: 6,
+      orderBy: "reading_date",
+      orderDirection: "desc",
+      filters: { meter_group_id: meterGroupId },
+    });
+    const recentReadings = recentResult.data;
+
+    if (recentReadings.length < 2) return;
+
+    const sameVersionReadings = recentReadings.filter(
+      (r) => (r.meter_version ?? 1) === meterVersion
+    );
+    if (sameVersionReadings.length < 1) return;
+
+    const mostRecent = sameVersionReadings[0];
+    if (newReadingAmount <= mostRecent.reading_amount) return;
+
+    const deltas: number[] = [];
+    for (let i = 0; i < sameVersionReadings.length - 1; i++) {
+      const curr = sameVersionReadings[i];
+      const prev = sameVersionReadings[i + 1];
+      const delta = curr.reading_amount - prev.reading_amount;
+      if (delta > 0) deltas.push(delta);
+    }
+    if (deltas.length === 0) return;
+
+    const avgDelta = deltas.reduce((s, d) => s + d, 0) / deltas.length;
+    const newDelta = newReadingAmount - mostRecent.reading_amount;
+
+    if (newDelta > 5 * avgDelta) {
+      throw new AppError(
+        422,
+        `Reading amount ${newReadingAmount} is unusually high. ` +
+          `Average monthly delta for this meter group is ${Math.round(avgDelta)} units; ` +
+          `this reading implies a delta of ${Math.round(newDelta)} units. ` +
+          `If the meter was reset, record a reset on the meter group first.`
+      );
     }
   }
 

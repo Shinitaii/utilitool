@@ -9,6 +9,7 @@ import {
   restoreTenant,
   updateTenant,
   updateBatchTenants,
+  clearCache,
 } from "./tenant.controller";
 import {
   CreateTenantBatchDTOSchema,
@@ -22,6 +23,12 @@ import {validateRequest} from "../../middlewares/validate-request.middleware";
 import {requireRole} from "../../middlewares/require-role.middleware";
 
 const router = Router();
+
+router.post(
+  "/cache/clear",
+  requireRole('admin'),
+  clearCache
+);
 
 router.post(
   "/batch",

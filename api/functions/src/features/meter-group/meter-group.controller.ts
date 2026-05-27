@@ -1,4 +1,5 @@
-﻿import {Request, Response} from "express";
+﻿import type {AuthenticatedRequest} from "../../utils/auth.util";
+import {Response} from "express";
 import {meterGroupService} from "./meter-group.service";
 import {
   CreateMeterGroupDTO,
@@ -7,31 +8,38 @@ import {
   UpdateMeterGroupDTO,
 } from "./meter-group.dto";
 import {AppError} from "../../utils/error.util";
+import {cacheDelPattern} from "../../utils/cache.util";
 
 export const createMeterGroup = async (
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
   const data = req.body as CreateMeterGroupDTO;
-  const result = await meterGroupService.create(data);
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
+  const result = await meterGroupService.create(userId, data);
   res.status(201).json(result);
 };
 
 export const createBatchMeterGroups = async (
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
   const data = req.body as CreateMeterGroupDTO[];
-  const result = await meterGroupService.createBatch(data);
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
+  const result = await meterGroupService.createBatch(userId, data);
   res.status(201).json(result);
 };
 
 export const getMeterGroupById = async (
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as MeterGroupByIdParamsDTO;
-  const meterGroup = await meterGroupService.getById(id);
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
+  const meterGroup = await meterGroupService.getById(userId, id);
 
   if (!meterGroup) {
     throw new AppError(404, "Meter group not found");
@@ -41,12 +49,14 @@ export const getMeterGroupById = async (
 };
 
 export const getMeterGroups = async (
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
   const query = req.query as unknown as GetMeterGroupsQueryDTO;
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
 
-  const result = await meterGroupService.search({
+  const result = await meterGroupService.search(userId, {
     meterName: query.meterName,
     utilityType: query.utilityType,
     sortBy: query.sortBy,
@@ -60,56 +70,76 @@ export const getMeterGroups = async (
 };
 
 export const updateMeterGroup = async (
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
   const {id} = req.params;
   const data = req.body as Partial<UpdateMeterGroupDTO>;
-  const result = await meterGroupService.update(id, data);
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
+  const result = await meterGroupService.update(userId, id, data);
   res.status(200).json(result);
 };
 
 export const updateBatchMeterGroups = async (
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
   const updates = req.body as { id: string; data: Partial<UpdateMeterGroupDTO> }[];
-  const result = await meterGroupService.updateBatch(updates);
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
+  const result = await meterGroupService.updateBatch(userId, updates);
   res.status(200).json(result);
 };
 
 export const deleteMeterGroup = async (
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
   const {id} = req.params;
-  await meterGroupService.delete(id);
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
+  await meterGroupService.delete(userId, id);
   res.status(204).send();
 };
 
 export const softDeleteMeterGroup = async (
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
   const {id} = req.params;
-  const result = await meterGroupService.softDelete(id);
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
+  const result = await meterGroupService.softDelete(userId, id);
   res.status(200).json(result);
 };
 
 export const restoreMeterGroup = async (
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
   const {id} = req.params;
-  const result = await meterGroupService.restore(id);
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
+  const result = await meterGroupService.restore(userId, id);
   res.status(200).json(result);
 };
 
 export const recordMeterGroupReset = async (
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as MeterGroupByIdParamsDTO;
-  const result = await meterGroupService.recordReset(id);
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
+  const result = await meterGroupService.recordReset(userId, id);
   res.status(200).json(result);
+};
+
+export const clearCache = async (
+  _req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  const deletedCount = await cacheDelPattern('utilitool:meter-groups:*');
+  res.status(200).json({ message: `Cleared ${deletedCount} cache entries for meter groups` });
 };

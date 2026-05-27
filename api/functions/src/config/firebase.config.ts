@@ -2,7 +2,7 @@
 import {getFirebaseAppOptions} from "./env.config";
 
 if (!admin.apps.length) {
-  admin.initializeApp(getFirebaseAppOptions());
+  admin.initializeApp({credential: admin.credential.cert(process.env.GOOGLE_APPLICATION_CREDENTIALS as string)});
 }
 
 export const firestore = admin.firestore();

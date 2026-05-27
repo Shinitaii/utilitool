@@ -5,8 +5,10 @@ import {tenantRepository} from "./tenant.repository";
 import {CreateTenantDTO, UpdateTenantDTO} from "./tenant.dto";
 import {Tenant} from "./tenant.model";
 import {TenantValidator} from "./tenant.validator";
+import {CachedRepository} from "../../lib/cached-repository.lib";
 
 const validator = new TenantValidator();
+const CACHE_TTL = 20 * 60; // 20 minutes
 
 type TenantSearchOptions = {
   tenantName?: string;
@@ -19,19 +21,19 @@ type TenantSearchOptions = {
 };
 
 export const tenantService = {
-  async create(data: CreateTenantDTO): Promise<Tenant> {
+  async create(userId: string, data: CreateTenantDTO): Promise<Tenant> {
     await validator.validateCreate(data);
-
-    return tenantRepository.create({
+    const cachedRepo = new CachedRepository(tenantRepository, userId, 'tenants', CACHE_TTL);
+    return cachedRepo.create({
       ...data,
       tenant_start_date: Timestamp.now(),
     });
   },
 
-  async createBatch(data: CreateTenantDTO[]): Promise<Tenant[]> {
+  async createBatch(userId: string, data: CreateTenantDTO[]): Promise<Tenant[]> {
     await validator.validateBatchCreate(data);
-
-    return tenantRepository.createBatch(
+    const cachedRepo = new CachedRepository(tenantRepository, userId, 'tenants', CACHE_TTL);
+    return cachedRepo.createBatch(
       data.map((item) => ({
         ...item,
         tenant_start_date: Timestamp.now(),
@@ -39,67 +41,70 @@ export const tenantService = {
     );
   },
 
-  async getById(id: string): Promise<Tenant | null> {
-    return tenantRepository.getById(id);
+  async getById(userId: string, id: string): Promise<Tenant | null> {
+    const cachedRepo = new CachedRepository(tenantRepository, userId, 'tenants', CACHE_TTL);
+    return cachedRepo.getById(id);
   },
 
-  async search(options: TenantSearchOptions): Promise<PaginatedResult<Tenant>> {
-    return tenantRepository.search({
+  async search(userId: string, options: TenantSearchOptions): Promise<PaginatedResult<Tenant>> {
+    const cachedRepo = new CachedRepository(tenantRepository, userId, 'tenants', CACHE_TTL);
+    return cachedRepo.search({
       limit: options.limit,
       orderBy: (options.sortBy ?? "created_at") as any,
       orderDirection: options.sortOrder ?? "desc",
       cursor: options.cursor,
       archived: options.archived,
       filters: {
-        ...(options.tenantName ? {tenant_name: options.tenantName} : {}),
-        ...(options.propertyId ? {property_id: options.propertyId} : {}),
+        ...(options.tenantName ? { tenant_name: options.tenantName } : {}),
+        ...(options.propertyId ? { property_id: options.propertyId } : {}),
       },
     });
   },
 
-  async update(id: string, data: UpdateTenantDTO): Promise<Tenant> {
+  async update(userId: string, id: string, data: UpdateTenantDTO): Promise<Tenant> {
     const tenant = await tenantRepository.getById(id);
-
     if (!tenant) {
       throw new AppError(404, "Tenant not found");
     }
 
     await validator.validateUpdate(tenant, data);
-    return tenantRepository.update(id, data);
+    const cachedRepo = new CachedRepository(tenantRepository, userId, 'tenants', CACHE_TTL);
+    return cachedRepo.update(id, data);
   },
 
-  async updateBatch(updates: { id: string; data: UpdateTenantDTO }[]): Promise<Tenant[]> {
+  async updateBatch(userId: string, updates: { id: string; data: UpdateTenantDTO }[]): Promise<Tenant[]> {
     await validator.validateBatchUpdate(updates);
-    return tenantRepository.updateBatch(updates);
+    const cachedRepo = new CachedRepository(tenantRepository, userId, 'tenants', CACHE_TTL);
+    return cachedRepo.updateBatch(updates);
   },
 
-  async delete(id: string): Promise<void> {
+  async delete(userId: string, id: string): Promise<void> {
     const tenant = await tenantRepository.getById(id);
-
     if (!tenant) {
       throw new AppError(404, "Tenant not found");
     }
 
-    await tenantRepository.delete(id);
+    const cachedRepo = new CachedRepository(tenantRepository, userId, 'tenants', CACHE_TTL);
+    await cachedRepo.delete(id);
   },
 
-  async softDelete(id: string): Promise<Tenant> {
+  async softDelete(userId: string, id: string): Promise<Tenant> {
     const tenant = await tenantRepository.getById(id);
-
     if (!tenant) {
       throw new AppError(404, "Tenant not found");
     }
 
-    return tenantRepository.softDelete(id);
+    const cachedRepo = new CachedRepository(tenantRepository, userId, 'tenants', CACHE_TTL);
+    return cachedRepo.softDelete(id);
   },
 
-  async restore(id: string): Promise<Tenant> {
+  async restore(userId: string, id: string): Promise<Tenant> {
     const tenant = await tenantRepository.getById(id);
-
     if (!tenant) {
       throw new AppError(404, "Tenant not found");
     }
 
-    return tenantRepository.restore(id);
+    const cachedRepo = new CachedRepository(tenantRepository, userId, 'tenants', CACHE_TTL);
+    return cachedRepo.restore(id);
   },
 };

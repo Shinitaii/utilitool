@@ -3,6 +3,7 @@
   import { listMeterGroups, type MeterGroup } from '../lib/api/meter-groups';
   import { listProperties, type Property } from '../lib/api/properties';
   import { createReadingsBatch, type CreateReadingRequest } from '../lib/api/readings';
+  import { sessionCache } from '../lib/stores/session';
   import BottomNav from '../components/BottomNav.svelte';
 
   let step = $state(1);
@@ -26,8 +27,13 @@
   $effect.pre(async () => {
     if (!meterGroupsLoaded) {
       try {
-        const res = await listMeterGroups();
-        meterGroups = res.data || [];
+        let cached = sessionCache.getMeterGroups();
+        if (!cached) {
+          const res = await listMeterGroups();
+          cached = res.data || [];
+          sessionCache.setMeterGroups(cached);
+        }
+        meterGroups = cached;
         meterGroupsLoaded = true;
       } catch (e) {
         error = 'Failed to load meter groups';
@@ -48,10 +54,17 @@
     try {
       isLoading = true;
       error = null;
-      const res = await listProperties();
+      let allProperties = sessionCache.getProperties();
+      if (!allProperties) {
+        const res = await listProperties();
+        allProperties = res.data || [];
+        sessionCache.setProperties(allProperties);
+      }
       // Filter properties that have the selected meter group
-      properties = (res.data || []).filter((p: Property) =>
-        Object.values(p.meter_groups).includes(selectedMeterGroupId)
+      properties = allProperties.filter((p: Property) =>
+        Object.values(p.meter_groups).some(
+          (entry) => entry.meter_group_id === selectedMeterGroupId
+        )
       );
 
       // Initialize readings object

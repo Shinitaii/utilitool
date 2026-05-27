@@ -9,8 +9,11 @@ import {AppError} from "../../utils/error.util";
 import {COLLECTIONS} from "../../constants/collection.constants";
 import {snapshotToModel} from "../../utils/firestore.util";
 import {validateMeterRollback} from "../reading/reading.util";
+import {cacheSet} from "../../utils/cache.util";
+import {CachedRepository} from "../../lib/cached-repository.lib";
 
 const validator = new BillingValidator();
+const CACHE_TTL = 10 * 60; // 10 minutes
 
 type BillingSearchOptions = {
   propertyId?: string;
@@ -22,7 +25,7 @@ type BillingSearchOptions = {
 };
 
 export const billingService = {
-  async create(data: CreateBillingDTO): Promise<Billing> {
+  async create(userId: string, data: CreateBillingDTO): Promise<Billing> {
     // Run validation + creation inside a transaction so referenced documents
     // cannot be deleted between validation reads and the billing write.
     let newBillingId: string | null = null;
@@ -91,37 +94,43 @@ export const billingService = {
 
     // Read the newly created document after the transaction commits
     const snap = await firestore.collection(COLLECTIONS.BILLINGS).doc(newBillingId!).get();
-    return snapshotToModel<Billing>(snap);
+    const billing = snapshotToModel<Billing>(snap);
+    await cacheSet(`utilitool:billings:id:${billing.id}`, billing, CACHE_TTL);
+    return billing;
   },
 
-  async createBatch(data: CreateBillingDTO[]): Promise<Billing[]> {
+  async createBatch(userId: string, data: CreateBillingDTO[]): Promise<Billing[]> {
     await validator.validateBatch(data);
-    return billingRepository.createBatch(
+    const cachedRepo = new CachedRepository(billingRepository, userId, 'billings', CACHE_TTL);
+    const created = await cachedRepo.createBatch(
       data.map((item) => ({
         ...item,
         payment_status: 'pending' as const,
       }))
     );
+    return created;
   },
 
-  async search(options: BillingSearchOptions): Promise<PaginatedResult<Billing>> {
-    return billingRepository.search({
+  async search(userId: string, options: BillingSearchOptions): Promise<PaginatedResult<Billing>> {
+    const cachedRepo = new CachedRepository(billingRepository, userId, 'billings', CACHE_TTL);
+    return cachedRepo.search({
       limit: options.limit,
       orderBy: (options.sortBy ?? "created_at") as any,
       orderDirection: options.sortOrder ?? "desc",
       cursor: options.cursor,
       archived: options.archived,
       filters: {
-        ...(options.propertyId ? {property_id: options.propertyId} : {}),
+        ...(options.propertyId ? { property_id: options.propertyId } : {}),
       },
     });
   },
 
-  async getById(id: string): Promise<Billing | null> {
-    return billingRepository.getById(id);
+  async getById(userId: string, id: string): Promise<Billing | null> {
+    const cachedRepo = new CachedRepository(billingRepository, userId, 'billings', CACHE_TTL);
+    return cachedRepo.getById(id);
   },
 
-  async update(id: string, data: Partial<CreateBillingDTO> & { payment_status?: 'pending' | 'paid'; paid_at?: string }): Promise<Billing> {
+  async update(userId: string, id: string, data: Partial<CreateBillingDTO> & { payment_status?: 'pending' | 'paid'; paid_at?: string }): Promise<Billing> {
     await validator.validateUpdate(data);
 
     const updateData = { ...data };
@@ -129,28 +138,33 @@ export const billingService = {
       updateData.paid_at = new Date().toISOString();
     }
 
-    return billingRepository.update(id, updateData);
+    const cachedRepo = new CachedRepository(billingRepository, userId, 'billings', CACHE_TTL);
+    return cachedRepo.update(id, updateData);
   },
 
-  async updateBatch(updates: {id: string, data: Partial<CreateBillingDTO>}[]): Promise<Billing[]> {
+  async updateBatch(userId: string, updates: {id: string, data: Partial<CreateBillingDTO>}[]): Promise<Billing[]> {
     await validator.validateUpdateBatch(updates);
-    return billingRepository.updateBatch(updates);
+    const cachedRepo = new CachedRepository(billingRepository, userId, 'billings', CACHE_TTL);
+    return cachedRepo.updateBatch(updates);
   },
 
-  async delete(id: string): Promise<void> {
-    return billingRepository.delete(id);
+  async delete(userId: string, id: string): Promise<void> {
+    const cachedRepo = new CachedRepository(billingRepository, userId, 'billings', CACHE_TTL);
+    await cachedRepo.delete(id);
   },
 
-  async softDelete(id: string): Promise<Billing> {
-    return billingRepository.softDelete(id);
+  async softDelete(userId: string, id: string): Promise<Billing> {
+    const cachedRepo = new CachedRepository(billingRepository, userId, 'billings', CACHE_TTL);
+    return cachedRepo.softDelete(id);
   },
 
-  async restore(id: string): Promise<Billing> {
+  async restore(userId: string, id: string): Promise<Billing> {
     const billing = await billingRepository.getById(id);
     if (!billing) {
       throw new AppError(404, "Billing not found");
     }
-    return billingRepository.restore(id);
+    const cachedRepo = new CachedRepository(billingRepository, userId, 'billings', CACHE_TTL);
+    return cachedRepo.restore(id);
   },
 
   /**
@@ -161,6 +175,8 @@ export const billingService = {
    *
    * Applies the meter_version rollback bypass: if currReading.meter_version differs
    * from prevReading.meter_version the reading_amount comparison is not enforced.
+   *
+   * Returns the newly generated billing ID for cache population post-transaction.
    */
   createFromReadings(
     txn: Transaction,
@@ -169,7 +185,7 @@ export const billingService = {
     currReadingId: string,
     prevReading: DocumentData,
     currReading: DocumentData,
-  ): void {
+  ): string {
     if (prevReading.meter_group_id !== currReading.meter_group_id) {
       throw new AppError(400, "Previous and current readings must belong to the same meter group");
     }
@@ -192,5 +208,6 @@ export const billingService = {
       is_deleted: false,
       deleted_at: null,
     });
+    return newRef.id;
   },
 };

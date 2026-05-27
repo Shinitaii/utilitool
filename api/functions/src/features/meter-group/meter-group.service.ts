@@ -8,8 +8,13 @@ import {MeterGroupValidator} from "./meter-group.validator";
 import {AppError} from "../../utils/error.util";
 import {collectionRef} from "../../lib/firestore.lib";
 import {COLLECTIONS} from "../../constants/collection.constants";
+import {listRemove, listAppend} from "../../utils/list-cache.util";
+import {cacheDel, cacheSet} from "../../utils/cache.util";
+import {cascadeDeleteMeterGroup, cascadeRestoreMeterGroup} from "../../utils/cascade-delete.util";
+import {CachedRepository} from "../../lib/cached-repository.lib";
 
 const validator = new MeterGroupValidator();
+const CACHE_TTL = 30 * 60; // 30 minutes
 
 type MeterGroupSearchOptions = {
   meterName?: string;
@@ -30,19 +35,48 @@ type MinimalMeterGroup = {
 
 type SummaryMeterGroup = Omit<MeterGroup, "versions">;
 
+function applyProjections(
+  result: PaginatedResult<MeterGroup>,
+  options: MeterGroupSearchOptions
+): PaginatedResult<MeterGroup | MinimalMeterGroup | SummaryMeterGroup> {
+  if (options.minimal) {
+    return {
+      ...result,
+      data: result.data.map((mg) => ({
+        id: mg.id,
+        meter_name: mg.meter_name,
+      })),
+    };
+  }
+
+  if (options.summary) {
+    return {
+      ...result,
+      data: result.data.map((mg) => {
+        const { versions, ...rest } = mg;
+        return rest;
+      }),
+    };
+  }
+
+  return result;
+}
+
 export const meterGroupService = {
-  async create(data: CreateMeterGroupDTO): Promise<MeterGroup> {
+  async create(userId: string, data: CreateMeterGroupDTO): Promise<MeterGroup> {
     await validator.validateCreate(data);
-    return meterGroupRepository.create({
+    const cachedRepo = new CachedRepository(meterGroupRepository, userId, 'meter-groups', CACHE_TTL);
+    return cachedRepo.create({
       ...data,
       current_version: 1,
       versions: {},
     });
   },
 
-  async createBatch(data: CreateMeterGroupDTO[]): Promise<MeterGroup[]> {
+  async createBatch(userId: string, data: CreateMeterGroupDTO[]): Promise<MeterGroup[]> {
     await validator.validateBatch(data);
-    return meterGroupRepository.createBatch(
+    const cachedRepo = new CachedRepository(meterGroupRepository, userId, 'meter-groups', CACHE_TTL);
+    return cachedRepo.createBatch(
       data.map((item) => ({
         ...item,
         current_version: 1,
@@ -52,60 +86,44 @@ export const meterGroupService = {
   },
 
   async search(
+    userId: string,
     options: MeterGroupSearchOptions
   ): Promise<PaginatedResult<MeterGroup | MinimalMeterGroup | SummaryMeterGroup>> {
-    const result = await meterGroupRepository.search({
+    const cachedRepo = new CachedRepository(meterGroupRepository, userId, 'meter-groups', CACHE_TTL);
+    const result = await cachedRepo.search({
       limit: options.limit,
       orderBy: (options.sortBy ?? "created_at") as any,
       orderDirection: options.sortOrder ?? "desc",
       cursor: options.cursor,
       archived: options.archived,
       filters: {
-        ...(options.meterName ? {meter_name: options.meterName} : {}),
-        ...(options.utilityType ? {utility_type: options.utilityType} : {}),
+        ...(options.meterName ? { meter_name: options.meterName } : {}),
+        ...(options.utilityType ? { utility_type: options.utilityType } : {}),
       },
     });
-
-    if (options.minimal) {
-      return {
-        ...result,
-        data: result.data.map((mg) => ({
-          id: mg.id,
-          meter_name: mg.meter_name,
-        })),
-      };
-    }
-
-    if (options.summary) {
-      return {
-        ...result,
-        data: result.data.map((mg) => {
-          const { versions, ...rest } = mg;
-          return rest;
-        }),
-      };
-    }
-
-    return result;
+    return applyProjections(result, options);
   },
 
-  async getById(id: string): Promise<MeterGroup | null> {
-    return meterGroupRepository.getById(id);
+  async getById(userId: string, id: string): Promise<MeterGroup | null> {
+    const cachedRepo = new CachedRepository(meterGroupRepository, userId, 'meter-groups', CACHE_TTL);
+    return cachedRepo.getById(id);
   },
 
-  async update(id: string, data: Partial<CreateMeterGroupDTO>): Promise<MeterGroup> {
+  async update(userId: string, id: string, data: Partial<CreateMeterGroupDTO>): Promise<MeterGroup> {
     const meterGroup = await meterGroupRepository.getById(id);
     if (!meterGroup) {
       throw new AppError(404, "Meter group not found");
     }
-    return meterGroupRepository.update(id, data);
+    const cachedRepo = new CachedRepository(meterGroupRepository, userId, 'meter-groups', CACHE_TTL);
+    return cachedRepo.update(id, data);
   },
 
-  async updateBatch(updates: {id: string, data: Partial<CreateMeterGroupDTO>}[]): Promise<MeterGroup[]> {
-    return meterGroupRepository.updateBatch(updates);
+  async updateBatch(userId: string, updates: {id: string, data: Partial<CreateMeterGroupDTO>}[]): Promise<MeterGroup[]> {
+    const cachedRepo = new CachedRepository(meterGroupRepository, userId, 'meter-groups', CACHE_TTL);
+    return cachedRepo.updateBatch(updates);
   },
 
-  async delete(id: string): Promise<void> {
+  async delete(userId: string, id: string): Promise<void> {
     // Prevent hard delete if any active readings reference this meter group
     const readingsSnap = await collectionRef(COLLECTIONS.READINGS)
       .where("meter_group_id", "==", id)
@@ -117,22 +135,36 @@ export const meterGroupService = {
       throw new AppError(409, "Cannot delete meter group: it has active readings. Archive readings first.");
     }
 
-    return meterGroupRepository.delete(id);
+    const cachedRepo = new CachedRepository(meterGroupRepository, userId, 'meter-groups', CACHE_TTL);
+    await cachedRepo.delete(id);
   },
 
-  async softDelete(id: string): Promise<MeterGroup> {
-    return meterGroupRepository.softDelete(id);
-  },
-
-  async restore(id: string): Promise<MeterGroup> {
+  async softDelete(userId: string, id: string): Promise<MeterGroup> {
     const meterGroup = await meterGroupRepository.getById(id);
     if (!meterGroup) {
       throw new AppError(404, "Meter group not found");
     }
-    return meterGroupRepository.restore(id);
+
+    await cascadeDeleteMeterGroup(id);
+    const deleted = await meterGroupRepository.getById(id);
+    await listRemove(`utilitool:meter-groups:all:${userId}`, id);
+    await cacheDel(`utilitool:meter-groups:id:${id}`);
+    return deleted!;
   },
 
-  async recordReset(id: string): Promise<MeterGroup> {
+  async restore(userId: string, id: string): Promise<MeterGroup> {
+    const meterGroup = await meterGroupRepository.getById(id);
+    if (!meterGroup) {
+      throw new AppError(404, "Meter group not found");
+    }
+    await cascadeRestoreMeterGroup(id);
+    const restored = await meterGroupRepository.getById(id);
+    await cacheSet(`utilitool:meter-groups:id:${id}`, restored!, CACHE_TTL);
+    await listAppend(`utilitool:meter-groups:all:${userId}`, restored!);
+    return restored!;
+  },
+
+  async recordReset(userId: string, id: string): Promise<MeterGroup> {
     const meterGroup = await meterGroupRepository.getById(id);
     if (!meterGroup) {
       throw new AppError(404, "Meter group not found");
@@ -165,6 +197,7 @@ export const meterGroupService = {
       current_version: currentVersion + 1,
       versions: updatedVersions,
     };
-    return meterGroupRepository.update(id, updatePayload);
+    const cachedRepo = new CachedRepository(meterGroupRepository, userId, 'meter-groups', CACHE_TTL);
+    return cachedRepo.update(id, updatePayload);
   },
 };

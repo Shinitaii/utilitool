@@ -9,6 +9,8 @@ import { readingPaths } from '../features/reading/reading.swagger';
 import { billingPaths } from '../features/billing/billing.swagger';
 import { billingCyclePaths } from '../features/billing-cycle/billing-cycle.swagger';
 import { billsPaths } from '../features/bills/bills.swagger';
+import { paths as imageExtractionPaths } from '../features/image-extraction/image-extraction.swagger';
+import { reportsPaths } from '../features/reports/reports.swagger';
 
 const swaggerSpec = {
   openapi: '3.0.3',
@@ -705,6 +707,158 @@ const swaggerSpec = {
         },
         required: ['data', 'nextCursor', 'hasMore'],
       },
+      // Reports
+      ReportSummary: {
+        type: 'object',
+        properties: {
+          total_revenue: {
+            type: 'number',
+            description: 'Total amount collected',
+          },
+          total_billed: {
+            type: 'number',
+            description: 'Total amount billed',
+          },
+          collection_rate: {
+            type: 'number',
+            description: 'Collection rate (0-1)',
+          },
+          paid_count: {
+            type: 'integer',
+            description: 'Number of paid billings',
+          },
+          pending_count: {
+            type: 'integer',
+            description: 'Number of pending billings',
+          },
+          overdue_count: {
+            type: 'integer',
+            description: 'Number of overdue billings',
+          },
+          pending_amount: {
+            type: 'number',
+            description: 'Total pending amount',
+          },
+          overdue_amount: {
+            type: 'number',
+            description: 'Total overdue amount',
+          },
+        },
+        required: ['total_revenue', 'total_billed', 'collection_rate', 'paid_count', 'pending_count', 'overdue_count', 'pending_amount', 'overdue_amount'],
+      },
+      ConsumptionByMonth: {
+        type: 'object',
+        properties: {
+          period: {
+            type: 'string',
+            description: 'Year-month (YYYY-MM)',
+          },
+          electricity: {
+            type: 'number',
+          },
+          water: {
+            type: 'number',
+          },
+        },
+        required: ['period', 'electricity', 'water'],
+      },
+      ConsumptionByProperty: {
+        type: 'object',
+        properties: {
+          property_id: {
+            type: 'string',
+          },
+          room_name: {
+            type: 'string',
+          },
+          electricity: {
+            type: 'number',
+          },
+          water: {
+            type: 'number',
+          },
+        },
+        required: ['property_id', 'room_name', 'electricity', 'water'],
+      },
+      ConsumptionReport: {
+        type: 'object',
+        properties: {
+          by_month: {
+            type: 'array',
+            items: {
+              $ref: '#/components/schemas/ConsumptionByMonth',
+            },
+          },
+          by_property: {
+            type: 'array',
+            items: {
+              $ref: '#/components/schemas/ConsumptionByProperty',
+            },
+          },
+        },
+        required: ['by_month', 'by_property'],
+      },
+      BillingTrendByMonth: {
+        type: 'object',
+        properties: {
+          period: {
+            type: 'string',
+            description: 'Year-month (YYYY-MM)',
+          },
+          total_billed: {
+            type: 'number',
+          },
+          total_collected: {
+            type: 'number',
+          },
+          total_pending: {
+            type: 'number',
+          },
+          total_overdue: {
+            type: 'number',
+          },
+        },
+        required: ['period', 'total_billed', 'total_collected', 'total_pending', 'total_overdue'],
+      },
+      BillingTrendsReport: {
+        type: 'object',
+        properties: {
+          by_month: {
+            type: 'array',
+            items: {
+              $ref: '#/components/schemas/BillingTrendByMonth',
+            },
+          },
+        },
+        required: ['by_month'],
+      },
+      CollectionStatusItem: {
+        type: 'object',
+        properties: {
+          count: {
+            type: 'integer',
+          },
+          amount: {
+            type: 'number',
+          },
+        },
+        required: ['count', 'amount'],
+      },
+      CollectionStatusReport: {
+        type: 'object',
+        properties: {
+          paid: {
+            $ref: '#/components/schemas/CollectionStatusItem',
+          },
+          pending: {
+            $ref: '#/components/schemas/CollectionStatusItem',
+          },
+          overdue: {
+            $ref: '#/components/schemas/CollectionStatusItem',
+          },
+        },
+        required: ['paid', 'pending', 'overdue'],
+      },
       OcrBillRequest: {
         type: 'object',
         required: ['image_url'],
@@ -768,6 +922,8 @@ const swaggerSpec = {
     ...billingPaths,
     ...billingCyclePaths,
     ...billsPaths,
+    ...imageExtractionPaths,
+    ...reportsPaths,
   },
 };
 

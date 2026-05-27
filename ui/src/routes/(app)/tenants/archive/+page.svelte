@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getTenants, restoreTenant, deleteTenant } from '$lib/api/tenants';
+  import { getTenants, restoreTenant, deleteTenant, clearCache } from '$lib/api/tenants';
   import { getProperties } from '$lib/api/properties';
   import type { Tenant } from '$lib/types/tenant.types';
   import type { Property } from '$lib/types/property.types';
@@ -8,6 +8,7 @@
   import { formatDate } from '$lib/utils/format';
   import { toDate } from '$lib/utils/timestamp';
   import ArchivePageTemplate from '$lib/components/shared/ArchivePageTemplate.svelte';
+  import { Trash2 } from 'lucide-svelte';
 
   let data = $state<PaginatedResult<Tenant>>({
     data: [],
@@ -19,6 +20,7 @@
   let error = $state('');
   let restoringId = $state<string | null>(null);
   let deletingId = $state<string | null>(null);
+  let isClearing = $state(false);
 
   const columns = [
     { key: 'tenant_name', label: 'Tenant Name' },
@@ -80,17 +82,42 @@
       }
     }
   }
+
+  async function handleClearCache() {
+    isClearing = true;
+    try {
+      const result = await clearCache();
+      error = result.message;
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to clear cache';
+    } finally {
+      isClearing = false;
+    }
+  }
 </script>
 
-<ArchivePageTemplate
-  title="Tenants"
-  isEmpty={data.data.length === 0}
-  isLoading={isLoading}
-  error={error}
-  items={data.data}
-  columns={columns}
-  onRestore={handleRestore}
-  onHardDelete={handleHardDelete}
-  restoringId={restoringId}
-  deletingId={deletingId}
-/>
+<div class="space-y-4">
+  <div class="flex justify-end">
+    <button
+      onclick={handleClearCache}
+      disabled={isClearing}
+      class="flex items-center gap-2 px-3 py-2 rounded bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50 font-medium text-sm"
+    >
+      <Trash2 size={16} />
+      {isClearing ? 'Clearing...' : 'Clear Cache'}
+    </button>
+  </div>
+
+  <ArchivePageTemplate
+    title="Tenants"
+    isEmpty={data.data.length === 0}
+    isLoading={isLoading}
+    error={error}
+    items={data.data}
+    columns={columns}
+    onRestore={handleRestore}
+    onHardDelete={handleHardDelete}
+    restoringId={restoringId}
+    deletingId={deletingId}
+  />
+</div>

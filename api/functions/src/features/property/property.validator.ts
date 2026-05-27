@@ -56,10 +56,12 @@ export class PropertyValidator {
   }
 
   private async ensureMainMeterUniqueness(
-    meterGroups: Record<string, MeterGroupEntry>,
+    meterGroups: Record<string, MeterGroupEntry | undefined>,
     excludePropertyId?: string
   ): Promise<void> {
-    const mainMeterEntries = Object.values(meterGroups).filter(e => e.is_main_meter);
+    const mainMeterEntries = Object.values(meterGroups)
+      .filter((e): e is MeterGroupEntry => e !== undefined)
+      .filter(e => e.is_main_meter);
     if (mainMeterEntries.length === 0) return;
 
     // Fetch all properties with cursor-based pagination to avoid the 100-item hard limit
@@ -93,7 +95,9 @@ export class PropertyValidator {
   }
 
   async validateCreate(data: CreatePropertyDTO): Promise<void> {
-    const meterGroupIds = Object.values(data.meter_groups).map((e) => e.meter_group_id);
+    const meterGroupIds = Object.values(data.meter_groups)
+      .filter((e): e is MeterGroupEntry => e !== undefined)
+      .map((e) => e.meter_group_id);
     await this.ensureMeterGroupsExist(meterGroupIds);
     await this.ensureMainMeterUniqueness(data.meter_groups);
 
@@ -115,7 +119,9 @@ export class PropertyValidator {
         throw new AppError(409, "Room name already exists");
       }
       seenRoomNames.add(normalizedRoomName);
-      Object.values(item.meter_groups).forEach((e) => allMeterGroupIds.add(e.meter_group_id));
+      Object.values(item.meter_groups)
+        .filter((e): e is MeterGroupEntry => e !== undefined)
+        .forEach((e) => allMeterGroupIds.add(e.meter_group_id));
     }
 
     await this.ensureMeterGroupsExist(Array.from(allMeterGroupIds));
@@ -123,7 +129,7 @@ export class PropertyValidator {
     // Check for intra-batch main meter conflicts before per-item validation
     const batchMainMeters = new Map<string, string>(); // meter_group_id → room_name claiming it
     for (const item of data) {
-      for (const entry of Object.values(item.meter_groups)) {
+      for (const entry of Object.values(item.meter_groups).filter((e): e is MeterGroupEntry => e !== undefined)) {
         if (!entry.is_main_meter) continue;
         if (batchMainMeters.has(entry.meter_group_id)) {
           throw new AppError(
@@ -147,7 +153,9 @@ export class PropertyValidator {
 
   async validateUpdate(property: Property, data: UpdatePropertyDTO): Promise<void> {
     if (data.meter_groups) {
-      const meterGroupIds = Object.values(data.meter_groups).map((e) => e.meter_group_id);
+      const meterGroupIds = Object.values(data.meter_groups)
+        .filter((e): e is MeterGroupEntry => e !== undefined)
+        .map((e) => e.meter_group_id);
       await this.ensureMeterGroupsExist(meterGroupIds);
       await this.ensureMainMeterUniqueness(data.meter_groups, property.id);
     }

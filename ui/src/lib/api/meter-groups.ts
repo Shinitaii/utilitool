@@ -59,3 +59,7 @@ export async function restoreMeterGroup(id: string): Promise<MeterGroup> {
 export async function recordMeterGroupReset(id: string): Promise<MeterGroup> {
   return apiPost<MeterGroup>(`/meter-groups/${id}/reset`, {});
 }
+
+export async function clearCache(): Promise<{ message: string }> {
+  return apiPost<{ message: string }>('/meter-groups/cache/clear', {});
+}

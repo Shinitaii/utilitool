@@ -1,10 +1,12 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from './client';
-import type { Reading, CreateReadingRequest, UpdateReadingRequest } from '$lib/types/reading.types';
+import type { Reading, CreateReadingRequest, CreateSeedReadingRequest, UpdateReadingRequest } from '$lib/types/reading.types';
 import type { PaginatedResult } from '$lib/types/api.types';
 
 export async function getReadings(params?: {
   meterGroupId?: string;
   propertyId?: string;
+  startDate?: string;
+  endDate?: string;
   limit?: number;
   cursor?: string;
   archived?: boolean;
@@ -12,6 +14,8 @@ export async function getReadings(params?: {
   const query = new URLSearchParams();
   if (params?.meterGroupId) query.set('meterGroupId', params.meterGroupId);
   if (params?.propertyId) query.set('propertyId', params.propertyId);
+  if (params?.startDate) query.set('startDate', params.startDate);
+  if (params?.endDate) query.set('endDate', params.endDate);
   if (params?.limit) query.set('limit', params.limit.toString());
   if (params?.cursor) query.set('cursor', params.cursor);
   if (params?.archived) query.set('archived', 'true');
@@ -33,6 +37,13 @@ export async function createReading(data: CreateReadingRequest): Promise<Reading
 
 export async function createReadingsBatch(data: CreateReadingRequest[]): Promise<Reading[]> {
   return apiPost<Reading[]>('/readings/batch', data);
+}
+
+export async function createSeedReading(data: CreateSeedReadingRequest): Promise<Reading> {
+  return apiPost<Reading>('/readings/seed', {
+    ...data,
+    reading_date: typeof data.reading_date === 'string' ? data.reading_date : data.reading_date
+  });
 }
 
 export async function updateReading(id: string, data: UpdateReadingRequest): Promise<Reading> {
@@ -59,4 +70,8 @@ export async function restoreReading(id: string): Promise<Reading> {
 
 export async function ocrReadingImage(imageUrl: string): Promise<{ suggested_reading_amount: number | null }> {
   return apiPost<{ suggested_reading_amount: number | null }>('/readings/ocr', { image_url: imageUrl });
+}
+
+export async function clearCache(): Promise<{ message: string }> {
+  return apiPost<{ message: string }>('/readings/cache/clear', {});
 }

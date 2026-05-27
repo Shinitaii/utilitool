@@ -13,15 +13,14 @@ export const CreatePropertyDTOSchema = z
     tenant_amount: z.number().int().min(1),
     meter_groups: z.record(
       z.enum(Object.values(UTILITY_TYPES) as [string, ...string[]]),
-      MeterGroupEntrySchema
+      MeterGroupEntrySchema.optional()
     ),
   })
   .refine(
     (data) =>
-      data.meter_groups[UTILITY_TYPES.ELECTRICITY] &&
-      data.meter_groups[UTILITY_TYPES.WATER],
+      Object.values(data.meter_groups).some(v => v !== undefined),
     {
-      message: "Property must have both electricity and water meter groups",
+      message: "Property must have at least one meter group (electricity or water)",
       path: ["meter_groups"],
     }
   );
@@ -43,7 +42,7 @@ const UpdatePropertyBaseDTOSchema = z.object({
   tenant_amount: z.number().int().min(1).optional(),
   meter_groups: z.record(
     z.enum(Object.values(UTILITY_TYPES) as [string, ...string[]]),
-    MeterGroupEntrySchema
+    MeterGroupEntrySchema.optional()
   ).optional(),
 });
 

@@ -43,12 +43,15 @@ mobile/
 │   │   ├── ReadingHistory.svelte   → Filterable reading list
 │   │   ├── Billings.svelte     → Grouped billings + mark-as-paid
 │   │   └── Settings.svelte     → Account info + sign out
-│   └── lib/api/
-│       ├── client.ts           → Base fetch: Bearer token + 401 retry
-│       ├── meter-groups.ts     → listMeterGroups, getMeterGroup
-│       ├── readings.ts         → listReadings, getReading, createReading, createReadingsBatch
-│       ├── properties.ts       → listProperties, getProperty
-│       └── billings.ts         → listBillings, getBilling, updateBillingStatus
+│   └── lib/
+│       ├── api/
+│       │   ├── client.ts           → Base fetch: Bearer token + 401 retry
+│       │   ├── meter-groups.ts     → listMeterGroups, getMeterGroup
+│       │   ├── readings.ts         → listReadings, getReading, createReading, createReadingsBatch
+│       │   ├── properties.ts       → listProperties, getProperty
+│       │   └── billings.ts         → listBillings, getBilling, updateBillingStatus
+│       └── stores/
+│           └── session.ts          → sessionCache: module-level cache for meterGroups + properties (survives screen nav, cleared on sign-out)
 ├── capacitor.config.ts         → App ID, webDir, Camera plugin config
 ├── vite.config.ts
 ├── package.json
@@ -115,6 +118,22 @@ Two cascading filters:
 `src/screens/Billings.svelte`
 
 Groups billings into Overdue → Pending → Paid sections. Expanding a card reveals "Mark as Paid" which calls `PATCH /billings/:id`.
+
+---
+
+## Session Cache
+
+`src/lib/stores/session.ts` provides `sessionCache` — a module-level cache that survives screen navigation (unlike component-local state) and is cleared on sign-out.
+
+```ts
+sessionCache.getMeterGroups()         // → MeterGroup[] | null
+sessionCache.setMeterGroups(data)     // store after API fetch
+sessionCache.getProperties()          // → Property[] | null
+sessionCache.setProperties(data)
+sessionCache.clear()                  // called on logout in App.svelte
+```
+
+**Why**: Avoids re-fetching meter groups and properties on every screen mount during a session. Use this cache in screens that need these lists (e.g., CaptureReadings selects a meter group; ReadingHistory filters by property).
 
 ---
 

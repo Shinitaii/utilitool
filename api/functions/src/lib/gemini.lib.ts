@@ -34,7 +34,7 @@ class GeminiLib {
     }
 
     try {
-      const model = this.client.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
+      const model = this.client.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
 
       const { buffer, mimeType } = await this.fetchImageAsBuffer(imageUrl);
 
@@ -76,7 +76,7 @@ class GeminiLib {
     }
 
     try {
-      const model = this.client.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
+      const model = this.client.getGenerativeModel({ model: 'gemini-3.1-flash-lite' });
 
       const { buffer, mimeType } = await this.fetchImageAsBuffer(imageUrl);
 
