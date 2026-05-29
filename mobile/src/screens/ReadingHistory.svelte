@@ -2,6 +2,7 @@
   import { listReadings, type Reading } from '../lib/api/readings';
   import { listMeterGroups, type MeterGroup } from '../lib/api/meter-groups';
   import { listProperties, type Property } from '../lib/api/properties';
+  import { getReadingUnit } from '../lib/utils/format';
   import { sessionCache } from '../lib/stores/session';
   import BottomNav from '../components/BottomNav.svelte';
 
@@ -36,7 +37,7 @@
       : utilityFilteredReadings
   );
 
-  $effect.pre(async () => {
+  $effect(async () => {
     try {
       // Fetch readings (always fresh, not cached)
       const readingsRes = await listReadings();
@@ -85,7 +86,8 @@
   }
 
   function getUnit(meterGroupId: string): string {
-    return meterGroupMap[meterGroupId]?.utility_type === 'water' ? 'm³' : 'kWh';
+    const utilityType = meterGroupMap[meterGroupId]?.utility_type || 'electricity';
+    return getReadingUnit(utilityType);
   }
 </script>
 

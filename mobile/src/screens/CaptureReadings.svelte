@@ -3,6 +3,7 @@
   import { listMeterGroups, type MeterGroup } from '../lib/api/meter-groups';
   import { listProperties, type Property } from '../lib/api/properties';
   import { createReadingsBatch, type CreateReadingRequest } from '../lib/api/readings';
+  import { getReadingUnit } from '../lib/utils/format';
   import { sessionCache } from '../lib/stores/session';
   import BottomNav from '../components/BottomNav.svelte';
 
@@ -21,7 +22,7 @@
   let propertyReadings: Record<string, { amount: number; image_url: string }> = $state({});
 
   const selectedMeterGroup = $derived(meterGroups.find(g => g.id === selectedMeterGroupId));
-  const readingUnit = $derived(selectedMeterGroup?.utility_type === 'water' ? 'm³' : 'kWh');
+  const readingUnit = $derived(selectedMeterGroup ? getReadingUnit(selectedMeterGroup.utility_type) : 'kWh');
 
   // Effects
   $effect(async () => {
