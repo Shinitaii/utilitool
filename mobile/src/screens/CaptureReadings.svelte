@@ -24,7 +24,7 @@
   const readingUnit = $derived(selectedMeterGroup?.utility_type === 'water' ? 'm³' : 'kWh');
 
   // Effects
-  $effect.pre(async () => {
+  $effect(async () => {
     if (!meterGroupsLoaded) {
       try {
         let cached = sessionCache.getMeterGroups();

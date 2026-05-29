@@ -1,17 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Bar, Line } from 'svelte-chartjs';
-  import {
-    Chart as ChartJS,
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    BarElement,
-    Title,
-    Tooltip,
-    Legend,
-  } from 'chart.js';
+  let Bar: any;
+  let Line: any;
   import {
     getSummaryReport,
     getConsumptionReport,
@@ -29,8 +19,6 @@
   } from '$lib/types/reports.types';
   import type { MeterGroup } from '$lib/types/meter-group.types';
   import type { Property } from '$lib/types/property.types';
-
-  ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend);
 
   let isLoading = $state(true);
   let error = $state('');
@@ -187,9 +175,32 @@
     }
   }
 
-  onMount(() => {
-    loadFilters();
-    loadReports();
+  onMount(async () => {
+    // Lazy-load Chart.js and components
+    const [{ Bar: BarComponent, Line: LineComponent }, ChartModule] = await Promise.all([
+      import('svelte-chartjs'),
+      import('chart.js'),
+    ]);
+
+    Bar = BarComponent;
+    Line = LineComponent;
+
+    const {
+      Chart: ChartJS,
+      CategoryScale,
+      LinearScale,
+      PointElement,
+      LineElement,
+      BarElement,
+      Title,
+      Tooltip,
+      Legend,
+    } = ChartModule;
+
+    ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend);
+
+    await loadFilters();
+    await loadReports();
   });
 
   function handleApplyFilters() {

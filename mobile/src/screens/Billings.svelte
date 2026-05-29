@@ -10,7 +10,7 @@
   let error: string | null = $state(null);
   let expandedBillings: Set<string> = $state(new Set());
 
-  $effect.pre(async () => {
+  $effect(async () => {
     try {
       const res = await listBillings();
       billings = res.data || [];

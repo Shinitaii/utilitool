@@ -34,6 +34,7 @@ async function request(endpoint: string, options: RequestInit = {}) {
 
 export async function apiGet(endpoint: string) {
   const res = await request(endpoint, { method: 'GET' });
+  if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
   return res.json();
 }
 
@@ -42,6 +43,7 @@ export async function apiPost(endpoint: string, data: any) {
     method: 'POST',
     body: JSON.stringify(data)
   });
+  if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
   return res.json();
 }
 
@@ -50,9 +52,12 @@ export async function apiPatch(endpoint: string, data: any) {
     method: 'PATCH',
     body: JSON.stringify(data)
   });
+  if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
   return res.json();
 }
 
 export async function apiDelete(endpoint: string) {
-  return request(endpoint, { method: 'DELETE' });
+  const res = await request(endpoint, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+  return res;
 }

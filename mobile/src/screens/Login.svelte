@@ -1,6 +1,7 @@
 <script lang="ts">
   import { signInWithEmailAndPassword } from 'firebase/auth';
   import { auth } from '../firebase';
+  import { getReadableAuthError } from '../lib/utils/auth-errors';
 
   let email = $state('');
   let password = $state('');
@@ -15,7 +16,7 @@
       await signInWithEmailAndPassword(auth, email, password);
       window.location.hash = '#/home';
     } catch (err: any) {
-      error = err.message || 'Login failed';
+      error = getReadableAuthError(err);
     } finally {
       loading = false;
     }

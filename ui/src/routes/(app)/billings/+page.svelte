@@ -547,12 +547,13 @@
         const startDateStr = escHtml(formatDate(toDate(cycle.billing_start_date)));
         const endDateStr = escHtml(formatDate(toDate(cycle.billing_end_date)));
 
+        const escapedUtilityType = escHtml(utilityType);
         const receipt = `
           <div style="border: 2px dashed #333; padding: 8px; page-break-inside: avoid; background: white;">
             <!-- Header -->
             <div style="margin-bottom: 8px; font-family: Helvetica, Arial, sans-serif;">
               <h3 style="margin: 0 0 2px 0; font-size: 23px; font-weight: bold;">${roomName}</h3>
-              <p style="margin: 0; font-size: 18px;"><span style="text-transform: capitalize;">${utilityType}</span> (${startDateStr} - ${endDateStr})</p>
+              <p style="margin: 0; font-size: 18px;"><span style="text-transform: capitalize;">${escapedUtilityType}</span> (${startDateStr} - ${endDateStr})</p>
             </div>
 
             <!-- Reading Calculation -->
