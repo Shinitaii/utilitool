@@ -46,6 +46,8 @@
   let error = $state('');
   let searchQuery = $state('');
   let activeTab = $state<'tenants' | 'readings' | 'billings' | 'history'>('tenants');
+  let readingsUtilityFilter = $state<'all' | 'electricity' | 'water'>('all');
+  let billingsUtilityFilter = $state<'all' | 'electricity' | 'water'>('all');
   let showNewPropertyForm = $state(false);
   let isUpdating = $state(false);
 
@@ -82,6 +84,24 @@
         )
       : properties.data
   );
+
+  const filteredReadings = $derived.by(() => {
+    if (readingsUtilityFilter === 'all') return readings.data;
+    return readings.data.filter(r => {
+      const meterGroup = electricityMeters.find(m => m.id === r.meter_group_id) || waterMeters.find(m => m.id === r.meter_group_id);
+      return meterGroup?.utility_type === readingsUtilityFilter;
+    });
+  });
+
+  const filteredBillings = $derived.by(() => {
+    if (billingsUtilityFilter === 'all') return billings.data;
+    return billings.data.filter(b => {
+      const prevReading = readings.data.find(r => r.id === b.previous_reading_id);
+      if (!prevReading) return false;
+      const meterGroup = electricityMeters.find(m => m.id === prevReading.meter_group_id) || waterMeters.find(m => m.id === prevReading.meter_group_id);
+      return meterGroup?.utility_type === billingsUtilityFilter;
+    });
+  });
 
   function getMeterGroupName(meterGroupId: string): string {
     const found = electricityMeters.find(m => m.id === meterGroupId) || waterMeters.find(m => m.id === meterGroupId);
@@ -222,6 +242,8 @@
 
   async function handleTabChange(tab: typeof activeTab) {
     activeTab = tab;
+    readingsUtilityFilter = 'all';
+    billingsUtilityFilter = 'all';
     tenants = [];
     readings = { data: [], nextCursor: null, hasMore: false };
     billings = { data: [], nextCursor: null, hasMore: false };
@@ -678,82 +700,118 @@
               </div>
             {:else if activeTab === 'readings'}
               <div role="tabpanel" id="tab-panel-readings" aria-labelledby="tab-readings">
-              {#if readings.data.length === 0}
-                <div class="p-6">
-                  <EmptyState
-                    title="No readings"
-                    message="Create readings to track meter consumption"
-                  />
+                <!-- Utility type filter tabs -->
+                <div class="border-b border-gray-200">
+                  <div class="flex gap-1 px-6 pt-4">
+                    {#each [['all', 'All'], ['electricity', 'Electricity'], ['water', 'Water']] as [value, label]}
+                      <button
+                        onclick={() => { readingsUtilityFilter = value as typeof readingsUtilityFilter; }}
+                        class="px-4 py-2 text-sm font-medium rounded-t transition-colors"
+                        style={readingsUtilityFilter === value
+                          ? 'background-color: #f3f4f6; color: #1f2937; border-bottom: 2px solid #3b82f6;'
+                          : 'color: #6b7280; border-bottom: 2px solid transparent;'}
+                      >
+                        {label}
+                      </button>
+                    {/each}
+                  </div>
                 </div>
-              {:else}
-                <div class="overflow-x-auto">
-                  <table class="w-full text-sm">
-                    <thead class="border-b border-gray-200 bg-gray-50">
-                      <tr>
-                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Meter Group</th>
-                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Reading</th>
-                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {#each readings.data as reading (reading.id)}
-                        {@const meterGroup = electricityMeters.find(m => m.id === reading.meter_group_id) || waterMeters.find(m => m.id === reading.meter_group_id)}
-                        <tr class="border-b border-gray-200 hover:bg-gray-50">
-                          <td class="px-6 py-4 text-gray-700">
-                            {meterGroup?.meter_name || 'Unknown'}
-                          </td>
-                          <td class="px-6 py-4 font-mono text-gray-700">
-                            {formatReading(reading.reading_amount, meterGroup?.utility_type || 'electricity')}
-                          </td>
-                          <td class="px-6 py-4 text-gray-600">
-                            {formatDate(toDate(reading.reading_date))}
-                          </td>
+
+                {#if filteredReadings.length === 0}
+                  <div class="p-6">
+                    <EmptyState
+                      title="No readings"
+                      message="Create readings to track meter consumption"
+                    />
+                  </div>
+                {:else}
+                  <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                      <thead class="border-b border-gray-200 bg-gray-50">
+                        <tr>
+                          <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Meter Group</th>
+                          <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Reading</th>
+                          <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Date</th>
                         </tr>
-                      {/each}
-                    </tbody>
-                  </table>
-                </div>
-              {/if}
+                      </thead>
+                      <tbody>
+                        {#each filteredReadings as reading (reading.id)}
+                          {@const meterGroup = electricityMeters.find(m => m.id === reading.meter_group_id) || waterMeters.find(m => m.id === reading.meter_group_id)}
+                          <tr class="border-b border-gray-200 hover:bg-gray-50">
+                            <td class="px-6 py-4 text-gray-700">
+                              {meterGroup?.meter_name || 'Unknown'}
+                            </td>
+                            <td class="px-6 py-4 font-mono text-gray-700">
+                              {formatReading(reading.reading_amount, meterGroup?.utility_type || 'electricity')}
+                            </td>
+                            <td class="px-6 py-4 text-gray-600">
+                              {formatDate(toDate(reading.reading_date))}
+                            </td>
+                          </tr>
+                        {/each}
+                      </tbody>
+                    </table>
+                  </div>
+                {/if}
               </div>
             {:else if activeTab === 'billings'}
               <div role="tabpanel" id="tab-panel-billings" aria-labelledby="tab-billings">
-              {#if billings.data.length === 0}
-                <div class="p-6">
-                  <EmptyState title="No billings" message="Create a billing cycle to generate bills" />
+                <!-- Utility type filter tabs -->
+                <div class="border-b border-gray-200">
+                  <div class="flex gap-1 px-6 pt-4">
+                    {#each [['all', 'All'], ['electricity', 'Electricity'], ['water', 'Water']] as [value, label]}
+                      <button
+                        onclick={() => { billingsUtilityFilter = value as typeof billingsUtilityFilter; }}
+                        class="px-4 py-2 text-sm font-medium rounded-t transition-colors"
+                        style={billingsUtilityFilter === value
+                          ? 'background-color: #f3f4f6; color: #1f2937; border-bottom: 2px solid #3b82f6;'
+                          : 'color: #6b7280; border-bottom: 2px solid transparent;'}
+                      >
+                        {label}
+                      </button>
+                    {/each}
+                  </div>
                 </div>
-              {:else}
-                <div class="overflow-x-auto">
-                  <table class="w-full text-sm">
-                    <thead class="border-b border-gray-200 bg-gray-50">
-                      <tr>
-                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700"
-                          >Previous Reading</th
-                        >
-                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Current Reading</th>
-                        <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Date Range</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {#each billings.data as billing (billing.id)}
-                        {@const prevReading = readings.data.find(r => r.id === billing.previous_reading_id)}
-                        {@const currReading = readings.data.find(r => r.id === billing.current_reading_id)}
-                        {@const meterGroup = prevReading ? (electricityMeters.find(m => m.id === prevReading.meter_group_id) || waterMeters.find(m => m.id === prevReading.meter_group_id)) : null}
-                        <tr class="border-b border-gray-200 hover:bg-gray-50">
-                          <td class="px-6 py-4 font-mono text-gray-700">
-                            {prevReading ? formatReading(prevReading.reading_amount, meterGroup?.utility_type || 'electricity') : 'N/A'}
-                          </td>
-                          <td class="px-6 py-4 font-mono text-gray-700">
-                            {currReading ? formatReading(currReading.reading_amount, meterGroup?.utility_type || 'electricity') : 'N/A'}
-                          </td>
-                          <td class="px-6 py-4 text-gray-600">
-                            {prevReading && currReading ? formatDate(toDate(prevReading.reading_date)) + ' - ' + formatDate(toDate(currReading.reading_date)) : 'N/A'}
-                          </td>
+
+                {#if filteredBillings.length === 0}
+                  <div class="p-6">
+                    <EmptyState title="No billings" message="Create a billing cycle to generate bills" />
+                  </div>
+                {:else}
+                  <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                      <thead class="border-b border-gray-200 bg-gray-50">
+                        <tr>
+                          <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Meter Group</th>
+                          <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Previous Reading</th>
+                          <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Current Reading</th>
+                          <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Date Range</th>
                         </tr>
-                      {/each}
-                    </tbody>
-                  </table>
-                </div>
-              {/if}
+                      </thead>
+                      <tbody>
+                        {#each filteredBillings as billing (billing.id)}
+                          {@const prevReading = readings.data.find(r => r.id === billing.previous_reading_id)}
+                          {@const currReading = readings.data.find(r => r.id === billing.current_reading_id)}
+                          {@const meterGroup = prevReading ? (electricityMeters.find(m => m.id === prevReading.meter_group_id) || waterMeters.find(m => m.id === prevReading.meter_group_id)) : null}
+                          <tr class="border-b border-gray-200 hover:bg-gray-50">
+                            <td class="px-6 py-4 text-gray-700">
+                              {meterGroup?.meter_name || 'Unknown'}
+                            </td>
+                            <td class="px-6 py-4 font-mono text-gray-700">
+                              {prevReading ? formatReading(prevReading.reading_amount, meterGroup?.utility_type || 'electricity') : 'N/A'}
+                            </td>
+                            <td class="px-6 py-4 font-mono text-gray-700">
+                              {currReading ? formatReading(currReading.reading_amount, meterGroup?.utility_type || 'electricity') : 'N/A'}
+                            </td>
+                            <td class="px-6 py-4 text-gray-600">
+                              {prevReading && currReading ? formatDate(toDate(prevReading.reading_date)) + ' - ' + formatDate(toDate(currReading.reading_date)) : 'N/A'}
+                            </td>
+                          </tr>
+                        {/each}
+                      </tbody>
+                    </table>
+                  </div>
+                {/if}
               </div>
             {:else if activeTab === 'history'}
               <div role="tabpanel" id="tab-panel-history" aria-labelledby="tab-history">
