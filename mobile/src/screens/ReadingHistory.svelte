@@ -3,6 +3,7 @@
   import { listMeterGroups, type MeterGroup } from '../lib/api/meter-groups';
   import { listProperties, type Property } from '../lib/api/properties';
   import { getReadingUnit } from '../lib/utils/format';
+  import { formatDate } from '../lib/utils/timestamp';
   import { sessionCache } from '../lib/stores/session';
   import BottomNav from '../components/BottomNav.svelte';
 
@@ -76,14 +77,6 @@
     utilityFilter;
     selectedPropertyId = '';
   });
-
-  function formatDate(dateStr: string): string {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  }
 
   function getUnit(meterGroupId: string): string {
     const utilityType = meterGroupMap[meterGroupId]?.utility_type || 'electricity';

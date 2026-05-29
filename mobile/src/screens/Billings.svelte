@@ -1,6 +1,7 @@
 <script lang="ts">
   import { listBillings, updateBillingStatus, type Billing } from '../lib/api/billings';
   import { listProperties } from '../lib/api/properties';
+  import { formatDate } from '../lib/utils/timestamp';
   import { sessionCache } from '../lib/stores/session';
   import BottomNav from '../components/BottomNav.svelte';
 
@@ -84,13 +85,6 @@
     }
   }
 
-  function formatDate(dateStr: string): string {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  }
 
   let groupedBillings = $derived.by(() => {
     const grouped = {
