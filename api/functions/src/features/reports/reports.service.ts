@@ -12,22 +12,38 @@ import type {
 } from './reports.model';
 import type { ReportQueryDTO } from './reports.dto';
 
+/**
+ * Build date range filters for query-time filtering (H1 optimization).
+ * Filters on billing_start_date for efficient range queries.
+ */
+function buildDateRangeFilters(query: ReportQueryDTO): any {
+  const filters: any = {};
+  if (query.startDate || query.endDate) {
+    const rangeFilter: any = {};
+    if (query.startDate) {
+      rangeFilter.$gte = new Date(query.startDate);
+    }
+    if (query.endDate) {
+      rangeFilter.$lte = new Date(query.endDate);
+    }
+    filters.billing_start_date = rangeFilter;
+  }
+  return filters;
+}
+
 async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<JoinedBilling[]> {
-  // 1. Fetch all billing cycles
+  // 1. Fetch billing cycles with date range filtering at query time (H1 optimization)
+  const filters = buildDateRangeFilters(query);
   const cyclesResult = await billingCycleRepository.search({
     limit: 1000,
     orderBy: 'created_at',
-    filters: {},
+    filters,
   });
 
   let cycles = cyclesResult.data;
 
-  // 2. Filter in-memory by startDate/endDate
-  if (query.startDate) {
-    const startDate = new Date(query.startDate);
-    cycles = cycles.filter((c) => c.billing_start_date.toDate() >= startDate);
-  }
-  if (query.endDate) {
+  // 2. Additional in-memory filter for endDate range to ensure both bounds are respected
+  if (query.startDate && query.endDate) {
     const endDate = new Date(query.endDate);
     cycles = cycles.filter((c) => c.billing_end_date.toDate() <= endDate);
   }
@@ -197,19 +213,17 @@ export async function getSummary(userId: string, query: ReportQueryDTO): Promise
 }
 
 export async function getConsumption(userId: string, query: ReportQueryDTO): Promise<ConsumptionReport> {
+  const filters = buildDateRangeFilters(query);
   const cyclesResult = await billingCycleRepository.search({
     limit: 1000,
     orderBy: 'created_at',
-    filters: {},
+    filters,
   });
 
   let cycles = cyclesResult.data;
 
-  if (query.startDate) {
-    const startDate = new Date(query.startDate);
-    cycles = cycles.filter((c) => c.billing_start_date.toDate() >= startDate);
-  }
-  if (query.endDate) {
+  // Additional in-memory filter for endDate range to ensure both bounds are respected
+  if (query.startDate && query.endDate) {
     const endDate = new Date(query.endDate);
     cycles = cycles.filter((c) => c.billing_end_date.toDate() <= endDate);
   }

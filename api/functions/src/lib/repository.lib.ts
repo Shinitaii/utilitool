@@ -16,12 +16,24 @@ import {PaginatedResult} from "../utils/pagination.util";
 import {firestore} from "../config/firebase.config";
 import {snapshotToModel} from "../utils/firestore.util";
 
+export type FilterValue = string | number | boolean | Date | null | undefined;
+export type RangeFilter = {
+  $gte?: FilterValue;
+  $lte?: FilterValue;
+  $gt?: FilterValue;
+  $lt?: FilterValue;
+};
+
+export type SearchFilter<T> = {
+  [K in keyof T]?: FilterValue | RangeFilter;
+};
+
 export type SearchOptions<T extends BaseModel> = {
 	limit: number;
 	orderBy: keyof WithoutBaseModel<T> | "created_at";
 	orderDirection?: "asc" | "desc";
 	cursor?: string | null;
-	filters?: Partial<WithoutBaseModel<T>>;
+	filters?: SearchFilter<WithoutBaseModel<T>>;
 	archived?: boolean;
 };
 
@@ -49,8 +61,26 @@ export class Repository<T extends BaseModel> {
 
     if (options.filters) {
       for (const [field, value] of Object.entries(options.filters)) {
-        if (value !== undefined) {
-          query = query.where(field, "==", value as never);
+        if (value !== undefined && value !== null) {
+          // Check if value is a range filter object
+          if (typeof value === 'object' && ('$gte' in value || '$lte' in value || '$gt' in value || '$lt' in value)) {
+            const rangeFilter = value as RangeFilter;
+            if (rangeFilter.$gte !== undefined && rangeFilter.$gte !== null) {
+              query = query.where(field, ">=", rangeFilter.$gte as never);
+            }
+            if (rangeFilter.$lte !== undefined && rangeFilter.$lte !== null) {
+              query = query.where(field, "<=", rangeFilter.$lte as never);
+            }
+            if (rangeFilter.$gt !== undefined && rangeFilter.$gt !== null) {
+              query = query.where(field, ">", rangeFilter.$gt as never);
+            }
+            if (rangeFilter.$lt !== undefined && rangeFilter.$lt !== null) {
+              query = query.where(field, "<", rangeFilter.$lt as never);
+            }
+          } else {
+            // Equality filter
+            query = query.where(field, "==", value as never);
+          }
         }
       }
     }
