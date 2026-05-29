@@ -440,49 +440,54 @@
       .replace(/'/g, '&#39;');
   }
 
+  const billingMap = $derived.by(() => new Map(allBillings.map(b => [b.id, b])));
+  const readingMap = $derived.by(() => new Map(readings.map(r => [r.id, r])));
+  const meterGroupMap = $derived.by(() => new Map(meterGroups.map(m => [m.id, m])));
+
   function getCycleUtilityType(cycle: BillingCycle): string {
     const cycleBillingIds = Object.keys(cycle.billing_ids);
-    const cycleBillings = allBillings.filter(b => cycleBillingIds.includes(b.id));
-    if (cycleBillings.length > 0) {
-      const firstBilling = cycleBillings[0];
-      const firstReading = readings.find(r => r.id === firstBilling.current_reading_id);
-      if (firstReading) {
-        const meterGroup = meterGroups.find(m => m.id === firstReading.meter_group_id);
-        return meterGroup?.utility_type || 'electricity';
-      }
-    }
-    return 'electricity';
+    if (cycleBillingIds.length === 0) return 'electricity';
+
+    const firstBillingId = cycleBillingIds[0];
+    const firstBilling = billingMap.get(firstBillingId);
+    if (!firstBilling) return 'electricity';
+
+    const firstReading = readingMap.get(firstBilling.current_reading_id);
+    if (!firstReading) return 'electricity';
+
+    const meterGroup = meterGroupMap.get(firstReading.meter_group_id);
+    return meterGroup?.utility_type || 'electricity';
   }
 
   function getCycleMeterGroupId(cycle: BillingCycle): string | null {
     const cycleBillingIds = Object.keys(cycle.billing_ids);
-    const cycleBillings = allBillings.filter(b => cycleBillingIds.includes(b.id));
-    if (cycleBillings.length > 0) {
-      const firstBilling = cycleBillings[0];
-      const firstReading = readings.find(r => r.id === firstBilling.current_reading_id);
-      if (firstReading) {
-        return firstReading.meter_group_id;
-      }
-    }
-    return null;
+    if (cycleBillingIds.length === 0) return null;
+
+    const firstBillingId = cycleBillingIds[0];
+    const firstBilling = billingMap.get(firstBillingId);
+    if (!firstBilling) return null;
+
+    const firstReading = readingMap.get(firstBilling.current_reading_id);
+    return firstReading?.meter_group_id ?? null;
   }
 
   function getCycleMeterGroupName(cycle: BillingCycle): string {
     const meterGroupId = getCycleMeterGroupId(cycle);
-    if (meterGroupId) {
-      const meterGroup = meterGroups.find(m => m.id === meterGroupId);
-      return meterGroup?.meter_name || 'Unknown';
-    }
-    return 'Unknown';
+    if (!meterGroupId) return 'Unknown';
+
+    const meterGroup = meterGroupMap.get(meterGroupId);
+    return meterGroup?.meter_name || 'Unknown';
   }
 
   function getCyclePaidAmount(cycle: BillingCycle): number {
-    const cycleBillingIds = Object.keys(cycle.billing_ids);
-    const cycleBillings = allBillings.filter(b => cycleBillingIds.includes(b.id) && b.payment_status === 'paid');
-    return cycleBillings.reduce((sum, billing) => {
-      const consumption = cycle.billing_ids[billing.id] ?? 0;
-      return sum + (consumption * cycle.billing_rate);
-    }, 0);
+    let total = 0;
+    for (const [billingId, consumption] of Object.entries(cycle.billing_ids)) {
+      const billing = billingMap.get(billingId);
+      if (billing?.payment_status === 'paid') {
+        total += consumption * cycle.billing_rate;
+      }
+    }
+    return total;
   }
 
   const groupedCycles = $derived.by(() => {

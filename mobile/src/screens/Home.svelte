@@ -1,5 +1,27 @@
 <script lang="ts">
+  import { listReadings } from '../lib/api/readings';
+  import { listBillings } from '../lib/api/billings';
   import BottomNav from '../components/BottomNav.svelte';
+
+  let recentReadingsCount = $state(0);
+  let pendingBillingsCount = $state(0);
+  let isLoading = $state(true);
+
+  $effect(async () => {
+    try {
+      const [readingsRes, billingsRes] = await Promise.all([
+        listReadings({ limit: 100 }),
+        listBillings({ limit: 100 })
+      ]);
+
+      recentReadingsCount = readingsRes.data?.length || 0;
+      pendingBillingsCount = (billingsRes.data || []).filter(b => b.payment_status === 'pending').length;
+    } catch (e) {
+      console.error('Failed to load dashboard stats:', e);
+    } finally {
+      isLoading = false;
+    }
+  });
 </script>
 
 <div class="min-h-screen pb-24" style="background-color: var(--color-bg-primary)">
@@ -25,11 +47,15 @@
     <div class="grid grid-cols-2 gap-4">
       <div class="card-base text-center p-4">
         <p class="text-xs mb-2" style="color: var(--color-text-secondary)">Recent Readings</p>
-        <p class="text-2xl font-bold" style="color: var(--color-text-primary)">—</p>
+        <p class="text-2xl font-bold" style="color: var(--color-text-primary)">
+          {isLoading ? '—' : recentReadingsCount}
+        </p>
       </div>
       <div class="card-base text-center p-4">
         <p class="text-xs mb-2" style="color: var(--color-text-secondary)">Pending Billings</p>
-        <p class="text-2xl font-bold" style="color: var(--color-text-primary)">—</p>
+        <p class="text-2xl font-bold" style="color: var(--color-text-primary)">
+          {isLoading ? '—' : pendingBillingsCount}
+        </p>
       </div>
     </div>
 

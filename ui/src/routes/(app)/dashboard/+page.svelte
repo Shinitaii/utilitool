@@ -21,16 +21,12 @@
   onMount(async () => {
     try {
       const [propertiesResult, tenantsResult, billingCyclesResult, billingsResult] = await Promise.all([
-        getProperties({ limit: 1 }),
-        getTenants({ limit: 1 }),
-        getBillingCycles({ limit: 5 }),
-        getBillings({ limit: 100 }),
+        getProperties({ limit: 1000 }),
+        getTenants({ limit: 1000 }),
+        getBillingCycles({ limit: 50 }),
+        getBillings({ limit: 1000 }),
       ]);
 
-      propertyCount = propertiesResult.data.length > 0 || propertiesResult.hasMore ? '?' as unknown as number : 0;
-      tenantCount = tenantsResult.data.length > 0 || tenantsResult.hasMore ? '?' as unknown as number : 0;
-
-      // Use the actual counts from first-page data
       propertyCount = propertiesResult.data.length;
       tenantCount = tenantsResult.data.length;
       recentCycles = billingCyclesResult.data;
