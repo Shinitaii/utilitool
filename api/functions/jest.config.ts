@@ -5,6 +5,7 @@ const config: Config.InitialOptions = {
   testEnvironment: "node",
   rootDir: ".",
   roots: ["<rootDir>/src"],
+  setupFiles: ["<rootDir>/jest.setup.ts"],
   testMatch: [
     "**/__tests__/**/*.+(ts|tsx|js)",
     "**/?(*.)+(spec|test).+(ts|tsx|js)"

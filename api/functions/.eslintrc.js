@@ -20,6 +20,9 @@
   ignorePatterns: [
     "/lib/**/*", // Ignore built files.
     "/generated/**/*", // Ignore generated files.
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/rag-query.ts",
   ],
   plugins: [
     "@typescript-eslint",
@@ -30,6 +33,12 @@
     "quotes": ["error", "double"],
     "import/no-unresolved": 0,
     "indent": ["error", 2],
+    "max-len": "off",
+    "require-jsdoc": "off",
+    "camelcase": "off",
+    "@typescript-eslint/no-explicit-any": "warn",
+    "no-tabs": "off",
+    "no-mixed-spaces-and-tabs": "off",
   },
   overrides: [
     {

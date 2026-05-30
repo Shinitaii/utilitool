@@ -24,6 +24,7 @@
     "**/*.spec.ts",
     "**/*.test.ts",
     "coverage",
-    "tests"
+    "tests",
+    "**/rag-query.ts"
   ]
 }

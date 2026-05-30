@@ -1,6 +1,16 @@
 {
   "projects": {
     "staging": "utilitool-staging",
-    "production": "utilitool-3fe70"
-  }
+    "production": "utilitool-11d7c"
+  },
+  "targets": {
+    "utilitool-11d7c": {
+      "storage": {
+        "default": [
+          "utilitool-11d7c.firebasestorage.app"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }
