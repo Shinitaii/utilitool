@@ -100,14 +100,14 @@ export async function createReadingWithAutoBilling(
   data: CreateReadingDTO,
   meterVersion: number,
 ): Promise<Reading> {
-  const cachedRepo = new CachedRepository(readingRepository, userId, 'readings', CACHE_TTL);
+  const cachedRepo = new CachedRepository(readingRepository, userId, "readings", CACHE_TTL);
 
   // Look up the previous-month reading for the same meter_group + property.
   const prevReading = await findPreviousMonthReading(data.meter_group_id, data.property_id, data.reading_date);
 
   // First-time scenario: no previous-month reading. Fall back to a plain create — no billings.
   if (!prevReading) {
-    const payload: ReadingCreatePayload = { ...data, meter_version: meterVersion };
+    const payload: ReadingCreatePayload = {...data, meter_version: meterVersion};
     return cachedRepo.create(payload);
   }
 
@@ -121,7 +121,7 @@ export async function createReadingWithAutoBilling(
     .get();
 
   if (!propertySnap.exists || propertySnap.data()?.is_deleted) {
-    const payload: ReadingCreatePayload = { ...data, meter_version: meterVersion };
+    const payload: ReadingCreatePayload = {...data, meter_version: meterVersion};
     return cachedRepo.create(payload);
   }
 
@@ -148,7 +148,7 @@ export async function createReadingWithAutoBilling(
     meter_version: meterVersion,
   };
 
-  let billingIds: string[] = [];
+  const billingIds: string[] = [];
   await firestore.runTransaction(async (txn) => {
     txn.set(newReadingRef, newReadingData);
     for (const propertyDoc of properties) {
@@ -191,7 +191,7 @@ export async function createBatchReadingsWithAutoBilling(
   userId: string,
   readingsWithVersion: ReadingCreatePayload[],
 ): Promise<Reading[]> {
-  const cachedRepo = new CachedRepository(readingRepository, userId, 'readings', CACHE_TTL);
+  const cachedRepo = new CachedRepository(readingRepository, userId, "readings", CACHE_TTL);
 
   const readingPromises = readingsWithVersion.map(async (readingData) => {
     // Look for previous-month reading scoped to this property

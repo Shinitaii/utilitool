@@ -85,7 +85,7 @@ export const readingService = {
         throw new AppError(
           400,
           `Property ${r.property_id} is the main meter for meter group ${r.meter_group_id}. ` +
-          `Its readings are derived automatically. Use POST /readings/seed for the first-time baseline.`
+          "Its readings are derived automatically. Use POST /readings/seed for the first-time baseline."
         );
       }
     }
@@ -126,8 +126,8 @@ export const readingService = {
     await validator.validateSeedCreate(data);
     const meterGroup = await meterGroupRepository.getById(data.meter_group_id);
     const meter_version = meterGroup!.current_version ?? 1;
-    const payload: ReadingCreatePayload = { ...data, meter_version };
-    const cachedRepo = new CachedRepository(readingRepository, userId, 'readings', CACHE_TTL);
+    const payload: ReadingCreatePayload = {...data, meter_version};
+    const cachedRepo = new CachedRepository(readingRepository, userId, "readings", CACHE_TTL);
     return cachedRepo.create(payload);
   },
 
@@ -167,7 +167,7 @@ export const readingService = {
       };
     }
 
-    const cachedRepo = new CachedRepository(readingRepository, userId, 'readings', CACHE_TTL);
+    const cachedRepo = new CachedRepository(readingRepository, userId, "readings", CACHE_TTL);
     return cachedRepo.search({
       limit: options.limit,
       orderBy: (options.sortBy ?? "created_at") as any,
@@ -175,31 +175,31 @@ export const readingService = {
       cursor: options.cursor,
       archived: options.archived,
       filters: {
-        ...(options.meterGroupId ? { meter_group_id: options.meterGroupId } : {}),
-        ...(options.propertyId ? { property_id: options.propertyId } : {}),
+        ...(options.meterGroupId ? {meter_group_id: options.meterGroupId} : {}),
+        ...(options.propertyId ? {property_id: options.propertyId} : {}),
       },
     });
   },
 
   async getById(userId: string, id: string): Promise<Reading | null> {
-    const cachedRepo = new CachedRepository(readingRepository, userId, 'readings', CACHE_TTL);
+    const cachedRepo = new CachedRepository(readingRepository, userId, "readings", CACHE_TTL);
     return cachedRepo.getById(id);
   },
 
   async update(userId: string, id: string, data: Partial<CreateReadingDTO>): Promise<Reading> {
     await validator.validateUpdate(data);
-    const cachedRepo = new CachedRepository(readingRepository, userId, 'readings', CACHE_TTL);
+    const cachedRepo = new CachedRepository(readingRepository, userId, "readings", CACHE_TTL);
     return cachedRepo.update(id, data);
   },
 
   async updateBatch(userId: string, updates: {id: string, data: Partial<CreateReadingDTO>}[]): Promise<Reading[]> {
     await validator.validateUpdateBatch(updates);
-    const cachedRepo = new CachedRepository(readingRepository, userId, 'readings', CACHE_TTL);
+    const cachedRepo = new CachedRepository(readingRepository, userId, "readings", CACHE_TTL);
     return cachedRepo.updateBatch(updates);
   },
 
   async delete(userId: string, id: string): Promise<void> {
-    const cachedRepo = new CachedRepository(readingRepository, userId, 'readings', CACHE_TTL);
+    const cachedRepo = new CachedRepository(readingRepository, userId, "readings", CACHE_TTL);
     await cachedRepo.delete(id);
   },
 

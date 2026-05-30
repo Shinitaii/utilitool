@@ -149,7 +149,7 @@ export class ReadingValidator {
       limit: 6,
       orderBy: "reading_date",
       orderDirection: "desc",
-      filters: { meter_group_id: meterGroupId },
+      filters: {meter_group_id: meterGroupId},
     });
     const recentReadings = recentResult.data;
 
@@ -181,7 +181,7 @@ export class ReadingValidator {
         `Reading amount ${newReadingAmount} is unusually high. ` +
           `Average monthly delta for this meter group is ${Math.round(avgDelta)} units; ` +
           `this reading implies a delta of ${Math.round(newDelta)} units. ` +
-          `If the meter was reset, record a reset on the meter group first.`
+          "If the meter was reset, record a reset on the meter group first."
       );
     }
   }

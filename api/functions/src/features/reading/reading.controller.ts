@@ -88,7 +88,7 @@ export const updateReading = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const {id} = req.params;
+  const {id} = req.params as unknown as ReadingByIdParamsDTO;
   const data = req.body as Partial<UpdateReadingDTO>;
   const userId = req.user?.userId;
   if (!userId) throw new AppError(401, "User not authenticated");
@@ -111,7 +111,7 @@ export const deleteReading = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const {id} = req.params;
+  const {id} = req.params as unknown as ReadingByIdParamsDTO;
   const userId = req.user?.userId;
   if (!userId) throw new AppError(401, "User not authenticated");
   await readingService.delete(userId, id);
@@ -122,7 +122,7 @@ export const softDeleteReading = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const {id} = req.params;
+  const {id} = req.params as unknown as ReadingByIdParamsDTO;
   const userId = req.user?.userId;
   if (!userId) throw new AppError(401, "User not authenticated");
   const result = await readingService.softDelete(userId, id);
@@ -133,7 +133,7 @@ export const restoreReading = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const {id} = req.params;
+  const {id} = req.params as unknown as ReadingByIdParamsDTO;
   const userId = req.user?.userId;
   if (!userId) throw new AppError(401, "User not authenticated");
   const result = await readingService.restore(userId, id);
@@ -146,13 +146,13 @@ export const ocrReading = async (
 ): Promise<void> => {
   const data = req.body as OcrReadingDTO;
   const extracted = await ImageExtractionService.extractReadingFromImage(data.image_url);
-  res.status(200).json({ suggested_reading_amount: extracted.reading_amount });
+  res.status(200).json({suggested_reading_amount: extracted.reading_amount});
 };
 
 export const clearCache = async (
   _req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const deletedCount = await cacheDelPattern('utilitool:readings:*');
-  res.status(200).json({ message: `Cleared ${deletedCount} cache entries for readings` });
+  const deletedCount = await cacheDelPattern("utilitool:readings:*");
+  res.status(200).json({message: `Cleared ${deletedCount} cache entries for readings`});
 };

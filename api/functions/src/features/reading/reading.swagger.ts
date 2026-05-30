@@ -1,69 +1,69 @@
 export const readingPaths = {
-  '/readings': {
+  "/readings": {
     post: {
-      tags: ['Readings'],
-      summary: 'Create a new meter reading',
+      tags: ["Readings"],
+      summary: "Create a new meter reading",
       description:
-        'Create a single meter reading. If a reading exists for the same meter_group in the previous calendar month, billings are automatically created (atomically, one per property on that meter group). Batch create (/readings/batch) does NOT trigger auto-billing. The meter_version field is automatically set from the meter group\'s current_version. To handle a physical meter reset, call POST /meter-groups/:id/reset first.',
-      security: [{ BearerAuth: [] }],
+        "Create a single meter reading. If a reading exists for the same meter_group in the previous calendar month, billings are automatically created (atomically, one per property on that meter group). Batch create (/readings/batch) does NOT trigger auto-billing. The meter_version field is automatically set from the meter group's current_version. To handle a physical meter reset, call POST /meter-groups/:id/reset first.",
+      security: [{BearerAuth: []}],
       requestBody: {
         required: true,
         content: {
-          'application/json': {
+          "application/json": {
             schema: {
-              $ref: '#/components/schemas/CreateReadingRequest',
+              $ref: "#/components/schemas/CreateReadingRequest",
             },
           },
         },
       },
       responses: {
-        '200': {
-          description: 'Reading created',
+        "200": {
+          description: "Reading created",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/Reading',
+                $ref: "#/components/schemas/Reading",
               },
             },
           },
         },
-        '400': {
+        "400": {
           description:
-            'Validation error (negative amount, future date, reading limit exceeded)',
+            "Validation error (negative amount, future date, reading limit exceeded)",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: "#/components/schemas/ValidationErrorResponse",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Meter group not found',
+        "404": {
+          description: "Meter group not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -71,106 +71,106 @@ export const readingPaths = {
       },
     },
     get: {
-      tags: ['Readings'],
-      summary: 'List meter readings',
+      tags: ["Readings"],
+      summary: "List meter readings",
       description:
-        'Retrieve paginated list of readings. Can filter by meter group ID, property, and date range. Note: cursor and date filters are mutually exclusive with cursor pagination.',
-      security: [{ BearerAuth: [] }],
+        "Retrieve paginated list of readings. Can filter by meter group ID, property, and date range. Note: cursor and date filters are mutually exclusive with cursor pagination.",
+      security: [{BearerAuth: []}],
       parameters: [
         {
-          name: 'meterGroupId',
-          in: 'query',
-          description: 'Filter by meter group ID',
+          name: "meterGroupId",
+          in: "query",
+          description: "Filter by meter group ID",
           schema: {
-            type: 'string',
+            type: "string",
             minLength: 1,
           },
         },
         {
-          name: 'propertyId',
-          in: 'query',
-          description: 'Filter by property ID',
+          name: "propertyId",
+          in: "query",
+          description: "Filter by property ID",
           schema: {
-            type: 'string',
+            type: "string",
             minLength: 1,
           },
         },
         {
-          name: 'startDate',
-          in: 'query',
-          description: 'Filter readings from this date onwards (ISO 8601 date or datetime format)',
+          name: "startDate",
+          in: "query",
+          description: "Filter readings from this date onwards (ISO 8601 date or datetime format)",
           schema: {
-            type: 'string',
-            format: 'date-time',
+            type: "string",
+            format: "date-time",
           },
         },
         {
-          name: 'endDate',
-          in: 'query',
-          description: 'Filter readings up to this date (ISO 8601 date or datetime format)',
+          name: "endDate",
+          in: "query",
+          description: "Filter readings up to this date (ISO 8601 date or datetime format)",
           schema: {
-            type: 'string',
-            format: 'date-time',
+            type: "string",
+            format: "date-time",
           },
         },
         {
-          name: 'limit',
-          in: 'query',
-          description: 'Number of results per page (1-100, default 20)',
+          name: "limit",
+          in: "query",
+          description: "Number of results per page (1-100, default 20)",
           schema: {
-            type: 'integer',
+            type: "integer",
             minimum: 1,
             maximum: 100,
             default: 20,
           },
         },
         {
-          name: 'cursor',
-          in: 'query',
+          name: "cursor",
+          in: "query",
           description:
-            'Pagination cursor from previous response. Cannot be combined with date filters.',
+            "Pagination cursor from previous response. Cannot be combined with date filters.",
           schema: {
-            type: 'string',
+            type: "string",
           },
         },
       ],
       responses: {
-        '200': {
-          description: 'List of readings',
+        "200": {
+          description: "List of readings",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/PaginatedReadings',
+                $ref: "#/components/schemas/PaginatedReadings",
               },
             },
           },
         },
-        '400': {
-          description: 'Validation error',
+        "400": {
+          description: "Validation error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: "#/components/schemas/ValidationErrorResponse",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -178,20 +178,20 @@ export const readingPaths = {
       },
     },
   },
-  '/readings/batch': {
+  "/readings/batch": {
     post: {
-      tags: ['Readings'],
-      summary: 'Create multiple meter readings',
-      description: 'Batch create 1-10 meter readings. Does NOT trigger auto-billing — use single POST /readings for that.',
-      security: [{ BearerAuth: [] }],
+      tags: ["Readings"],
+      summary: "Create multiple meter readings",
+      description: "Batch create 1-10 meter readings. Does NOT trigger auto-billing — use single POST /readings for that.",
+      security: [{BearerAuth: []}],
       requestBody: {
         required: true,
         content: {
-          'application/json': {
+          "application/json": {
             schema: {
-              type: 'array',
+              type: "array",
               items: {
-                $ref: '#/components/schemas/CreateReadingRequest',
+                $ref: "#/components/schemas/CreateReadingRequest",
               },
               minItems: 1,
               maxItems: 10,
@@ -200,55 +200,55 @@ export const readingPaths = {
         },
       },
       responses: {
-        '200': {
-          description: 'Readings created',
+        "200": {
+          description: "Readings created",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                type: 'array',
+                type: "array",
                 items: {
-                  $ref: '#/components/schemas/Reading',
+                  $ref: "#/components/schemas/Reading",
                 },
               },
             },
           },
         },
-        '400': {
-          description: 'Validation error',
+        "400": {
+          description: "Validation error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: "#/components/schemas/ValidationErrorResponse",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Meter group not found',
+        "404": {
+          description: "Meter group not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -256,27 +256,27 @@ export const readingPaths = {
       },
     },
     put: {
-      tags: ['Readings'],
-      summary: 'Update multiple meter readings',
-      description: 'Batch update 1-10 meter readings.',
-      security: [{ BearerAuth: [] }],
+      tags: ["Readings"],
+      summary: "Update multiple meter readings",
+      description: "Batch update 1-10 meter readings.",
+      security: [{BearerAuth: []}],
       requestBody: {
         required: true,
         content: {
-          'application/json': {
+          "application/json": {
             schema: {
-              type: 'array',
+              type: "array",
               items: {
-                type: 'object',
+                type: "object",
                 properties: {
                   id: {
-                    type: 'string',
+                    type: "string",
                   },
                   data: {
-                    $ref: '#/components/schemas/UpdateReadingRequest',
+                    $ref: "#/components/schemas/UpdateReadingRequest",
                   },
                 },
-                required: ['id', 'data'],
+                required: ["id", "data"],
               },
               minItems: 1,
               maxItems: 10,
@@ -285,55 +285,55 @@ export const readingPaths = {
         },
       },
       responses: {
-        '200': {
-          description: 'Readings updated',
+        "200": {
+          description: "Readings updated",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                type: 'array',
+                type: "array",
                 items: {
-                  $ref: '#/components/schemas/Reading',
+                  $ref: "#/components/schemas/Reading",
                 },
               },
             },
           },
         },
-        '400': {
-          description: 'Validation error',
+        "400": {
+          description: "Validation error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: "#/components/schemas/ValidationErrorResponse",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Reading or meter group not found',
+        "404": {
+          description: "Reading or meter group not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -341,60 +341,60 @@ export const readingPaths = {
       },
     },
   },
-  '/readings/{id}': {
+  "/readings/{id}": {
     get: {
-      tags: ['Readings'],
-      summary: 'Get reading by ID',
-      description: 'Retrieve a single meter reading by ID.',
-      security: [{ BearerAuth: [] }],
+      tags: ["Readings"],
+      summary: "Get reading by ID",
+      description: "Retrieve a single meter reading by ID.",
+      security: [{BearerAuth: []}],
       parameters: [
         {
-          name: 'id',
-          in: 'path',
+          name: "id",
+          in: "path",
           required: true,
           schema: {
-            type: 'string',
+            type: "string",
             minLength: 1,
           },
         },
       ],
       responses: {
-        '200': {
-          description: 'Reading retrieved',
+        "200": {
+          description: "Reading retrieved",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/Reading',
+                $ref: "#/components/schemas/Reading",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Reading not found',
+        "404": {
+          description: "Reading not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -402,17 +402,17 @@ export const readingPaths = {
       },
     },
     put: {
-      tags: ['Readings'],
-      summary: 'Update a meter reading',
-      description: 'Update a single meter reading.',
-      security: [{ BearerAuth: [] }],
+      tags: ["Readings"],
+      summary: "Update a meter reading",
+      description: "Update a single meter reading.",
+      security: [{BearerAuth: []}],
       parameters: [
         {
-          name: 'id',
-          in: 'path',
+          name: "id",
+          in: "path",
           required: true,
           schema: {
-            type: 'string',
+            type: "string",
             minLength: 1,
           },
         },
@@ -420,60 +420,60 @@ export const readingPaths = {
       requestBody: {
         required: true,
         content: {
-          'application/json': {
+          "application/json": {
             schema: {
-              $ref: '#/components/schemas/UpdateReadingRequest',
+              $ref: "#/components/schemas/UpdateReadingRequest",
             },
           },
         },
       },
       responses: {
-        '200': {
-          description: 'Reading updated',
+        "200": {
+          description: "Reading updated",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/Reading',
+                $ref: "#/components/schemas/Reading",
               },
             },
           },
         },
-        '400': {
-          description: 'Validation error',
+        "400": {
+          description: "Validation error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: "#/components/schemas/ValidationErrorResponse",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Reading or meter group not found',
+        "404": {
+          description: "Reading or meter group not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -481,63 +481,63 @@ export const readingPaths = {
       },
     },
     delete: {
-      tags: ['Readings'],
-      summary: 'Delete a reading (hard delete)',
-      description: 'Permanently delete a meter reading.',
-      security: [{ BearerAuth: [] }],
+      tags: ["Readings"],
+      summary: "Delete a reading (hard delete)",
+      description: "Permanently delete a meter reading.",
+      security: [{BearerAuth: []}],
       parameters: [
         {
-          name: 'id',
-          in: 'path',
+          name: "id",
+          in: "path",
           required: true,
           schema: {
-            type: 'string',
+            type: "string",
             minLength: 1,
           },
         },
       ],
       responses: {
-        '200': {
-          description: 'Reading deleted',
+        "200": {
+          description: "Reading deleted",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                type: 'object',
+                type: "object",
                 properties: {
                   message: {
-                    type: 'string',
+                    type: "string",
                   },
                 },
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Reading not found',
+        "404": {
+          description: "Reading not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -545,60 +545,60 @@ export const readingPaths = {
       },
     },
   },
-  '/readings/soft/{id}': {
+  "/readings/soft/{id}": {
     delete: {
-      tags: ['Readings'],
-      summary: 'Soft delete a reading',
-      description: 'Soft delete (mark as deleted) a meter reading.',
-      security: [{ BearerAuth: [] }],
+      tags: ["Readings"],
+      summary: "Soft delete a reading",
+      description: "Soft delete (mark as deleted) a meter reading.",
+      security: [{BearerAuth: []}],
       parameters: [
         {
-          name: 'id',
-          in: 'path',
+          name: "id",
+          in: "path",
           required: true,
           schema: {
-            type: 'string',
+            type: "string",
             minLength: 1,
           },
         },
       ],
       responses: {
-        '200': {
-          description: 'Reading soft deleted',
+        "200": {
+          description: "Reading soft deleted",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/Reading',
+                $ref: "#/components/schemas/Reading",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Reading not found',
+        "404": {
+          description: "Reading not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },

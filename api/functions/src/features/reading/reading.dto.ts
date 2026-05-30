@@ -13,7 +13,7 @@ export const CreateReadingDTOSchema = z.object({
         if (typeof v === "string") return !isNaN(new Date(v).getTime());
         return true;
       },
-      { message: "reading_date must be a valid date" }
+      {message: "reading_date must be a valid date"}
     )
     .transform((val) => parseTimestamp(val)),
   image_url: z.url().optional(),
