@@ -1,6 +1,6 @@
-import { createClient } from 'redis';
-import type { RedisClientType } from 'redis';
-import {logger} from '../utils/logger.util';
+import {createClient} from "redis";
+import type {RedisClientType} from "redis";
+import {logger} from "../utils/logger.util";
 
 let redisClient: RedisClientType | null = null;
 
@@ -13,36 +13,36 @@ export function getRedisClient(): RedisClientType | null {
   const redisPassword = process.env.REDIS_PASSWORD;
 
   if (!redisHost) {
-    if (process.env.NODE_ENV !== 'test') {
-      logger.warn('Redis not configured (REDIS_HOST not set). Caching and rate limiting will use in-memory store.');
+    if (process.env.NODE_ENV !== "test") {
+      logger.warn("Redis not configured (REDIS_HOST not set). Caching and rate limiting will use in-memory store.");
     }
     return null;
   }
 
   try {
     redisClient = createClient({
-      username: redisUsername || 'default',
+      username: redisUsername || "default",
       password: redisPassword,
       socket: {
         host: redisHost,
         port: redisPort,
-        tls: process.env.REDIS_TLS === 'true',
+        tls: process.env.REDIS_TLS === "true",
       },
     });
 
-    redisClient.on('error', (err: Error) => {
-      logger.error({err}, 'Redis connection error');
+    redisClient.on("error", (err: Error) => {
+      logger.error({err}, "Redis connection error");
     });
 
     // Connect immediately so rate-limit and caching can use it synchronously
     redisClient.connect().catch((err: Error) => {
-      logger.warn({err}, 'Failed to connect Redis client; falling back to in-memory caching/rate-limiting');
+      logger.warn({err}, "Failed to connect Redis client; falling back to in-memory caching/rate-limiting");
       redisClient = null;
     });
 
     return redisClient;
   } catch (err) {
-    logger.error({err}, 'Failed to initialize Redis client');
+    logger.error({err}, "Failed to initialize Redis client");
     return null;
   }
 }

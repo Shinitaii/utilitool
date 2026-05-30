@@ -1,8 +1,35 @@
-﻿import * as admin from "firebase-admin";
-import {getFirebaseAppOptions} from "./env.config";
+import * as admin from "firebase-admin";
+import * as fs from "node:fs";
+
+// When the Firestore emulator host is set (test / dev:emulator), the Admin SDK talks to
+// the local emulators and does NOT need a real service-account credential — initialize
+// with the project id only. Otherwise use the service-account key file.
+const useEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
+
+// Read the service-account key ourselves and strip a UTF-8 BOM if present, then pass the
+// parsed object to cert(). Some editors (especially on Windows) save the key file with a
+// BOM, which makes firebase-admin's path-based cert() throw "Unexpected token" at startup
+// and crash the Cloud Run container before it can listen on PORT.
+function loadServiceAccount(filePath: string): admin.ServiceAccount {
+  const raw = fs.readFileSync(filePath, "utf8").replace(/^﻿/, "");
+  return JSON.parse(raw) as admin.ServiceAccount;
+}
 
 if (!admin.apps.length) {
-  admin.initializeApp({credential: admin.credential.cert(process.env.GOOGLE_APPLICATION_CREDENTIALS as string)});
+  if (useEmulator) {
+    admin.initializeApp({
+      projectId:
+        process.env.GCLOUD_PROJECT ||
+        process.env.GOOGLE_CLOUD_PROJECT ||
+        process.env.PROJECT_ID,
+    });
+  } else {
+    admin.initializeApp({
+      credential: admin.credential.cert(
+        loadServiceAccount(process.env.GOOGLE_APPLICATION_CREDENTIALS as string),
+      ),
+    });
+  }
 }
 
 export const firestore = admin.firestore();
