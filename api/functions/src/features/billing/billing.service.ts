@@ -77,7 +77,7 @@ export const billingService = {
           400,
           `Property ${data.property_id} is the main meter for meter group ` +
           `${currReading.meter_group_id}. Its billings are generated automatically ` +
-          `at billing cycle creation.`
+          "at billing cycle creation."
         );
       }
 
@@ -85,7 +85,7 @@ export const billingService = {
       newBillingId = newRef.id;
       txn.set(newRef, {
         ...data,
-        payment_status: 'pending' as const,
+        payment_status: "pending" as const,
         created_at: FieldValue.serverTimestamp(),
         is_deleted: false,
         deleted_at: null,
@@ -101,18 +101,18 @@ export const billingService = {
 
   async createBatch(userId: string, data: CreateBillingDTO[]): Promise<Billing[]> {
     await validator.validateBatch(data);
-    const cachedRepo = new CachedRepository(billingRepository, userId, 'billings', CACHE_TTL);
+    const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
     const created = await cachedRepo.createBatch(
       data.map((item) => ({
         ...item,
-        payment_status: 'pending' as const,
+        payment_status: "pending" as const,
       }))
     );
     return created;
   },
 
   async search(userId: string, options: BillingSearchOptions): Promise<PaginatedResult<Billing>> {
-    const cachedRepo = new CachedRepository(billingRepository, userId, 'billings', CACHE_TTL);
+    const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
     return cachedRepo.search({
       limit: options.limit,
       orderBy: (options.sortBy ?? "created_at") as any,
@@ -120,41 +120,41 @@ export const billingService = {
       cursor: options.cursor,
       archived: options.archived,
       filters: {
-        ...(options.propertyId ? { property_id: options.propertyId } : {}),
+        ...(options.propertyId ? {property_id: options.propertyId} : {}),
       },
     });
   },
 
   async getById(userId: string, id: string): Promise<Billing | null> {
-    const cachedRepo = new CachedRepository(billingRepository, userId, 'billings', CACHE_TTL);
+    const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
     return cachedRepo.getById(id);
   },
 
-  async update(userId: string, id: string, data: Partial<CreateBillingDTO> & { payment_status?: 'pending' | 'paid'; paid_at?: string }): Promise<Billing> {
+  async update(userId: string, id: string, data: Partial<CreateBillingDTO> & { payment_status?: "pending" | "paid"; paid_at?: string }): Promise<Billing> {
     await validator.validateUpdate(data);
 
-    const updateData = { ...data };
-    if (data.payment_status === 'paid' && !data.paid_at) {
+    const updateData = {...data};
+    if (data.payment_status === "paid" && !data.paid_at) {
       updateData.paid_at = new Date().toISOString();
     }
 
-    const cachedRepo = new CachedRepository(billingRepository, userId, 'billings', CACHE_TTL);
+    const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
     return cachedRepo.update(id, updateData);
   },
 
   async updateBatch(userId: string, updates: {id: string, data: Partial<CreateBillingDTO>}[]): Promise<Billing[]> {
     await validator.validateUpdateBatch(updates);
-    const cachedRepo = new CachedRepository(billingRepository, userId, 'billings', CACHE_TTL);
+    const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
     return cachedRepo.updateBatch(updates);
   },
 
   async delete(userId: string, id: string): Promise<void> {
-    const cachedRepo = new CachedRepository(billingRepository, userId, 'billings', CACHE_TTL);
+    const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
     await cachedRepo.delete(id);
   },
 
   async softDelete(userId: string, id: string): Promise<Billing> {
-    const cachedRepo = new CachedRepository(billingRepository, userId, 'billings', CACHE_TTL);
+    const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
     return cachedRepo.softDelete(id);
   },
 
@@ -163,7 +163,7 @@ export const billingService = {
     if (!billing) {
       throw new AppError(404, "Billing not found");
     }
-    const cachedRepo = new CachedRepository(billingRepository, userId, 'billings', CACHE_TTL);
+    const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
     return cachedRepo.restore(id);
   },
 
@@ -203,7 +203,7 @@ export const billingService = {
       property_id: propertyId,
       previous_reading_id: prevReadingId,
       current_reading_id: currReadingId,
-      payment_status: 'pending' as const,
+      payment_status: "pending" as const,
       created_at: FieldValue.serverTimestamp(),
       is_deleted: false,
       deleted_at: null,

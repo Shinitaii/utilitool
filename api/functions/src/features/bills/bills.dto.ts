@@ -1,7 +1,7 @@
-import { z } from 'zod';
+import {z} from "zod";
 
 export const OcrBillDTOSchema = z.object({
-  image_url: z.string().url('Invalid image URL'),
+  image_url: z.string().url("Invalid image URL"),
 });
 
 export type OcrBillDTO = z.infer<typeof OcrBillDTOSchema>;

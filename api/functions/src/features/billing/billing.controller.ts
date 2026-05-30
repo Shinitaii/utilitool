@@ -71,7 +71,7 @@ export const updateBilling = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const {id} = req.params;
+  const {id} = req.params as unknown as BillingByIdParamsDTO;
   const data = req.body as Partial<UpdateBillingDTO>;
   const userId = req.user?.userId;
   if (!userId) throw new AppError(401, "User not authenticated");
@@ -94,7 +94,7 @@ export const deleteBilling = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const {id} = req.params;
+  const {id} = req.params as unknown as BillingByIdParamsDTO;
   const userId = req.user?.userId;
   if (!userId) throw new AppError(401, "User not authenticated");
   await billingService.delete(userId, id);
@@ -105,7 +105,7 @@ export const softDeleteBilling = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const {id} = req.params;
+  const {id} = req.params as unknown as BillingByIdParamsDTO;
   const userId = req.user?.userId;
   if (!userId) throw new AppError(401, "User not authenticated");
   const result = await billingService.softDelete(userId, id);
@@ -116,7 +116,7 @@ export const restoreBilling = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const {id} = req.params;
+  const {id} = req.params as unknown as BillingByIdParamsDTO;
   const userId = req.user?.userId;
   if (!userId) throw new AppError(401, "User not authenticated");
   const result = await billingService.restore(userId, id);
@@ -127,6 +127,6 @@ export const clearCache = async (
   _req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const deletedCount = await cacheDelPattern('utilitool:billings:*');
-  res.status(200).json({ message: `Cleared ${deletedCount} cache entries for billings` });
+  const deletedCount = await cacheDelPattern("utilitool:billings:*");
+  res.status(200).json({message: `Cleared ${deletedCount} cache entries for billings`});
 };

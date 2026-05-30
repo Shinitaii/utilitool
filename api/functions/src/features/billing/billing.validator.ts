@@ -69,7 +69,7 @@ export class BillingValidator {
       throw new AppError(
         400,
         `Property ${propertyId} is the main meter for meter group ${meterGroupId}. ` +
-        `Its billings are generated automatically at billing cycle creation.`
+        "Its billings are generated automatically at billing cycle creation."
       );
     }
   }
@@ -83,8 +83,8 @@ export class BillingValidator {
       orderBy: "created_at",
       filters: {
         property_id: propertyId,
-        current_reading_id: currentReadingId
-      }
+        current_reading_id: currentReadingId,
+      },
     });
 
     if (existing.length > 0) {

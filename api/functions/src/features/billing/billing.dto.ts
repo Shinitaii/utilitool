@@ -15,7 +15,7 @@ export type CreateBillingBatchDTO = z.infer<typeof CreateBillingBatchDTOSchema>;
 
 // Update DTOS
 export const UpdateBillingDTOSchema = CreateBillingDTOSchema.partial().extend({
-  payment_status: z.enum(['pending', 'paid']).optional(),
+  payment_status: z.enum(["pending", "paid"]).optional(),
   paid_at: z.string().datetime().optional(),
 });
 export type UpdateBillingDTO = z.infer<typeof UpdateBillingDTOSchema>;
