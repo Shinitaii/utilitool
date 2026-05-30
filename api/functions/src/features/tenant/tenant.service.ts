@@ -23,7 +23,7 @@ type TenantSearchOptions = {
 export const tenantService = {
   async create(userId: string, data: CreateTenantDTO): Promise<Tenant> {
     await validator.validateCreate(data);
-    const cachedRepo = new CachedRepository(tenantRepository, userId, 'tenants', CACHE_TTL);
+    const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
     return cachedRepo.create({
       ...data,
       tenant_start_date: Timestamp.now(),
@@ -32,7 +32,7 @@ export const tenantService = {
 
   async createBatch(userId: string, data: CreateTenantDTO[]): Promise<Tenant[]> {
     await validator.validateBatchCreate(data);
-    const cachedRepo = new CachedRepository(tenantRepository, userId, 'tenants', CACHE_TTL);
+    const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
     return cachedRepo.createBatch(
       data.map((item) => ({
         ...item,
@@ -42,12 +42,12 @@ export const tenantService = {
   },
 
   async getById(userId: string, id: string): Promise<Tenant | null> {
-    const cachedRepo = new CachedRepository(tenantRepository, userId, 'tenants', CACHE_TTL);
+    const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
     return cachedRepo.getById(id);
   },
 
   async search(userId: string, options: TenantSearchOptions): Promise<PaginatedResult<Tenant>> {
-    const cachedRepo = new CachedRepository(tenantRepository, userId, 'tenants', CACHE_TTL);
+    const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
     return cachedRepo.search({
       limit: options.limit,
       orderBy: (options.sortBy ?? "created_at") as any,
@@ -55,8 +55,8 @@ export const tenantService = {
       cursor: options.cursor,
       archived: options.archived,
       filters: {
-        ...(options.tenantName ? { tenant_name: options.tenantName } : {}),
-        ...(options.propertyId ? { property_id: options.propertyId } : {}),
+        ...(options.tenantName ? {tenant_name: options.tenantName} : {}),
+        ...(options.propertyId ? {property_id: options.propertyId} : {}),
       },
     });
   },
@@ -68,13 +68,13 @@ export const tenantService = {
     }
 
     await validator.validateUpdate(tenant, data);
-    const cachedRepo = new CachedRepository(tenantRepository, userId, 'tenants', CACHE_TTL);
+    const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
     return cachedRepo.update(id, data);
   },
 
   async updateBatch(userId: string, updates: { id: string; data: UpdateTenantDTO }[]): Promise<Tenant[]> {
     await validator.validateBatchUpdate(updates);
-    const cachedRepo = new CachedRepository(tenantRepository, userId, 'tenants', CACHE_TTL);
+    const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
     return cachedRepo.updateBatch(updates);
   },
 
@@ -84,7 +84,7 @@ export const tenantService = {
       throw new AppError(404, "Tenant not found");
     }
 
-    const cachedRepo = new CachedRepository(tenantRepository, userId, 'tenants', CACHE_TTL);
+    const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
     await cachedRepo.delete(id);
   },
 
@@ -94,7 +94,7 @@ export const tenantService = {
       throw new AppError(404, "Tenant not found");
     }
 
-    const cachedRepo = new CachedRepository(tenantRepository, userId, 'tenants', CACHE_TTL);
+    const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
     return cachedRepo.softDelete(id);
   },
 
@@ -104,7 +104,7 @@ export const tenantService = {
       throw new AppError(404, "Tenant not found");
     }
 
-    const cachedRepo = new CachedRepository(tenantRepository, userId, 'tenants', CACHE_TTL);
+    const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
     return cachedRepo.restore(id);
   },
 };

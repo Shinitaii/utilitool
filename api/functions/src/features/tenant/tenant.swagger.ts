@@ -1,79 +1,79 @@
 export const tenantPaths = {
-  '/tenants': {
+  "/tenants": {
     post: {
-      tags: ['Tenants'],
-      summary: 'Create a new tenant',
+      tags: ["Tenants"],
+      summary: "Create a new tenant",
       description:
-        'Create a single tenant. Tenant name must be unique within the property. Property must not exceed its tenant capacity.',
-      security: [{ BearerAuth: [] }],
+        "Create a single tenant. Tenant name must be unique within the property. Property must not exceed its tenant capacity.",
+      security: [{BearerAuth: []}],
       requestBody: {
         required: true,
         content: {
-          'application/json': {
+          "application/json": {
             schema: {
-              $ref: '#/components/schemas/CreateTenantRequest',
+              $ref: "#/components/schemas/CreateTenantRequest",
             },
           },
         },
       },
       responses: {
-        '200': {
-          description: 'Tenant created',
+        "200": {
+          description: "Tenant created",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/Tenant',
+                $ref: "#/components/schemas/Tenant",
               },
             },
           },
         },
-        '400': {
-          description: 'Validation error',
+        "400": {
+          description: "Validation error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: "#/components/schemas/ValidationErrorResponse",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Property not found',
+        "404": {
+          description: "Property not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '409': {
+        "409": {
           description:
-            'Conflict (tenant name already exists in property or property tenant capacity exceeded)',
+            "Conflict (tenant name already exists in property or property tenant capacity exceeded)",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -81,88 +81,88 @@ export const tenantPaths = {
       },
     },
     get: {
-      tags: ['Tenants'],
-      summary: 'List tenants',
+      tags: ["Tenants"],
+      summary: "List tenants",
       description:
-        'Retrieve paginated list of tenants. Can filter by tenant name or property ID.',
-      security: [{ BearerAuth: [] }],
+        "Retrieve paginated list of tenants. Can filter by tenant name or property ID.",
+      security: [{BearerAuth: []}],
       parameters: [
         {
-          name: 'tenantName',
-          in: 'query',
-          description: 'Filter by tenant name (case-insensitive partial match)',
+          name: "tenantName",
+          in: "query",
+          description: "Filter by tenant name (case-insensitive partial match)",
           schema: {
-            type: 'string',
+            type: "string",
             minLength: 1,
             maxLength: 255,
           },
         },
         {
-          name: 'propertyId',
-          in: 'query',
-          description: 'Filter by property ID',
+          name: "propertyId",
+          in: "query",
+          description: "Filter by property ID",
           schema: {
-            type: 'string',
+            type: "string",
             minLength: 1,
           },
         },
         {
-          name: 'limit',
-          in: 'query',
-          description: 'Number of results per page (1-100, default 20)',
+          name: "limit",
+          in: "query",
+          description: "Number of results per page (1-100, default 20)",
           schema: {
-            type: 'integer',
+            type: "integer",
             minimum: 1,
             maximum: 100,
             default: 20,
           },
         },
         {
-          name: 'cursor',
-          in: 'query',
-          description: 'Pagination cursor from previous response',
+          name: "cursor",
+          in: "query",
+          description: "Pagination cursor from previous response",
           schema: {
-            type: 'string',
+            type: "string",
           },
         },
       ],
       responses: {
-        '200': {
-          description: 'List of tenants',
+        "200": {
+          description: "List of tenants",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/PaginatedTenants',
+                $ref: "#/components/schemas/PaginatedTenants",
               },
             },
           },
         },
-        '400': {
-          description: 'Validation error',
+        "400": {
+          description: "Validation error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: "#/components/schemas/ValidationErrorResponse",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -170,20 +170,20 @@ export const tenantPaths = {
       },
     },
   },
-  '/tenants/batch': {
+  "/tenants/batch": {
     post: {
-      tags: ['Tenants'],
-      summary: 'Create multiple tenants',
-      description: 'Batch create 1-10 tenants.',
-      security: [{ BearerAuth: [] }],
+      tags: ["Tenants"],
+      summary: "Create multiple tenants",
+      description: "Batch create 1-10 tenants.",
+      security: [{BearerAuth: []}],
       requestBody: {
         required: true,
         content: {
-          'application/json': {
+          "application/json": {
             schema: {
-              type: 'array',
+              type: "array",
               items: {
-                $ref: '#/components/schemas/CreateTenantRequest',
+                $ref: "#/components/schemas/CreateTenantRequest",
               },
               minItems: 1,
               maxItems: 10,
@@ -192,66 +192,66 @@ export const tenantPaths = {
         },
       },
       responses: {
-        '200': {
-          description: 'Tenants created',
+        "200": {
+          description: "Tenants created",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                type: 'array',
+                type: "array",
                 items: {
-                  $ref: '#/components/schemas/Tenant',
+                  $ref: "#/components/schemas/Tenant",
                 },
               },
             },
           },
         },
-        '400': {
-          description: 'Validation error',
+        "400": {
+          description: "Validation error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: "#/components/schemas/ValidationErrorResponse",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Property not found',
+        "404": {
+          description: "Property not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '409': {
+        "409": {
           description:
-            'Conflict (duplicate tenant name or property capacity exceeded)',
+            "Conflict (duplicate tenant name or property capacity exceeded)",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -259,27 +259,27 @@ export const tenantPaths = {
       },
     },
     put: {
-      tags: ['Tenants'],
-      summary: 'Update multiple tenants',
-      description: 'Batch update 1-10 tenants.',
-      security: [{ BearerAuth: [] }],
+      tags: ["Tenants"],
+      summary: "Update multiple tenants",
+      description: "Batch update 1-10 tenants.",
+      security: [{BearerAuth: []}],
       requestBody: {
         required: true,
         content: {
-          'application/json': {
+          "application/json": {
             schema: {
-              type: 'array',
+              type: "array",
               items: {
-                type: 'object',
+                type: "object",
                 properties: {
                   id: {
-                    type: 'string',
+                    type: "string",
                   },
                   data: {
-                    $ref: '#/components/schemas/UpdateTenantRequest',
+                    $ref: "#/components/schemas/UpdateTenantRequest",
                   },
                 },
-                required: ['id', 'data'],
+                required: ["id", "data"],
               },
               minItems: 1,
               maxItems: 10,
@@ -288,66 +288,66 @@ export const tenantPaths = {
         },
       },
       responses: {
-        '200': {
-          description: 'Tenants updated',
+        "200": {
+          description: "Tenants updated",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                type: 'array',
+                type: "array",
                 items: {
-                  $ref: '#/components/schemas/Tenant',
+                  $ref: "#/components/schemas/Tenant",
                 },
               },
             },
           },
         },
-        '400': {
-          description: 'Validation error',
+        "400": {
+          description: "Validation error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: "#/components/schemas/ValidationErrorResponse",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Tenant or property not found',
+        "404": {
+          description: "Tenant or property not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '409': {
+        "409": {
           description:
-            'Conflict (duplicate tenant name or property capacity exceeded)',
+            "Conflict (duplicate tenant name or property capacity exceeded)",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -355,60 +355,60 @@ export const tenantPaths = {
       },
     },
   },
-  '/tenants/{id}': {
+  "/tenants/{id}": {
     get: {
-      tags: ['Tenants'],
-      summary: 'Get tenant by ID',
-      description: 'Retrieve a single tenant by ID.',
-      security: [{ BearerAuth: [] }],
+      tags: ["Tenants"],
+      summary: "Get tenant by ID",
+      description: "Retrieve a single tenant by ID.",
+      security: [{BearerAuth: []}],
       parameters: [
         {
-          name: 'id',
-          in: 'path',
+          name: "id",
+          in: "path",
           required: true,
           schema: {
-            type: 'string',
+            type: "string",
             minLength: 1,
           },
         },
       ],
       responses: {
-        '200': {
-          description: 'Tenant retrieved',
+        "200": {
+          description: "Tenant retrieved",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/Tenant',
+                $ref: "#/components/schemas/Tenant",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Tenant not found',
+        "404": {
+          description: "Tenant not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -416,17 +416,17 @@ export const tenantPaths = {
       },
     },
     put: {
-      tags: ['Tenants'],
-      summary: 'Update a tenant',
-      description: 'Update a single tenant.',
-      security: [{ BearerAuth: [] }],
+      tags: ["Tenants"],
+      summary: "Update a tenant",
+      description: "Update a single tenant.",
+      security: [{BearerAuth: []}],
       parameters: [
         {
-          name: 'id',
-          in: 'path',
+          name: "id",
+          in: "path",
           required: true,
           schema: {
-            type: 'string',
+            type: "string",
             minLength: 1,
           },
         },
@@ -434,71 +434,71 @@ export const tenantPaths = {
       requestBody: {
         required: true,
         content: {
-          'application/json': {
+          "application/json": {
             schema: {
-              $ref: '#/components/schemas/UpdateTenantRequest',
+              $ref: "#/components/schemas/UpdateTenantRequest",
             },
           },
         },
       },
       responses: {
-        '200': {
-          description: 'Tenant updated',
+        "200": {
+          description: "Tenant updated",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/Tenant',
+                $ref: "#/components/schemas/Tenant",
               },
             },
           },
         },
-        '400': {
-          description: 'Validation error',
+        "400": {
+          description: "Validation error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: "#/components/schemas/ValidationErrorResponse",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Tenant or property not found',
+        "404": {
+          description: "Tenant or property not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '409': {
+        "409": {
           description:
-            'Conflict (tenant name already exists or property capacity exceeded)',
+            "Conflict (tenant name already exists or property capacity exceeded)",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -506,63 +506,63 @@ export const tenantPaths = {
       },
     },
     delete: {
-      tags: ['Tenants'],
-      summary: 'Delete a tenant (hard delete)',
-      description: 'Permanently delete a tenant.',
-      security: [{ BearerAuth: [] }],
+      tags: ["Tenants"],
+      summary: "Delete a tenant (hard delete)",
+      description: "Permanently delete a tenant.",
+      security: [{BearerAuth: []}],
       parameters: [
         {
-          name: 'id',
-          in: 'path',
+          name: "id",
+          in: "path",
           required: true,
           schema: {
-            type: 'string',
+            type: "string",
             minLength: 1,
           },
         },
       ],
       responses: {
-        '200': {
-          description: 'Tenant deleted',
+        "200": {
+          description: "Tenant deleted",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                type: 'object',
+                type: "object",
                 properties: {
                   message: {
-                    type: 'string',
+                    type: "string",
                   },
                 },
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Tenant not found',
+        "404": {
+          description: "Tenant not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -570,60 +570,60 @@ export const tenantPaths = {
       },
     },
   },
-  '/tenants/soft/{id}': {
+  "/tenants/soft/{id}": {
     delete: {
-      tags: ['Tenants'],
-      summary: 'Soft delete a tenant',
-      description: 'Soft delete (mark as deleted) a tenant.',
-      security: [{ BearerAuth: [] }],
+      tags: ["Tenants"],
+      summary: "Soft delete a tenant",
+      description: "Soft delete (mark as deleted) a tenant.",
+      security: [{BearerAuth: []}],
       parameters: [
         {
-          name: 'id',
-          in: 'path',
+          name: "id",
+          in: "path",
           required: true,
           schema: {
-            type: 'string',
+            type: "string",
             minLength: 1,
           },
         },
       ],
       responses: {
-        '200': {
-          description: 'Tenant soft deleted',
+        "200": {
+          description: "Tenant soft deleted",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/Tenant',
+                $ref: "#/components/schemas/Tenant",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Tenant not found',
+        "404": {
+          description: "Tenant not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },

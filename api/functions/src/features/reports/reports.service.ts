@@ -1,16 +1,16 @@
-import { billingCycleRepository } from '../billing-cycle/billing-cycle.repository';
-import { billingRepository } from '../billing/billing.repository';
-import { meterGroupRepository } from '../meter-group/meter-group.repository';
-import { propertyRepository } from '../property/property.repository';
-import { readingRepository } from '../reading/reading.repository';
+import {billingCycleRepository} from "../billing-cycle/billing-cycle.repository";
+import {billingRepository} from "../billing/billing.repository";
+import {meterGroupRepository} from "../meter-group/meter-group.repository";
+import {propertyRepository} from "../property/property.repository";
+import {readingRepository} from "../reading/reading.repository";
 import type {
   ReportSummary,
   ConsumptionReport,
   BillingTrendsReport,
   CollectionStatusReport,
   JoinedBilling,
-} from './reports.model';
-import type { ReportQueryDTO } from './reports.dto';
+} from "./reports.model";
+import type {ReportQueryDTO} from "./reports.dto";
 
 /**
  * Build date range filters for query-time filtering (H1 optimization).
@@ -36,7 +36,7 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
   const filters = buildDateRangeFilters(query);
   const cyclesResult = await billingCycleRepository.search({
     limit: 1000,
-    orderBy: 'created_at',
+    orderBy: "created_at",
     filters,
   });
 
@@ -85,7 +85,7 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
   const meterGroupIds = new Set<string>();
   propertyMap.forEach((prop) => {
     Object.values(prop.meter_groups).forEach((entry: any) => {
-      if (typeof entry === 'string') {
+      if (typeof entry === "string") {
         if (entry.trim()) meterGroupIds.add(entry);
       } else if (entry?.meter_group_id && entry.meter_group_id.trim()) {
         meterGroupIds.add(entry.meter_group_id);
@@ -141,7 +141,7 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
 
     const meterGroupId = reading.meter_group_id;
     const meterGroup = meterGroupMap.get(meterGroupId);
-    const utilityType = meterGroup?.utility_type || 'unknown';
+    const utilityType = meterGroup?.utility_type || "unknown";
 
     // Filter by meterGroupId if specified
     if (query.meterGroupId && meterGroupId !== query.meterGroupId) {
@@ -167,7 +167,7 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
 
     // Determine overdue status based on overdue_date if available, otherwise use billing_end_date
     const overdueDate = cycle.overdue_date ? cycle.overdue_date.toDate() : cycle.billing_end_date.toDate();
-    const finalIsOverdue = billing.payment_status === 'pending' && now > overdueDate;
+    const finalIsOverdue = billing.payment_status === "pending" && now > overdueDate;
 
     joinedData.push({
       billingId: billing.id,
@@ -190,14 +190,14 @@ export async function getSummary(userId: string, query: ReportQueryDTO): Promise
   const joinedData = await buildJoinedData(userId, query);
 
   const totalRevenue = joinedData
-    .filter((j) => j.paymentStatus === 'paid')
+    .filter((j) => j.paymentStatus === "paid")
     .reduce((sum, j) => sum + j.amount, 0);
 
   const totalBilled = joinedData.reduce((sum, j) => sum + j.amount, 0);
   const collectionRate = totalBilled > 0 ? totalRevenue / totalBilled : 0;
 
-  const paid = joinedData.filter((j) => j.paymentStatus === 'paid');
-  const pending = joinedData.filter((j) => j.paymentStatus === 'pending' && !j.isOverdue);
+  const paid = joinedData.filter((j) => j.paymentStatus === "paid");
+  const pending = joinedData.filter((j) => j.paymentStatus === "pending" && !j.isOverdue);
   const overdue = joinedData.filter((j) => j.isOverdue);
 
   return {
@@ -216,7 +216,7 @@ export async function getConsumption(userId: string, query: ReportQueryDTO): Pro
   const filters = buildDateRangeFilters(query);
   const cyclesResult = await billingCycleRepository.search({
     limit: 1000,
-    orderBy: 'created_at',
+    orderBy: "created_at",
     filters,
   });
 
@@ -259,7 +259,7 @@ export async function getConsumption(userId: string, query: ReportQueryDTO): Pro
   const meterGroupIds = new Set<string>();
   propertyMap.forEach((prop) => {
     Object.values(prop.meter_groups).forEach((entry: any) => {
-      if (typeof entry === 'string') {
+      if (typeof entry === "string") {
         if (entry.trim()) meterGroupIds.add(entry);
       } else if (entry?.meter_group_id && entry.meter_group_id.trim()) {
         meterGroupIds.add(entry.meter_group_id);
@@ -303,7 +303,7 @@ export async function getConsumption(userId: string, query: ReportQueryDTO): Pro
       if (!property) continue;
 
       // Get utility type from the reading's meter group (accurate source)
-      let utilityType = 'unknown';
+      let utilityType = "unknown";
       const reading = readingMap.get(billing.current_reading_id);
       if (reading) {
         const readingMeterGroup = meterGroupMap.get(reading.meter_group_id);
@@ -318,13 +318,13 @@ export async function getConsumption(userId: string, query: ReportQueryDTO): Pro
       }
 
       if (!monthMap.has(month)) {
-        monthMap.set(month, { electricity: 0, water: 0 });
+        monthMap.set(month, {electricity: 0, water: 0});
       }
 
       const monthData = monthMap.get(month)!;
-      if (utilityType === 'electricity') {
+      if (utilityType === "electricity") {
         monthData.electricity += consumption;
-      } else if (utilityType === 'water') {
+      } else if (utilityType === "water") {
         monthData.water += consumption;
       }
     }
@@ -352,7 +352,7 @@ export async function getConsumption(userId: string, query: ReportQueryDTO): Pro
       if (query.propertyId && billing.property_id !== query.propertyId) continue;
 
       // Get utility type from the reading's meter group (accurate source)
-      let utilityType = 'unknown';
+      let utilityType = "unknown";
       const reading = readingMap.get(billing.current_reading_id);
       if (reading) {
         const readingMeterGroup = meterGroupMap.get(reading.meter_group_id);
@@ -367,13 +367,13 @@ export async function getConsumption(userId: string, query: ReportQueryDTO): Pro
       }
 
       if (!propertyConsumption.has(billing.property_id)) {
-        propertyConsumption.set(billing.property_id, { electricity: 0, water: 0 });
+        propertyConsumption.set(billing.property_id, {electricity: 0, water: 0});
       }
 
       const propData = propertyConsumption.get(billing.property_id)!;
-      if (utilityType === 'electricity') {
+      if (utilityType === "electricity") {
         propData.electricity += consumption;
-      } else if (utilityType === 'water') {
+      } else if (utilityType === "water") {
         propData.water += consumption;
       }
     }
@@ -382,13 +382,13 @@ export async function getConsumption(userId: string, query: ReportQueryDTO): Pro
   const by_property = Array.from(propertyConsumption.entries())
     .map(([propId, data]) => ({
       property_id: propId,
-      room_name: propertyMap.get(propId)?.room_name || 'Unknown',
+      room_name: propertyMap.get(propId)?.room_name || "Unknown",
       electricity: Math.round(data.electricity * 100) / 100,
       water: Math.round(data.water * 100) / 100,
     }))
     .sort((a, b) => a.room_name.localeCompare(b.room_name));
 
-  return { by_month, by_property };
+  return {by_month, by_property};
 }
 
 export async function getBillingTrends(userId: string, query: ReportQueryDTO): Promise<BillingTrendsReport> {
@@ -401,13 +401,13 @@ export async function getBillingTrends(userId: string, query: ReportQueryDTO): P
     const month = billing.cycleEndDate.toISOString().slice(0, 7);
 
     if (!monthMap.has(month)) {
-      monthMap.set(month, { billed: 0, collected: 0, pending: 0, overdue: 0 });
+      monthMap.set(month, {billed: 0, collected: 0, pending: 0, overdue: 0});
     }
 
     const monthData = monthMap.get(month)!;
     monthData.billed += billing.amount;
 
-    if (billing.paymentStatus === 'paid') {
+    if (billing.paymentStatus === "paid") {
       monthData.collected += billing.amount;
     } else if (billing.isOverdue) {
       monthData.overdue += billing.amount;
@@ -426,7 +426,7 @@ export async function getBillingTrends(userId: string, query: ReportQueryDTO): P
     }))
     .sort((a, b) => a.period.localeCompare(b.period));
 
-  return { by_month };
+  return {by_month};
 }
 
 export async function getCollectionStatus(
@@ -435,8 +435,8 @@ export async function getCollectionStatus(
 ): Promise<CollectionStatusReport> {
   const joinedData = await buildJoinedData(userId, query);
 
-  const paid = joinedData.filter((j) => j.paymentStatus === 'paid');
-  const pending = joinedData.filter((j) => j.paymentStatus === 'pending' && !j.isOverdue);
+  const paid = joinedData.filter((j) => j.paymentStatus === "paid");
+  const pending = joinedData.filter((j) => j.paymentStatus === "pending" && !j.isOverdue);
   const overdue = joinedData.filter((j) => j.isOverdue);
 
   return {

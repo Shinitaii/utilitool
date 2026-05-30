@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import {z} from "zod";
 
 export const ReportQueryDTOSchema = z.object({
   startDate: z.string().datetime().optional(),

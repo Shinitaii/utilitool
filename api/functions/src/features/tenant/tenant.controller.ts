@@ -75,7 +75,7 @@ export const updateTenant = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const {id} = req.params;
+  const {id} = req.params as unknown as TenantByIdParamsDTO;
   const data = req.body as UpdateTenantDTO;
   const userId = req.user?.userId;
   if (!userId) throw new AppError(401, "User not authenticated");
@@ -98,7 +98,7 @@ export const deleteTenant = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const {id} = req.params;
+  const {id} = req.params as unknown as TenantByIdParamsDTO;
   const userId = req.user?.userId;
   if (!userId) throw new AppError(401, "User not authenticated");
   await tenantService.delete(userId, id);
@@ -109,7 +109,7 @@ export const softDeleteTenant = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const {id} = req.params;
+  const {id} = req.params as unknown as TenantByIdParamsDTO;
   const userId = req.user?.userId;
   if (!userId) throw new AppError(401, "User not authenticated");
   const result = await tenantService.softDelete(userId, id);
@@ -120,7 +120,7 @@ export const restoreTenant = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const {id} = req.params;
+  const {id} = req.params as unknown as TenantByIdParamsDTO;
   const userId = req.user?.userId;
   if (!userId) throw new AppError(401, "User not authenticated");
   const result = await tenantService.restore(userId, id);
@@ -131,6 +131,6 @@ export const clearCache = async (
   _req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const deletedCount = await cacheDelPattern('utilitool:tenants:*');
-  res.status(200).json({ message: `Cleared ${deletedCount} cache entries for tenants` });
+  const deletedCount = await cacheDelPattern("utilitool:tenants:*");
+  res.status(200).json({message: `Cleared ${deletedCount} cache entries for tenants`});
 };

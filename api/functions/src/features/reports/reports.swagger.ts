@@ -1,83 +1,83 @@
 export const reportsPaths = {
-  '/reports/summary': {
+  "/reports/summary": {
     get: {
-      tags: ['Reports'],
-      summary: 'Get billing summary report',
-      description: 'Retrieve key billing metrics: total revenue, collection rate, and payment status breakdown',
-      security: [{ BearerAuth: [] }],
+      tags: ["Reports"],
+      summary: "Get billing summary report",
+      description: "Retrieve key billing metrics: total revenue, collection rate, and payment status breakdown",
+      security: [{BearerAuth: []}],
       parameters: [
         {
-          name: 'startDate',
-          in: 'query',
-          description: 'Filter cycles by start date (ISO 8601)',
+          name: "startDate",
+          in: "query",
+          description: "Filter cycles by start date (ISO 8601)",
           schema: {
-            type: 'string',
-            format: 'date-time',
+            type: "string",
+            format: "date-time",
           },
         },
         {
-          name: 'endDate',
-          in: 'query',
-          description: 'Filter cycles by end date (ISO 8601)',
+          name: "endDate",
+          in: "query",
+          description: "Filter cycles by end date (ISO 8601)",
           schema: {
-            type: 'string',
-            format: 'date-time',
+            type: "string",
+            format: "date-time",
           },
         },
         {
-          name: 'meterGroupId',
-          in: 'query',
-          description: 'Filter by specific meter group',
+          name: "meterGroupId",
+          in: "query",
+          description: "Filter by specific meter group",
           schema: {
-            type: 'string',
+            type: "string",
           },
         },
         {
-          name: 'propertyId',
-          in: 'query',
-          description: 'Filter by specific property',
+          name: "propertyId",
+          in: "query",
+          description: "Filter by specific property",
           schema: {
-            type: 'string',
+            type: "string",
           },
         },
       ],
       responses: {
-        '200': {
-          description: 'Summary report data',
+        "200": {
+          description: "Summary report data",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ReportSummary',
+                $ref: "#/components/schemas/ReportSummary",
               },
             },
           },
         },
-        '400': {
-          description: 'Validation error',
+        "400": {
+          description: "Validation error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: "#/components/schemas/ValidationErrorResponse",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -85,85 +85,85 @@ export const reportsPaths = {
       },
     },
   },
-  '/reports/consumption': {
+  "/reports/consumption": {
     get: {
-      tags: ['Reports'],
-      summary: 'Get consumption analytics',
-      description: 'Retrieve consumption breakdown by month and by property',
-      security: [{ BearerAuth: [] }],
+      tags: ["Reports"],
+      summary: "Get consumption analytics",
+      description: "Retrieve consumption breakdown by month and by property",
+      security: [{BearerAuth: []}],
       parameters: [
         {
-          name: 'startDate',
-          in: 'query',
-          description: 'Filter cycles by start date (ISO 8601)',
+          name: "startDate",
+          in: "query",
+          description: "Filter cycles by start date (ISO 8601)",
           schema: {
-            type: 'string',
-            format: 'date-time',
+            type: "string",
+            format: "date-time",
           },
         },
         {
-          name: 'endDate',
-          in: 'query',
-          description: 'Filter cycles by end date (ISO 8601)',
+          name: "endDate",
+          in: "query",
+          description: "Filter cycles by end date (ISO 8601)",
           schema: {
-            type: 'string',
-            format: 'date-time',
+            type: "string",
+            format: "date-time",
           },
         },
         {
-          name: 'meterGroupId',
-          in: 'query',
-          description: 'Filter by specific meter group',
+          name: "meterGroupId",
+          in: "query",
+          description: "Filter by specific meter group",
           schema: {
-            type: 'string',
+            type: "string",
           },
         },
         {
-          name: 'propertyId',
-          in: 'query',
-          description: 'Filter by specific property',
+          name: "propertyId",
+          in: "query",
+          description: "Filter by specific property",
           schema: {
-            type: 'string',
+            type: "string",
           },
         },
       ],
       responses: {
-        '200': {
-          description: 'Consumption report data',
+        "200": {
+          description: "Consumption report data",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ConsumptionReport',
+                $ref: "#/components/schemas/ConsumptionReport",
               },
             },
           },
         },
-        '400': {
-          description: 'Validation error',
+        "400": {
+          description: "Validation error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: "#/components/schemas/ValidationErrorResponse",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -171,85 +171,85 @@ export const reportsPaths = {
       },
     },
   },
-  '/reports/billing-trends': {
+  "/reports/billing-trends": {
     get: {
-      tags: ['Reports'],
-      summary: 'Get billing trends report',
-      description: 'Retrieve billing amounts (billed, collected, pending, overdue) grouped by month',
-      security: [{ BearerAuth: [] }],
+      tags: ["Reports"],
+      summary: "Get billing trends report",
+      description: "Retrieve billing amounts (billed, collected, pending, overdue) grouped by month",
+      security: [{BearerAuth: []}],
       parameters: [
         {
-          name: 'startDate',
-          in: 'query',
-          description: 'Filter cycles by start date (ISO 8601)',
+          name: "startDate",
+          in: "query",
+          description: "Filter cycles by start date (ISO 8601)",
           schema: {
-            type: 'string',
-            format: 'date-time',
+            type: "string",
+            format: "date-time",
           },
         },
         {
-          name: 'endDate',
-          in: 'query',
-          description: 'Filter cycles by end date (ISO 8601)',
+          name: "endDate",
+          in: "query",
+          description: "Filter cycles by end date (ISO 8601)",
           schema: {
-            type: 'string',
-            format: 'date-time',
+            type: "string",
+            format: "date-time",
           },
         },
         {
-          name: 'meterGroupId',
-          in: 'query',
-          description: 'Filter by specific meter group',
+          name: "meterGroupId",
+          in: "query",
+          description: "Filter by specific meter group",
           schema: {
-            type: 'string',
+            type: "string",
           },
         },
         {
-          name: 'propertyId',
-          in: 'query',
-          description: 'Filter by specific property',
+          name: "propertyId",
+          in: "query",
+          description: "Filter by specific property",
           schema: {
-            type: 'string',
+            type: "string",
           },
         },
       ],
       responses: {
-        '200': {
-          description: 'Billing trends report data',
+        "200": {
+          description: "Billing trends report data",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/BillingTrendsReport',
+                $ref: "#/components/schemas/BillingTrendsReport",
               },
             },
           },
         },
-        '400': {
-          description: 'Validation error',
+        "400": {
+          description: "Validation error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: "#/components/schemas/ValidationErrorResponse",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -257,85 +257,85 @@ export const reportsPaths = {
       },
     },
   },
-  '/reports/collection-status': {
+  "/reports/collection-status": {
     get: {
-      tags: ['Reports'],
-      summary: 'Get collection status report',
-      description: 'Retrieve billing counts and amounts grouped by payment status (paid, pending, overdue)',
-      security: [{ BearerAuth: [] }],
+      tags: ["Reports"],
+      summary: "Get collection status report",
+      description: "Retrieve billing counts and amounts grouped by payment status (paid, pending, overdue)",
+      security: [{BearerAuth: []}],
       parameters: [
         {
-          name: 'startDate',
-          in: 'query',
-          description: 'Filter cycles by start date (ISO 8601)',
+          name: "startDate",
+          in: "query",
+          description: "Filter cycles by start date (ISO 8601)",
           schema: {
-            type: 'string',
-            format: 'date-time',
+            type: "string",
+            format: "date-time",
           },
         },
         {
-          name: 'endDate',
-          in: 'query',
-          description: 'Filter cycles by end date (ISO 8601)',
+          name: "endDate",
+          in: "query",
+          description: "Filter cycles by end date (ISO 8601)",
           schema: {
-            type: 'string',
-            format: 'date-time',
+            type: "string",
+            format: "date-time",
           },
         },
         {
-          name: 'meterGroupId',
-          in: 'query',
-          description: 'Filter by specific meter group',
+          name: "meterGroupId",
+          in: "query",
+          description: "Filter by specific meter group",
           schema: {
-            type: 'string',
+            type: "string",
           },
         },
         {
-          name: 'propertyId',
-          in: 'query',
-          description: 'Filter by specific property',
+          name: "propertyId",
+          in: "query",
+          description: "Filter by specific property",
           schema: {
-            type: 'string',
+            type: "string",
           },
         },
       ],
       responses: {
-        '200': {
-          description: 'Collection status report data',
+        "200": {
+          description: "Collection status report data",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/CollectionStatusReport',
+                $ref: "#/components/schemas/CollectionStatusReport",
               },
             },
           },
         },
-        '400': {
-          description: 'Validation error',
+        "400": {
+          description: "Validation error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: "#/components/schemas/ValidationErrorResponse",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },

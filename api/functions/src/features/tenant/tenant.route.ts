@@ -2,7 +2,6 @@
 import {
   createBatchTenants,
   createTenant,
-  deleteTenant,
   getTenantById,
   getTenants,
   softDeleteTenant,
@@ -26,21 +25,21 @@ const router = Router();
 
 router.post(
   "/cache/clear",
-  requireRole('admin'),
+  requireRole("admin"),
   clearCache
 );
 
 router.post(
   "/batch",
   validateRequest({body: CreateTenantBatchDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole("admin", "landlord"),
   createBatchTenants
 );
 
 router.patch(
   "/batch",
   validateRequest({body: UpdateTenantBatchDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole("admin", "landlord"),
   updateBatchTenants
 );
 
@@ -71,15 +70,15 @@ router.patch(
 router.delete(
   "/:id",
   validateRequest({params: TenantByIdParamsDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole("admin", "landlord"),
   softDeleteTenant
 );
 
 router.patch(
   "/:id/restore",
   validateRequest({params: TenantByIdParamsDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole("admin", "landlord"),
   restoreTenant
 );
 
-export default router;
+export const tenantRouter = router;
