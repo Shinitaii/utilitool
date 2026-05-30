@@ -64,6 +64,7 @@ router.post(
 router.post(
   "/",
   validateRequest({body: CreateReadingDTOSchema}),
+  requireRole("admin", "landlord", "assistant"),
   createReading
 );
 
@@ -82,6 +83,7 @@ router.get(
 router.patch(
   "/:id",
   validateRequest({params: ReadingByIdParamsDTOSchema, body: UpdateReadingDTOSchema}),
+  requireRole("admin", "landlord", "assistant"),
   updateReading
 );
 
