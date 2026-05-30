@@ -11,8 +11,8 @@
   let currentScreen = $state('login');
   let user = $state(auth.currentUser);
 
-  $effect.pre(() => {
-    auth.onAuthStateChanged((newUser) => {
+  $effect(() => {
+    const unsubscribe = auth.onAuthStateChanged((newUser) => {
       user = newUser;
       if (newUser && currentScreen === 'login') {
         currentScreen = 'home';
@@ -20,6 +20,7 @@
         currentScreen = 'login';
       }
     });
+    return unsubscribe;
   });
 
   onMount(() => {

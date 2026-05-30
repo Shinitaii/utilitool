@@ -40,5 +40,8 @@ export async function createReading(data: CreateReadingRequest) {
 }
 
 export async function createReadingsBatch(data: BatchReadingRequest) {
+  if (!data.readings || data.readings.length === 0) {
+    throw new Error('Cannot submit an empty batch — add at least one reading.');
+  }
   return apiPost('/readings/batch', data);
 }

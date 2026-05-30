@@ -5,7 +5,8 @@ export default defineConfig({
   plugins: [svelte()],
   build: {
     target: 'esnext',
-    minify: 'terser'
+    minify: 'terser',
+    sourcemap: false
   },
   server: {
     port: 5174
