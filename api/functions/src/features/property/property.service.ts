@@ -22,21 +22,28 @@ type PropertySearchOptions = {
   archived?: boolean;
 };
 
+// Remove undefined values from meter_groups (DTO allows undefined, model doesn't)
+function cleanMeterGroups(meterGroups: Record<string, {meter_group_id: string; is_main_meter: boolean} | undefined>) {
+  return Object.fromEntries(
+    Object.entries(meterGroups).filter(([, v]) => v !== undefined)
+  ) as Record<string, {meter_group_id: string; is_main_meter: boolean}>;
+}
+
 export const propertyService = {
   async create(userId: string, data: CreatePropertyDTO): Promise<Property> {
     await validator.validateCreate(data);
-    const cachedRepo = new CachedRepository(propertyRepository, userId, 'properties', CACHE_TTL);
-    return cachedRepo.create(data);
+    const cachedRepo = new CachedRepository(propertyRepository, userId, "properties", CACHE_TTL);
+    return cachedRepo.create({...data, meter_groups: cleanMeterGroups(data.meter_groups)});
   },
 
   async createBatch(userId: string, data: CreatePropertyDTO[]): Promise<Property[]> {
     await validator.validateBatchCreate(data);
-    const cachedRepo = new CachedRepository(propertyRepository, userId, 'properties', CACHE_TTL);
-    return cachedRepo.createBatch(data);
+    const cachedRepo = new CachedRepository(propertyRepository, userId, "properties", CACHE_TTL);
+    return cachedRepo.createBatch(data.map((d) => ({...d, meter_groups: cleanMeterGroups(d.meter_groups)})));
   },
 
   async getById(userId: string, id: string): Promise<Property | null> {
-    const cachedRepo = new CachedRepository(propertyRepository, userId, 'properties', CACHE_TTL);
+    const cachedRepo = new CachedRepository(propertyRepository, userId, "properties", CACHE_TTL);
     return cachedRepo.getById(id);
   },
 
@@ -44,7 +51,7 @@ export const propertyService = {
     userId: string,
     options: PropertySearchOptions
   ): Promise<PaginatedResult<Property>> {
-    const cachedRepo = new CachedRepository(propertyRepository, userId, 'properties', CACHE_TTL);
+    const cachedRepo = new CachedRepository(propertyRepository, userId, "properties", CACHE_TTL);
 
     // Need custom filtering for meter_group_id since it's in a nested map
     const result = await cachedRepo.search({
@@ -54,7 +61,7 @@ export const propertyService = {
       cursor: options.cursor,
       archived: options.archived,
       filters: {
-        ...(options.roomName ? { room_name: options.roomName } : {}),
+        ...(options.roomName ? {room_name: options.roomName} : {}),
       },
     });
 
@@ -62,7 +69,7 @@ export const propertyService = {
     if (options.meterGroupId) {
       result.data = result.data.filter((property) =>
         Object.values(property.meter_groups).some((entry: any) => {
-          if (typeof entry === 'string') {
+          if (typeof entry === "string") {
             return entry === options.meterGroupId;
           }
           return entry?.meter_group_id === options.meterGroupId;
@@ -81,14 +88,19 @@ export const propertyService = {
     }
 
     await validator.validateUpdate(property, data);
-    const cachedRepo = new CachedRepository(propertyRepository, userId, 'properties', CACHE_TTL);
-    return cachedRepo.update(id, data);
+    const cachedRepo = new CachedRepository(propertyRepository, userId, "properties", CACHE_TTL);
+    const cleanData = data.meter_groups ? {...data, meter_groups: cleanMeterGroups(data.meter_groups)} : (data as any);
+    return cachedRepo.update(id, cleanData);
   },
 
   async updateBatch(userId: string, updates: { id: string; data: UpdatePropertyDTO }[]): Promise<Property[]> {
     await validator.validateBatchUpdate(updates);
-    const cachedRepo = new CachedRepository(propertyRepository, userId, 'properties', CACHE_TTL);
-    return cachedRepo.updateBatch(updates);
+    const cachedRepo = new CachedRepository(propertyRepository, userId, "properties", CACHE_TTL);
+    const cleanUpdates = updates.map((u) => ({
+      id: u.id,
+      data: u.data.meter_groups ? {...u.data, meter_groups: cleanMeterGroups(u.data.meter_groups)} : (u.data as any),
+    }));
+    return cachedRepo.updateBatch(cleanUpdates);
   },
 
   async delete(userId: string, id: string): Promise<void> {
@@ -97,7 +109,7 @@ export const propertyService = {
       throw new AppError(404, "Property not found");
     }
 
-    const cachedRepo = new CachedRepository(propertyRepository, userId, 'properties', CACHE_TTL);
+    const cachedRepo = new CachedRepository(propertyRepository, userId, "properties", CACHE_TTL);
     await cachedRepo.delete(id);
   },
 

@@ -61,7 +61,7 @@ export class PropertyValidator {
   ): Promise<void> {
     const mainMeterEntries = Object.values(meterGroups)
       .filter((e): e is MeterGroupEntry => e !== undefined)
-      .filter(e => e.is_main_meter);
+      .filter((e) => e.is_main_meter);
     if (mainMeterEntries.length === 0) return;
 
     // Fetch all properties with cursor-based pagination to avoid the 100-item hard limit

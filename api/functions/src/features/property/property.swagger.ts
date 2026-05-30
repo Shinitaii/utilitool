@@ -1,78 +1,78 @@
 export const propertyPaths = {
-  '/properties': {
+  "/properties": {
     post: {
-      tags: ['Properties'],
-      summary: 'Create a new property',
+      tags: ["Properties"],
+      summary: "Create a new property",
       description:
-        'Create a single property. Room name must be unique within the meter group.',
-      security: [{ BearerAuth: [] }],
+        "Create a single property. Room name must be unique within the meter group.",
+      security: [{BearerAuth: []}],
       requestBody: {
         required: true,
         content: {
-          'application/json': {
+          "application/json": {
             schema: {
-              $ref: '#/components/schemas/CreatePropertyRequest',
+              $ref: "#/components/schemas/CreatePropertyRequest",
             },
           },
         },
       },
       responses: {
-        '200': {
-          description: 'Property created',
+        "200": {
+          description: "Property created",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/Property',
+                $ref: "#/components/schemas/Property",
               },
             },
           },
         },
-        '400': {
-          description: 'Validation error',
+        "400": {
+          description: "Validation error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: "#/components/schemas/ValidationErrorResponse",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Meter group not found',
+        "404": {
+          description: "Meter group not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '409': {
-          description: 'Conflict (room name already exists in meter group)',
+        "409": {
+          description: "Conflict (room name already exists in meter group)",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -80,88 +80,88 @@ export const propertyPaths = {
       },
     },
     get: {
-      tags: ['Properties'],
-      summary: 'List properties',
+      tags: ["Properties"],
+      summary: "List properties",
       description:
-        'Retrieve paginated list of properties. Can filter by room name or meter group ID.',
-      security: [{ BearerAuth: [] }],
+        "Retrieve paginated list of properties. Can filter by room name or meter group ID.",
+      security: [{BearerAuth: []}],
       parameters: [
         {
-          name: 'roomName',
-          in: 'query',
-          description: 'Filter by room name (case-insensitive partial match)',
+          name: "roomName",
+          in: "query",
+          description: "Filter by room name (case-insensitive partial match)",
           schema: {
-            type: 'string',
+            type: "string",
             minLength: 1,
             maxLength: 255,
           },
         },
         {
-          name: 'meterGroupId',
-          in: 'query',
-          description: 'Filter by meter group ID',
+          name: "meterGroupId",
+          in: "query",
+          description: "Filter by meter group ID",
           schema: {
-            type: 'string',
+            type: "string",
             minLength: 1,
           },
         },
         {
-          name: 'limit',
-          in: 'query',
-          description: 'Number of results per page (1-100, default 20)',
+          name: "limit",
+          in: "query",
+          description: "Number of results per page (1-100, default 20)",
           schema: {
-            type: 'integer',
+            type: "integer",
             minimum: 1,
             maximum: 100,
             default: 20,
           },
         },
         {
-          name: 'cursor',
-          in: 'query',
-          description: 'Pagination cursor from previous response',
+          name: "cursor",
+          in: "query",
+          description: "Pagination cursor from previous response",
           schema: {
-            type: 'string',
+            type: "string",
           },
         },
       ],
       responses: {
-        '200': {
-          description: 'List of properties',
+        "200": {
+          description: "List of properties",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/PaginatedProperties',
+                $ref: "#/components/schemas/PaginatedProperties",
               },
             },
           },
         },
-        '400': {
-          description: 'Validation error',
+        "400": {
+          description: "Validation error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: "#/components/schemas/ValidationErrorResponse",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -169,20 +169,20 @@ export const propertyPaths = {
       },
     },
   },
-  '/properties/batch': {
+  "/properties/batch": {
     post: {
-      tags: ['Properties'],
-      summary: 'Create multiple properties',
-      description: 'Batch create 1-10 properties.',
-      security: [{ BearerAuth: [] }],
+      tags: ["Properties"],
+      summary: "Create multiple properties",
+      description: "Batch create 1-10 properties.",
+      security: [{BearerAuth: []}],
       requestBody: {
         required: true,
         content: {
-          'application/json': {
+          "application/json": {
             schema: {
-              type: 'array',
+              type: "array",
               items: {
-                $ref: '#/components/schemas/CreatePropertyRequest',
+                $ref: "#/components/schemas/CreatePropertyRequest",
               },
               minItems: 1,
               maxItems: 10,
@@ -191,65 +191,65 @@ export const propertyPaths = {
         },
       },
       responses: {
-        '200': {
-          description: 'Properties created',
+        "200": {
+          description: "Properties created",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                type: 'array',
+                type: "array",
                 items: {
-                  $ref: '#/components/schemas/Property',
+                  $ref: "#/components/schemas/Property",
                 },
               },
             },
           },
         },
-        '400': {
-          description: 'Validation error',
+        "400": {
+          description: "Validation error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: "#/components/schemas/ValidationErrorResponse",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Meter group not found',
+        "404": {
+          description: "Meter group not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '409': {
-          description: 'Conflict (duplicate room name)',
+        "409": {
+          description: "Conflict (duplicate room name)",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -257,27 +257,27 @@ export const propertyPaths = {
       },
     },
     put: {
-      tags: ['Properties'],
-      summary: 'Update multiple properties',
-      description: 'Batch update 1-10 properties.',
-      security: [{ BearerAuth: [] }],
+      tags: ["Properties"],
+      summary: "Update multiple properties",
+      description: "Batch update 1-10 properties.",
+      security: [{BearerAuth: []}],
       requestBody: {
         required: true,
         content: {
-          'application/json': {
+          "application/json": {
             schema: {
-              type: 'array',
+              type: "array",
               items: {
-                type: 'object',
+                type: "object",
                 properties: {
                   id: {
-                    type: 'string',
+                    type: "string",
                   },
                   data: {
-                    $ref: '#/components/schemas/UpdatePropertyRequest',
+                    $ref: "#/components/schemas/UpdatePropertyRequest",
                   },
                 },
-                required: ['id', 'data'],
+                required: ["id", "data"],
               },
               minItems: 1,
               maxItems: 10,
@@ -286,65 +286,65 @@ export const propertyPaths = {
         },
       },
       responses: {
-        '200': {
-          description: 'Properties updated',
+        "200": {
+          description: "Properties updated",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                type: 'array',
+                type: "array",
                 items: {
-                  $ref: '#/components/schemas/Property',
+                  $ref: "#/components/schemas/Property",
                 },
               },
             },
           },
         },
-        '400': {
-          description: 'Validation error',
+        "400": {
+          description: "Validation error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: "#/components/schemas/ValidationErrorResponse",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Property or meter group not found',
+        "404": {
+          description: "Property or meter group not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '409': {
-          description: 'Conflict (duplicate room name or tenant capacity)',
+        "409": {
+          description: "Conflict (duplicate room name or tenant capacity)",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -352,60 +352,60 @@ export const propertyPaths = {
       },
     },
   },
-  '/properties/{id}': {
+  "/properties/{id}": {
     get: {
-      tags: ['Properties'],
-      summary: 'Get property by ID',
-      description: 'Retrieve a single property by ID.',
-      security: [{ BearerAuth: [] }],
+      tags: ["Properties"],
+      summary: "Get property by ID",
+      description: "Retrieve a single property by ID.",
+      security: [{BearerAuth: []}],
       parameters: [
         {
-          name: 'id',
-          in: 'path',
+          name: "id",
+          in: "path",
           required: true,
           schema: {
-            type: 'string',
+            type: "string",
             minLength: 1,
           },
         },
       ],
       responses: {
-        '200': {
-          description: 'Property retrieved',
+        "200": {
+          description: "Property retrieved",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/Property',
+                $ref: "#/components/schemas/Property",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Property not found',
+        "404": {
+          description: "Property not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -413,18 +413,18 @@ export const propertyPaths = {
       },
     },
     put: {
-      tags: ['Properties'],
-      summary: 'Update a property',
+      tags: ["Properties"],
+      summary: "Update a property",
       description:
-        'Update a single property. Tenant amount cannot be reduced below current tenant count.',
-      security: [{ BearerAuth: [] }],
+        "Update a single property. Tenant amount cannot be reduced below current tenant count.",
+      security: [{BearerAuth: []}],
       parameters: [
         {
-          name: 'id',
-          in: 'path',
+          name: "id",
+          in: "path",
           required: true,
           schema: {
-            type: 'string',
+            type: "string",
             minLength: 1,
           },
         },
@@ -432,71 +432,71 @@ export const propertyPaths = {
       requestBody: {
         required: true,
         content: {
-          'application/json': {
+          "application/json": {
             schema: {
-              $ref: '#/components/schemas/UpdatePropertyRequest',
+              $ref: "#/components/schemas/UpdatePropertyRequest",
             },
           },
         },
       },
       responses: {
-        '200': {
-          description: 'Property updated',
+        "200": {
+          description: "Property updated",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/Property',
+                $ref: "#/components/schemas/Property",
               },
             },
           },
         },
-        '400': {
-          description: 'Validation error',
+        "400": {
+          description: "Validation error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ValidationErrorResponse',
+                $ref: "#/components/schemas/ValidationErrorResponse",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Property or meter group not found',
+        "404": {
+          description: "Property or meter group not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '409': {
+        "409": {
           description:
-            'Conflict (room name already exists or tenant capacity too low)',
+            "Conflict (room name already exists or tenant capacity too low)",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -504,63 +504,63 @@ export const propertyPaths = {
       },
     },
     delete: {
-      tags: ['Properties'],
-      summary: 'Delete a property (hard delete)',
-      description: 'Permanently delete a property.',
-      security: [{ BearerAuth: [] }],
+      tags: ["Properties"],
+      summary: "Delete a property (hard delete)",
+      description: "Permanently delete a property.",
+      security: [{BearerAuth: []}],
       parameters: [
         {
-          name: 'id',
-          in: 'path',
+          name: "id",
+          in: "path",
           required: true,
           schema: {
-            type: 'string',
+            type: "string",
             minLength: 1,
           },
         },
       ],
       responses: {
-        '200': {
-          description: 'Property deleted',
+        "200": {
+          description: "Property deleted",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                type: 'object',
+                type: "object",
                 properties: {
                   message: {
-                    type: 'string',
+                    type: "string",
                   },
                 },
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Property not found',
+        "404": {
+          description: "Property not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -568,60 +568,60 @@ export const propertyPaths = {
       },
     },
   },
-  '/properties/soft/{id}': {
+  "/properties/soft/{id}": {
     delete: {
-      tags: ['Properties'],
-      summary: 'Soft delete a property',
-      description: 'Soft delete (mark as deleted) a property.',
-      security: [{ BearerAuth: [] }],
+      tags: ["Properties"],
+      summary: "Soft delete a property",
+      description: "Soft delete (mark as deleted) a property.",
+      security: [{BearerAuth: []}],
       parameters: [
         {
-          name: 'id',
-          in: 'path',
+          name: "id",
+          in: "path",
           required: true,
           schema: {
-            type: 'string',
+            type: "string",
             minLength: 1,
           },
         },
       ],
       responses: {
-        '200': {
-          description: 'Property soft deleted',
+        "200": {
+          description: "Property soft deleted",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/Property',
+                $ref: "#/components/schemas/Property",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized',
+        "401": {
+          description: "Unauthorized",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '404': {
-          description: 'Property not found',
+        "404": {
+          description: "Property not found",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },

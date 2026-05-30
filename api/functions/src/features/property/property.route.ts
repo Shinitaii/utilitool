@@ -2,7 +2,6 @@
 import {
   createBatchProperties,
   createProperty,
-  deleteProperty,
   getProperties,
   getPropertyById,
   softDeleteProperty,
@@ -26,21 +25,21 @@ const router = Router();
 
 router.post(
   "/cache/clear",
-  requireRole('admin'),
+  requireRole("admin"),
   clearCache
 );
 
 router.post(
   "/batch",
   validateRequest({body: CreatePropertyBatchDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole("admin", "landlord"),
   createBatchProperties
 );
 
 router.patch(
   "/batch",
   validateRequest({body: UpdatePropertyBatchDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole("admin", "landlord"),
   updateBatchProperties
 );
 
@@ -71,15 +70,15 @@ router.patch(
 router.delete(
   "/:id",
   validateRequest({params: PropertyByIdParamsDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole("admin", "landlord"),
   softDeleteProperty
 );
 
 router.patch(
   "/:id/restore",
   validateRequest({params: PropertyByIdParamsDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole("admin", "landlord"),
   restoreProperty
 );
 
-export default router;
+export const propertyRouter = router;

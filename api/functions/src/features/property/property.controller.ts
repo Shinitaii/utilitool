@@ -75,7 +75,7 @@ export const updateProperty = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const {id} = req.params;
+  const {id} = req.params as unknown as PropertyByIdParamsDTO;
   const data = req.body as UpdatePropertyDTO;
   const userId = req.user?.userId;
   if (!userId) throw new AppError(401, "User not authenticated");
@@ -98,7 +98,7 @@ export const deleteProperty = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const {id} = req.params;
+  const {id} = req.params as unknown as PropertyByIdParamsDTO;
   const userId = req.user?.userId;
   if (!userId) throw new AppError(401, "User not authenticated");
   await propertyService.delete(userId, id);
@@ -109,7 +109,7 @@ export const softDeleteProperty = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const {id} = req.params;
+  const {id} = req.params as unknown as PropertyByIdParamsDTO;
   const userId = req.user?.userId;
   if (!userId) throw new AppError(401, "User not authenticated");
   const result = await propertyService.softDelete(userId, id);
@@ -120,7 +120,7 @@ export const restoreProperty = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const {id} = req.params;
+  const {id} = req.params as unknown as PropertyByIdParamsDTO;
   const userId = req.user?.userId;
   if (!userId) throw new AppError(401, "User not authenticated");
   const result = await propertyService.restore(userId, id);
@@ -131,6 +131,6 @@ export const clearCache = async (
   _req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
-  const deletedCount = await cacheDelPattern('utilitool:properties:*');
-  res.status(200).json({ message: `Cleared ${deletedCount} cache entries for properties` });
+  const deletedCount = await cacheDelPattern("utilitool:properties:*");
+  res.status(200).json({message: `Cleared ${deletedCount} cache entries for properties`});
 };

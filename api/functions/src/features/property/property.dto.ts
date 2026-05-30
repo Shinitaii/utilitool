@@ -18,7 +18,7 @@ export const CreatePropertyDTOSchema = z
   })
   .refine(
     (data) =>
-      Object.values(data.meter_groups).some(v => v !== undefined),
+      Object.values(data.meter_groups).some((v) => v !== undefined),
     {
       message: "Property must have at least one meter group (electricity or water)",
       path: ["meter_groups"],
