@@ -21,10 +21,10 @@
   onMount(async () => {
     try {
       const [propertiesResult, tenantsResult, billingCyclesResult, billingsResult] = await Promise.all([
-        getProperties({ limit: 1000 }),
-        getTenants({ limit: 1000 }),
+        getProperties({ limit: 100 }),
+        getTenants({ limit: 100 }),
         getBillingCycles({ limit: 50 }),
-        getBillings({ limit: 1000 }),
+        getBillings({ limit: 100 }),
       ]);
 
       propertyCount = propertiesResult.data.length;

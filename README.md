@@ -15,7 +15,7 @@ cd new-utility-calculator
 # Terminal 1 — API (port 5002)
 cd api/functions
 npm ci
-export APP_ENV=dev
+export APP_ENV=staging
 export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/secrets/utilitool-staging-firebase-adminsdk-fbsvc-50221e4bd0.json
 npm run dev:watch
 
@@ -33,7 +33,7 @@ Sign up with any email/password → You're in the dashboard.
 ```bash
 docker-compose up
 ```
-Starts both services in watch mode. Requires `api/functions/secrets/.env.dev` — see `API_SETUP.md`.
+Starts both services in watch mode. Requires `api/functions/secrets/.env.staging` — see `API_SETUP.md`.
 
 ---
 

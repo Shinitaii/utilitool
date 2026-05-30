@@ -35,9 +35,9 @@ npm test
 
 Create these files in `api/functions/secrets/`:
 
-- **`.env.dev`** — Local development (docker-compose or manual npm run dev:watch) — connects to utilitool-staging
+- **`.env.staging`** — Local development (docker-compose or manual npm run dev:watch) — connects to utilitool-staging
 - **`.env.staging`** — Staging Firebase project (utilitool-staging) — for manual testing
-- **`.env.prod`** — Production Firebase project (utilitool-3fe70)
+- **`.env.production`** — Production Firebase project (utilitool-3fe70)
 
 ### Environment Variables
 
@@ -51,7 +51,7 @@ PROJECT_ID=<firebase-project-id>
 
 # Environment name
 NODE_ENV=development|staging|production
-APP_ENV=dev|staging|prod
+APP_ENV=staging|staging|prod
 
 # API keys and secrets
 JWT_SECRET=<your-jwt-secret>
@@ -61,13 +61,13 @@ GEMINI_API_KEY=<your-gemini-key>
 FIREBASE_DATABASE_URL=https://<project>.firebaseio.com
 ```
 
-**Example `.env.dev` (local development):**
+**Example `.env.staging` (local development):**
 ```
 GCLOUD_PROJECT=utilitool-staging
 GOOGLE_CLOUD_PROJECT=utilitool-staging
 PROJECT_ID=utilitool-staging
 NODE_ENV=development
-APP_ENV=dev
+APP_ENV=staging
 JWT_SECRET=staging-secret-key-change-in-production-minimum-32-chars-required123456
 GEMINI_API_KEY=AIzaSyCW9wqarj2sKwFNgIpjDu_XS3wDWnJbStE
 ```
@@ -85,9 +85,9 @@ GEMINI_API_KEY=AIzaSyCW9wqarj2sKwFNgIpjDu_XS3wDWnJbStE
 
 ### Environment Detection
 
-- **Local dev** → Docker sets `APP_ENV=dev` + `GOOGLE_APPLICATION_CREDENTIALS` pointing to staging service account → loads `.env.dev` → connects to utilitool-staging
+- **Local dev** → Docker sets `APP_ENV=staging` + `GOOGLE_APPLICATION_CREDENTIALS` pointing to staging service account → loads `.env.staging` → connects to utilitool-staging
 - **Tests** → `npm test` runs fully-mocked unit tests; no Firebase connection needed
-- **Production** → Manual deployment with `APP_ENV=prod` → loads `.env.prod` → connects to utilitool-3fe70
+- **Production** → Manual deployment with `APP_ENV=production` → loads `.env.production` → connects to utilitool-3fe70
 
 See `src/config/env.config.ts` for the full logic.
 
@@ -135,7 +135,7 @@ firebase deploy --project production --only functions
 NODE_ENV=production npm run deploy
 ```
 
-⚠️ **Production requires Firebase service account credentials in `.env.prod`**
+⚠️ **Production requires Firebase service account credentials in `.env.production`**
 
 ## Testing
 

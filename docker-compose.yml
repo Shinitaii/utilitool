@@ -6,12 +6,13 @@ services:
     ports:
       - "5002:5002"
     environment:
-      APP_ENV: dev
+      APP_ENV: staging
       GOOGLE_APPLICATION_CREDENTIALS: /app/secrets/utilitool-staging-firebase-adminsdk-fbsvc-50221e4bd0.json
     volumes:
       - ./api/functions:/app
       - api_node_modules:/app/node_modules
-    # APP_ENV=dev triggers loading of secrets/.env.dev (GCLOUD_PROJECT, GEMINI_API_KEY, etc.)
+    # APP_ENV=staging loads secrets/.env.staging (GCLOUD_PROJECT, GEMINI_API_KEY, etc.).
+    # NODE_ENV=development and START_LOCAL_SERVER are set by the dev:watch script itself.
     # Connects to: utilitool-staging Firebase project
     command: sh -c "npm install && npm run dev:watch"
 

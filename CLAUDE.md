@@ -99,7 +99,7 @@ utilitool/
 # Terminal 1 — API (port 5002, watch mode, connected to utilitool-staging)
 cd api/functions
 npm ci
-export APP_ENV=dev
+export APP_ENV=staging
 export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/secrets/utilitool-staging-firebase-adminsdk-fbsvc-50221e4bd0.json
 npm run dev:watch
 
@@ -114,7 +114,7 @@ npm run dev
 docker-compose up
 ```
 
-Starts the API (port 5002) and UI (port 5173) in watch mode. Requires `api/functions/secrets/.env.dev` to exist — see `API_SETUP.md`.
+Starts the API (port 5002) and UI (port 5173) in watch mode. Requires `api/functions/secrets/.env.staging` to exist — see `API_SETUP.md`.
 
 ---
 
@@ -264,7 +264,7 @@ cd new-utility-calculator
 # Terminal 1 — API
 cd api/functions
 npm ci
-export APP_ENV=dev
+export APP_ENV=staging
 export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/secrets/utilitool-staging-firebase-adminsdk-fbsvc-50221e4bd0.json
 npm run dev:watch
 

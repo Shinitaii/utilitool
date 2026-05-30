@@ -18,7 +18,7 @@ cd new-utility-calculator
 # Terminal 1 — API (port 5002)
 cd api/functions
 npm ci
-export APP_ENV=dev
+export APP_ENV=staging
 export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/secrets/utilitool-staging-firebase-adminsdk-fbsvc-50221e4bd0.json
 npm run dev:watch
 
@@ -38,7 +38,7 @@ See `API_SETUP.md` for full environment variable requirements and Firebase crede
 ```bash
 docker-compose up
 ```
-Requires `api/functions/secrets/.env.dev`. See `API_SETUP.md`.
+Requires `api/functions/secrets/.env.staging`. See `API_SETUP.md`.
 
 ---
 

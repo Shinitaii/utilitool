@@ -790,18 +790,18 @@ All list endpoints return this. UI uses cursor-based pagination.
 
 Loads from `secrets/.env.{APP_ENV}` based on the `APP_ENV` environment variable.
 
-Dev environment (`APP_ENV=dev`) connects directly to `utilitool-staging` Firebase project for Firestore/Auth data.
+Dev environment (`APP_ENV=staging`) connects directly to `utilitool-staging` Firebase project for Firestore/Auth data.
 
 ### Required Env Vars (Development)
 ```
-APP_ENV=dev
+APP_ENV=staging
 GCLOUD_PROJECT=utilitool-staging
 GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/utilitool-staging-firebase-adminsdk-fbsvc-1fe128504a.json
 GEMINI_API_KEY=<optional — OCR returns mock data if absent>
 REDIS_URL=<optional — rate limiting falls back to in-memory store if absent>
 ```
 
-See `secrets/.env.dev` for all dev variables. Production deployments use `APP_ENV=prod` and `secrets/.env.prod`.
+See `secrets/.env.staging` for all dev variables. Production deployments use `APP_ENV=production` and `secrets/.env.production`.
 
 ---
 
@@ -822,11 +822,11 @@ npm run test:watch       # Jest watch mode
 **Standard dev flow**:
 ```bash
 cd api/functions
-export APP_ENV=dev
+export APP_ENV=staging
 export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/secrets/utilitool-staging-firebase-adminsdk-fbsvc-50221e4bd0.json
 npm run dev:watch
 ```
-Connects to `utilitool-staging` Firebase project. Loads additional env vars (GCLOUD_PROJECT, GEMINI_API_KEY) from `secrets/.env.dev` — see `API_SETUP.md`.
+Connects to `utilitool-staging` Firebase project. Loads additional env vars (GCLOUD_PROJECT, GEMINI_API_KEY) from `secrets/.env.staging` — see `API_SETUP.md`.
 
 **Docker alternative**: `docker-compose up` from the repo root starts both API and UI. See `docker-compose.yml`.
 
