@@ -8,6 +8,7 @@
   import { formatDate } from '$lib/utils/format';
   import { toDate } from '$lib/utils/timestamp';
   import EmptyState from '$lib/components/shared/EmptyState.svelte';
+  import TableSkeleton from '$lib/components/shared/TableSkeleton.svelte';
   import EditModal from '$lib/components/shared/EditModal.svelte';
   import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
   import SelectionToolbar from '$lib/components/shared/SelectionToolbar.svelte';
@@ -208,7 +209,9 @@
   </div>
 
   <div class="overflow-x-auto rounded-lg border border-gray-200">
-    {#if filteredData.length === 0}
+    {#if isLoading}
+      <TableSkeleton rows={6} cols={4} />
+    {:else if filteredData.length === 0}
       <div class="p-6">
         <EmptyState title="No tenants found" message="Create tenants to get started" />
       </div>

@@ -316,10 +316,11 @@
             <div class="space-y-2">
               {#each Object.keys(reviewForm.billing_ids) as billingId (billingId)}
                 <div class="flex items-center gap-2">
-                  <label class="flex-1 text-sm text-gray-700">
+                  <label for="consumption-{billingId}" class="flex-1 text-sm text-gray-700">
                     {billings.find((b) => b.id === billingId)?.property_id || billingId}
                   </label>
                   <input
+                    id="consumption-{billingId}"
                     type="number"
                     bind:value={reviewForm.billing_ids[billingId]}
                     step="0.01"

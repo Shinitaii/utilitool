@@ -5,6 +5,7 @@
   import { getBillings } from '$lib/api/billings';
   import { getBillingCycles } from '$lib/api/billing-cycles';
   import { formatCurrency } from '$lib/utils/format';
+  import TableSkeleton from '$lib/components/shared/TableSkeleton.svelte';
   import type { BillingCycle } from '$lib/types/billing-cycle.types';
   import type { Billing } from '$lib/types/billing.types';
 
@@ -130,7 +131,7 @@
   <div class="rounded-lg border border-gray-200 bg-white p-6">
     <h2 class="font-semibold">Recent Billing Cycles</h2>
     {#if isLoading}
-      <p class="mt-4 text-sm text-gray-400">Loading...</p>
+      <TableSkeleton rows={4} cols={4} />
     {:else if recentCycles.length === 0}
       <p class="mt-4 text-sm text-gray-600">No billing cycles yet. Create one from the Billings page.</p>
     {:else}

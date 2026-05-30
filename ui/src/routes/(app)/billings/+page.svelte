@@ -15,6 +15,7 @@
   import { formatDate, formatCurrency, formatReading, getReadingUnit } from '$lib/utils/format';
   import { toDate } from '$lib/utils/timestamp';
   import EmptyState from '$lib/components/shared/EmptyState.svelte';
+  import TableSkeleton from '$lib/components/shared/TableSkeleton.svelte';
   import EditModal from '$lib/components/shared/EditModal.svelte';
   import StatusPill from '$lib/components/shared/StatusPill.svelte';
   import { createCrudStore } from '$lib/stores/crud.svelte';
@@ -137,6 +138,25 @@
       error = err instanceof Error ? err.message : 'Failed to load data';
     } finally {
       isLoading = false;
+    }
+  }
+
+  let isLoadingMore = $state(false);
+
+  async function loadMoreCycles() {
+    if (!cycles.hasMore || !cycles.nextCursor || isLoadingMore) return;
+    isLoadingMore = true;
+    try {
+      const next = await getBillingCycles({ limit: 100, cursor: cycles.nextCursor });
+      cycles = {
+        data: [...cycles.data, ...next.data],
+        nextCursor: next.nextCursor,
+        hasMore: next.hasMore
+      };
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to load more cycles';
+    } finally {
+      isLoadingMore = false;
     }
   }
 
@@ -1030,7 +1050,11 @@
       </div>
     {/if}
 
-    {#if cycles.data.length === 0}
+    {#if isLoading}
+      <div class="rounded-lg border border-gray-200 bg-white">
+        <TableSkeleton rows={6} cols={5} />
+      </div>
+    {:else if cycles.data.length === 0}
       <div class="rounded-lg border border-gray-200 bg-white p-6">
         <EmptyState title="No billing cycles" message="Create cycles to manage billing periods" />
       </div>
@@ -1246,9 +1270,7 @@
                       </table>
                     </div>
                   {:else}
-                    <div class="px-6 py-4 text-center text-sm text-gray-500">
-                      Loading billings...
-                    </div>
+                    <TableSkeleton rows={3} cols={5} />
                   {/if}
                 </div>
               {/if}
@@ -1256,6 +1278,18 @@
           {/each}
         </div>
       {/each}
+      {#if cycles.hasMore}
+        <div class="flex justify-center py-4">
+          <button
+            type="button"
+            onclick={loadMoreCycles}
+            disabled={isLoadingMore}
+            class="rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+          >
+            {isLoadingMore ? 'Loading…' : 'Load more cycles'}
+          </button>
+        </div>
+      {/if}
     {/if}
   </div>
 </div>

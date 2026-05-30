@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  let Bar: any;
-  let Line: any;
+  let Bar = $state<any>();
+  let Line = $state<any>();
   import {
     getSummaryReport,
     getConsumptionReport,

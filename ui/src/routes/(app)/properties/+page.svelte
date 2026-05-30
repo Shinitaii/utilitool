@@ -14,6 +14,7 @@
   import { formatDate, formatCurrency, formatReading, getReadingUnit } from '$lib/utils/format';
   import { toDate } from '$lib/utils/timestamp';
   import EmptyState from '$lib/components/shared/EmptyState.svelte';
+  import TableSkeleton from '$lib/components/shared/TableSkeleton.svelte';
   import EditModal from '$lib/components/shared/EditModal.svelte';
   import { Plus, Archive } from 'lucide-svelte';
   import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
@@ -545,7 +546,9 @@
       />
 
       <div class="flex-1 overflow-y-auto">
-        {#if filteredProperties.length === 0}
+        {#if isLoading}
+          <TableSkeleton rows={6} cols={2} />
+        {:else if filteredProperties.length === 0}
           <div class="p-4">
             <EmptyState title="No properties" message="Create a property to get started" />
           </div>

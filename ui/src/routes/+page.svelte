@@ -4,8 +4,9 @@
   import { getAccessToken } from '$lib/api/client';
 
   if (browser) {
-    const token = getAccessToken();
-    goto(token ? '/dashboard' : '/login');
+    getAccessToken().then((token) => {
+      goto(token ? '/dashboard' : '/login');
+    });
   }
 </script>
 

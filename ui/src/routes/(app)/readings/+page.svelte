@@ -12,6 +12,7 @@
   import { uploadToStorage } from '$lib/utils/firebase-storage';
   import { compressImage } from '$lib/utils/image-compression';
   import EmptyState from '$lib/components/shared/EmptyState.svelte';
+  import TableSkeleton from '$lib/components/shared/TableSkeleton.svelte';
   import EditModal from '$lib/components/shared/EditModal.svelte';
   import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
   import SelectionToolbar from '$lib/components/shared/SelectionToolbar.svelte';
@@ -96,6 +97,32 @@
       error = err instanceof Error ? err.message : 'Failed to load readings';
     } finally {
       isLoading = false;
+    }
+  }
+
+  let isLoadingMore = $state(false);
+
+  async function loadMoreReadings() {
+    if (!readings.hasMore || !readings.nextCursor || isLoadingMore) return;
+    isLoadingMore = true;
+    try {
+      const next = await getReadings({
+        meterGroupId: selectedMeterGroup || undefined,
+        propertyId: selectedProperty || undefined,
+        startDate: filterStartDate || undefined,
+        endDate: filterEndDate || undefined,
+        limit: 100,
+        cursor: readings.nextCursor
+      });
+      readings = {
+        data: [...readings.data, ...next.data],
+        nextCursor: next.nextCursor,
+        hasMore: next.hasMore
+      };
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to load more readings';
+    } finally {
+      isLoadingMore = false;
     }
   }
 
@@ -702,7 +729,9 @@
   </div>
 
   <div class="overflow-x-auto rounded-lg border border-gray-200">
-    {#if readings.data.length === 0}
+    {#if isLoading}
+      <TableSkeleton rows={6} cols={8} />
+    {:else if readings.data.length === 0}
       <div class="p-6">
         <EmptyState title="No readings" message="Create readings to track meter consumption" />
       </div>
@@ -788,6 +817,18 @@
           {/each}
         </tbody>
       </table>
+      {#if readings.hasMore}
+        <div class="flex justify-center py-4">
+          <button
+            type="button"
+            onclick={loadMoreReadings}
+            disabled={isLoadingMore}
+            class="rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+          >
+            {isLoadingMore ? 'Loading…' : 'Load more readings'}
+          </button>
+        </div>
+      {/if}
     {/if}
   </div>
 </div>

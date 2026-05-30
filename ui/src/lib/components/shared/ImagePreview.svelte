@@ -1,5 +1,5 @@
 <script lang="ts">
-  let { imageUrl = '', onClose = () => {} } = $props();
+  let { imageUrl = '', onClose = () => {} }: { imageUrl?: string; onClose?: () => void } = $props();
 
   let scale = $state(1);
   let rotate = $state(0);
