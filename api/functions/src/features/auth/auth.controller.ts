@@ -1,10 +1,10 @@
-import { Response } from "express";
-import { getMe as getUser, updateMe as updateUser } from "./auth.service";
-import { AuthenticatedRequest } from "../../utils/auth.util";
-import type { UpdateUserProfileDTO } from "./auth.dto";
+import {Response} from "express";
+import {getMe as getUser, updateMe as updateUser} from "./auth.service";
+import {AuthenticatedRequest} from "../../utils/auth.util";
+import type {UpdateUserProfileDTO} from "./auth.dto";
 
 export const getMe = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  const { userId, email, displayName } = req.user!;
+  const {userId, email, displayName} = req.user!;
   const result = await getUser(userId, email, displayName);
   res.status(200).json({
     userId: result.id,
@@ -16,7 +16,7 @@ export const getMe = async (req: AuthenticatedRequest, res: Response): Promise<v
 };
 
 export const updateMe = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  const { userId } = req.user!;
+  const {userId} = req.user!;
   const result = await updateUser(userId, req.body as UpdateUserProfileDTO);
   res.status(200).json({
     userId: result.id,

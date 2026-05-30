@@ -1,37 +1,37 @@
 export const authPaths = {
-  '/auth/me': {
+  "/auth/me": {
     get: {
-      tags: ['Auth'],
-      summary: 'Get current user profile',
-      description: 'Retrieve the authenticated user\'s profile information.',
-      security: [{ BearerAuth: [] }],
+      tags: ["Auth"],
+      summary: "Get current user profile",
+      description: "Retrieve the authenticated user's profile information.",
+      security: [{BearerAuth: []}],
       responses: {
-        '200': {
-          description: 'User profile retrieved successfully',
+        "200": {
+          description: "User profile retrieved successfully",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/UserProfile',
+                $ref: "#/components/schemas/UserProfile",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized (missing or invalid token)',
+        "401": {
+          description: "Unauthorized (missing or invalid token)",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
@@ -39,57 +39,57 @@ export const authPaths = {
       },
     },
     patch: {
-      tags: ['Auth'],
-      summary: 'Update current user profile',
-      description: 'Update the authenticated user\'s profile information.',
-      security: [{ BearerAuth: [] }],
+      tags: ["Auth"],
+      summary: "Update current user profile",
+      description: "Update the authenticated user's profile information.",
+      security: [{BearerAuth: []}],
       requestBody: {
         required: true,
         content: {
-          'application/json': {
+          "application/json": {
             schema: {
-              $ref: '#/components/schemas/UpdateUserProfile',
+              $ref: "#/components/schemas/UpdateUserProfile",
             },
           },
         },
       },
       responses: {
-        '200': {
-          description: 'User profile updated successfully',
+        "200": {
+          description: "User profile updated successfully",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/UserProfile',
+                $ref: "#/components/schemas/UserProfile",
               },
             },
           },
         },
-        '400': {
-          description: 'Invalid request body',
+        "400": {
+          description: "Invalid request body",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '401': {
-          description: 'Unauthorized (missing or invalid token)',
+        "401": {
+          description: "Unauthorized (missing or invalid token)",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
         },
-        '500': {
-          description: 'Internal server error',
+        "500": {
+          description: "Internal server error",
           content: {
-            'application/json': {
+            "application/json": {
               schema: {
-                $ref: '#/components/schemas/ErrorResponse',
+                $ref: "#/components/schemas/ErrorResponse",
               },
             },
           },
