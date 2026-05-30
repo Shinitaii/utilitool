@@ -22,8 +22,6 @@
   "main": "lib/index.js",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
-    "@huggingface/transformers": "^4.2.0",
-    "better-sqlite3": "^12.10.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express-async-errors": "^3.1.1",
@@ -40,6 +38,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "better-sqlite3": "^12.10.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/cors": "^2.8.19",
     "@types/jest": "^30.0.0",

@@ -1,6 +1,5 @@
 import {CorsOptions} from "cors";
 import {isDevelopment} from "./env.config";
-import {logger} from "../utils/logger.util";
 
 // Capacitor mobile app origins. These are fixed by the native WebView (androidScheme:
 // "https" -> https://localhost on Android; capacitor://localhost on iOS), so they are
@@ -15,7 +14,13 @@ const webOrigins: string[] = (process.env.ALLOWED_ORIGINS ?? "")
   .filter(Boolean);
 
 if (!isDevelopment && webOrigins.length === 0) {
-  logger.warn("ALLOWED_ORIGINS is not set — the web app will be blocked by CORS (mobile app still works). Set ALLOWED_ORIGINS to your Vercel domain(s).");
+  // Fail fast at startup: a non-dev deploy with no web origins is a misconfiguration
+  // that would silently break the web app. Crash now so it's caught at deploy time.
+  // (The mobile app uses fixed Capacitor origins and is unaffected by ALLOWED_ORIGINS.)
+  throw new Error(
+    "ALLOWED_ORIGINS is not set in a non-development environment. " +
+    "Set ALLOWED_ORIGINS to your Vercel domain(s) before deploying."
+  );
 }
 
 const localhostPattern = /^http:\/\/localhost(:\d+)?$/;

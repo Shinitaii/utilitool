@@ -24,12 +24,12 @@ const swaggerSpec = {
   },
   servers: [
     {
-      url: "http://localhost:5002",
-      description: "Local development (Firebase Emulator)",
-    },
-    {
-      url: "https://utilitool-staging.firebaseapp.com",
-      description: "Staging environment",
+      // Resolves to the deployed API base in staging (set SWAGGER_SERVER_URL in
+      // secrets/.env.<env>); falls back to the local emulator URL for dev.
+      url: process.env.SWAGGER_SERVER_URL ?? "http://localhost:5002",
+      description: process.env.SWAGGER_SERVER_URL ?
+        "Configured environment" :
+        "Local development (Firebase Emulator)",
     },
   ],
   components: {
