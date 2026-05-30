@@ -4,7 +4,6 @@ import {
   getBillingCycleById,
   getBillingCycles,
   updateBillingCycle,
-  deleteBillingCycle,
   softDeleteBillingCycle,
   restoreBillingCycle,
   createBatchBillingCycles,
@@ -28,28 +27,28 @@ const router = Router();
 
 router.post(
   "/cache/clear",
-  requireRole('admin'),
+  requireRole("admin"),
   clearCache
 );
 
 router.post(
   "/batch",
   validateRequest({body: CreateBillingCycleBatchDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole("admin", "landlord"),
   createBatchBillingCycles
 );
 
 router.patch(
   "/batch",
   validateRequest({body: UpdateBillingCycleBatchDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole("admin", "landlord"),
   updateBatchBillingCycles
 );
 
 router.post(
   "/ocr",
   validateRequest({body: OcrBillingCycleDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole("admin", "landlord"),
   ocrBillingCycle
 );
 
@@ -83,15 +82,15 @@ router.patch(
 router.delete(
   "/:id",
   validateRequest({params: BillingCycleByIdParamsDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole("admin", "landlord"),
   softDeleteBillingCycle
 );
 
 router.patch(
   "/:id/restore",
   validateRequest({params: BillingCycleByIdParamsDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole("admin", "landlord"),
   restoreBillingCycle
 );
 
-export default router;
+export const billingCycleRouter = router;

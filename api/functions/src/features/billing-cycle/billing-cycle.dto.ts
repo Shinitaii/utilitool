@@ -1,5 +1,4 @@
 import {z} from "zod";
-import {Timestamp} from "firebase-admin/firestore";
 import {parseTimestamp} from "../../utils/firestore.util";
 
 // Create DTOS
@@ -14,10 +13,10 @@ const BillingCycleBaseSchema = z.object({
   billing_rate: z.number().nonnegative(),
   billing_consumption: z.number().nonnegative(),
   billing_start_date: z.unknown()
-    .refine((v) => v !== undefined && v !== null, { message: "billing_start_date is required" })
+    .refine((v) => v !== undefined && v !== null, {message: "billing_start_date is required"})
     .transform((val) => parseTimestamp(val as NonNullable<unknown>)),
   billing_end_date: z.unknown()
-    .refine((v) => v !== undefined && v !== null, { message: "billing_end_date is required" })
+    .refine((v) => v !== undefined && v !== null, {message: "billing_end_date is required"})
     .transform((val) => parseTimestamp(val as NonNullable<unknown>)),
   overdue_date: z.unknown().transform((val) => val ? parseTimestamp(val) : undefined).optional(),
 });

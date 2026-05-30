@@ -47,7 +47,7 @@ async function injectMainMeterBilling(
     throw new AppError(
       400,
       `Main meter property "${mainMeterProperty.id}" has no seed reading. ` +
-        `Record a baseline reading via POST /readings/seed before creating this billing cycle.`
+        "Record a baseline reading via POST /readings/seed before creating this billing cycle."
     );
   }
 
@@ -102,7 +102,7 @@ export const billingCycleService = {
   async create(userId: string, data: CreateBillingCycleDTO): Promise<BillingCycle> {
     const enrichedData = await injectMainMeterBilling(userId, data);
     await validator.validateCreate(enrichedData);
-    const cachedRepo = new CachedRepository(billingCycleRepository, userId, 'billing-cycles', CACHE_TTL);
+    const cachedRepo = new CachedRepository(billingCycleRepository, userId, "billing-cycles", CACHE_TTL);
     return cachedRepo.create(enrichedData);
   },
 
@@ -114,7 +114,7 @@ export const billingCycleService = {
           throw new AppError(
             400,
             `Duplicate meter_group_id "${item.meter_group_id}" in batch. ` +
-            `Each billing cycle in a batch must be for a different meter group.`
+            "Each billing cycle in a batch must be for a different meter group."
           );
         }
         seenMeterGroups.add(item.meter_group_id);
@@ -122,7 +122,7 @@ export const billingCycleService = {
     }
     const enriched = await Promise.all(data.map((item) => injectMainMeterBilling(userId, item)));
     await validator.validateBatch(enriched);
-    const cachedRepo = new CachedRepository(billingCycleRepository, userId, 'billing-cycles', CACHE_TTL);
+    const cachedRepo = new CachedRepository(billingCycleRepository, userId, "billing-cycles", CACHE_TTL);
     return cachedRepo.createBatch(enriched);
   },
 
@@ -130,16 +130,16 @@ export const billingCycleService = {
     userId: string,
     options: BillingCycleSearchOptions
   ): Promise<PaginatedResult<BillingCycle>> {
-    const cachedRepo = new CachedRepository(billingCycleRepository, userId, 'billing-cycles', CACHE_TTL);
+    const cachedRepo = new CachedRepository(billingCycleRepository, userId, "billing-cycles", CACHE_TTL);
 
     // For archived queries, we need custom date filtering
     if (options.archived) {
       const filters: Record<string, any> = {};
       if (options.billingStartDate) {
-        filters.billing_start_date = { gte: new Date(options.billingStartDate) };
+        filters.billing_start_date = {gte: new Date(options.billingStartDate)};
       }
       if (options.billingEndDate) {
-        filters.billing_end_date = { lte: new Date(options.billingEndDate) };
+        filters.billing_end_date = {lte: new Date(options.billingEndDate)};
       }
       return billingCycleRepository.search({
         limit: options.limit,
@@ -183,7 +183,7 @@ export const billingCycleService = {
   },
 
   async getById(userId: string, id: string): Promise<BillingCycle | null> {
-    const cachedRepo = new CachedRepository(billingCycleRepository, userId, 'billing-cycles', CACHE_TTL);
+    const cachedRepo = new CachedRepository(billingCycleRepository, userId, "billing-cycles", CACHE_TTL);
     return cachedRepo.getById(id);
   },
 
@@ -193,23 +193,23 @@ export const billingCycleService = {
     data: Partial<CreateBillingCycleDTO>
   ): Promise<BillingCycle> {
     await validator.validateUpdate(data);
-    const cachedRepo = new CachedRepository(billingCycleRepository, userId, 'billing-cycles', CACHE_TTL);
+    const cachedRepo = new CachedRepository(billingCycleRepository, userId, "billing-cycles", CACHE_TTL);
     return cachedRepo.update(id, data);
   },
 
   async updateBatch(userId: string, updates: {id: string, data: Partial<CreateBillingCycleDTO>}[]): Promise<BillingCycle[]> {
     await validator.validateUpdateBatch(updates);
-    const cachedRepo = new CachedRepository(billingCycleRepository, userId, 'billing-cycles', CACHE_TTL);
+    const cachedRepo = new CachedRepository(billingCycleRepository, userId, "billing-cycles", CACHE_TTL);
     return cachedRepo.updateBatch(updates);
   },
 
   async delete(userId: string, id: string): Promise<void> {
-    const cachedRepo = new CachedRepository(billingCycleRepository, userId, 'billing-cycles', CACHE_TTL);
+    const cachedRepo = new CachedRepository(billingCycleRepository, userId, "billing-cycles", CACHE_TTL);
     await cachedRepo.delete(id);
   },
 
   async softDelete(userId: string, id: string): Promise<BillingCycle> {
-    const cachedRepo = new CachedRepository(billingCycleRepository, userId, 'billing-cycles', CACHE_TTL);
+    const cachedRepo = new CachedRepository(billingCycleRepository, userId, "billing-cycles", CACHE_TTL);
     return cachedRepo.softDelete(id);
   },
 
@@ -218,7 +218,7 @@ export const billingCycleService = {
     if (!billingCycle) {
       throw new AppError(404, "Billing cycle not found");
     }
-    const cachedRepo = new CachedRepository(billingCycleRepository, userId, 'billing-cycles', CACHE_TTL);
+    const cachedRepo = new CachedRepository(billingCycleRepository, userId, "billing-cycles", CACHE_TTL);
     return cachedRepo.restore(id);
   },
 };

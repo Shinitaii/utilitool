@@ -128,8 +128,8 @@ export class BillingCycleValidator {
       orderBy: "created_at",
       filters: {
         meter_group_id: meterGroupId,
-        billing_start_date: billingStartDate
-      }
+        billing_start_date: billingStartDate.toDate() as any,
+      },
     });
 
     if (existing.length > 0) {
