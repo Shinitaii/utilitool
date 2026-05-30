@@ -4,7 +4,6 @@ import {
   getMeterGroupById,
   getMeterGroups,
   updateMeterGroup,
-  deleteMeterGroup,
   softDeleteMeterGroup,
   restoreMeterGroup,
   createBatchMeterGroups,
@@ -27,21 +26,21 @@ const router = Router();
 
 router.post(
   "/cache/clear",
-  requireRole('admin'),
+  requireRole("admin"),
   clearCache
 );
 
 router.post(
   "/batch",
   validateRequest({body: CreateMeterGroupBatchDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole("admin", "landlord"),
   createBatchMeterGroups
 );
 
 router.patch(
   "/batch",
   validateRequest({body: UpdateMeterGroupBatchDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole("admin", "landlord"),
   updateBatchMeterGroups
 );
 
@@ -66,7 +65,7 @@ router.get(
 router.post(
   "/:id/reset",
   validateRequest({params: MeterGroupByIdParamsDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole("admin", "landlord"),
   recordMeterGroupReset
 );
 
@@ -79,15 +78,15 @@ router.patch(
 router.delete(
   "/:id",
   validateRequest({params: MeterGroupByIdParamsDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole("admin", "landlord"),
   softDeleteMeterGroup
 );
 
 router.patch(
   "/:id/restore",
   validateRequest({params: MeterGroupByIdParamsDTOSchema}),
-  requireRole('admin', 'landlord'),
+  requireRole("admin", "landlord"),
   restoreMeterGroup
 );
 
-export default router;
+export const meterGroupRouter = router;

@@ -53,7 +53,7 @@ function applyProjections(
     return {
       ...result,
       data: result.data.map((mg) => {
-        const { versions, ...rest } = mg;
+        const {versions, ...rest} = mg;
         return rest;
       }),
     };
@@ -65,7 +65,7 @@ function applyProjections(
 export const meterGroupService = {
   async create(userId: string, data: CreateMeterGroupDTO): Promise<MeterGroup> {
     await validator.validateCreate(data);
-    const cachedRepo = new CachedRepository(meterGroupRepository, userId, 'meter-groups', CACHE_TTL);
+    const cachedRepo = new CachedRepository(meterGroupRepository, userId, "meter-groups", CACHE_TTL);
     return cachedRepo.create({
       ...data,
       current_version: 1,
@@ -75,7 +75,7 @@ export const meterGroupService = {
 
   async createBatch(userId: string, data: CreateMeterGroupDTO[]): Promise<MeterGroup[]> {
     await validator.validateBatch(data);
-    const cachedRepo = new CachedRepository(meterGroupRepository, userId, 'meter-groups', CACHE_TTL);
+    const cachedRepo = new CachedRepository(meterGroupRepository, userId, "meter-groups", CACHE_TTL);
     return cachedRepo.createBatch(
       data.map((item) => ({
         ...item,
@@ -89,7 +89,7 @@ export const meterGroupService = {
     userId: string,
     options: MeterGroupSearchOptions
   ): Promise<PaginatedResult<MeterGroup | MinimalMeterGroup | SummaryMeterGroup>> {
-    const cachedRepo = new CachedRepository(meterGroupRepository, userId, 'meter-groups', CACHE_TTL);
+    const cachedRepo = new CachedRepository(meterGroupRepository, userId, "meter-groups", CACHE_TTL);
     const result = await cachedRepo.search({
       limit: options.limit,
       orderBy: (options.sortBy ?? "created_at") as any,
@@ -97,15 +97,15 @@ export const meterGroupService = {
       cursor: options.cursor,
       archived: options.archived,
       filters: {
-        ...(options.meterName ? { meter_name: options.meterName } : {}),
-        ...(options.utilityType ? { utility_type: options.utilityType } : {}),
+        ...(options.meterName ? {meter_name: options.meterName} : {}),
+        ...(options.utilityType ? {utility_type: options.utilityType} : {}),
       },
     });
     return applyProjections(result, options);
   },
 
   async getById(userId: string, id: string): Promise<MeterGroup | null> {
-    const cachedRepo = new CachedRepository(meterGroupRepository, userId, 'meter-groups', CACHE_TTL);
+    const cachedRepo = new CachedRepository(meterGroupRepository, userId, "meter-groups", CACHE_TTL);
     return cachedRepo.getById(id);
   },
 
@@ -114,12 +114,12 @@ export const meterGroupService = {
     if (!meterGroup) {
       throw new AppError(404, "Meter group not found");
     }
-    const cachedRepo = new CachedRepository(meterGroupRepository, userId, 'meter-groups', CACHE_TTL);
+    const cachedRepo = new CachedRepository(meterGroupRepository, userId, "meter-groups", CACHE_TTL);
     return cachedRepo.update(id, data);
   },
 
   async updateBatch(userId: string, updates: {id: string, data: Partial<CreateMeterGroupDTO>}[]): Promise<MeterGroup[]> {
-    const cachedRepo = new CachedRepository(meterGroupRepository, userId, 'meter-groups', CACHE_TTL);
+    const cachedRepo = new CachedRepository(meterGroupRepository, userId, "meter-groups", CACHE_TTL);
     return cachedRepo.updateBatch(updates);
   },
 
@@ -135,7 +135,7 @@ export const meterGroupService = {
       throw new AppError(409, "Cannot delete meter group: it has active readings. Archive readings first.");
     }
 
-    const cachedRepo = new CachedRepository(meterGroupRepository, userId, 'meter-groups', CACHE_TTL);
+    const cachedRepo = new CachedRepository(meterGroupRepository, userId, "meter-groups", CACHE_TTL);
     await cachedRepo.delete(id);
   },
 
@@ -175,7 +175,7 @@ export const meterGroupService = {
       orderBy: "reading_date",
       orderDirection: "desc",
       archived: false,
-      filters: { meter_group_id: id },
+      filters: {meter_group_id: id},
     });
 
     if (latestReadingsResult.data.length === 0) {
@@ -197,7 +197,7 @@ export const meterGroupService = {
       current_version: currentVersion + 1,
       versions: updatedVersions,
     };
-    const cachedRepo = new CachedRepository(meterGroupRepository, userId, 'meter-groups', CACHE_TTL);
+    const cachedRepo = new CachedRepository(meterGroupRepository, userId, "meter-groups", CACHE_TTL);
     return cachedRepo.update(id, updatePayload);
   },
 };
