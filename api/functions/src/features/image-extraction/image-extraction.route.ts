@@ -7,12 +7,12 @@ export const imageExtractionRouter = Router();
 
 imageExtractionRouter.post(
   "/readings",
-  validateRequest(ExtractReadingFromImageSchema),
+  validateRequest({body: ExtractReadingFromImageSchema}),
   imageExtractionController.extractReadingFromImage
 );
 
 imageExtractionRouter.post(
   "/billings",
-  validateRequest(ExtractBillingFromImageSchema),
+  validateRequest({body: ExtractBillingFromImageSchema}),
   imageExtractionController.extractBillingFromImage
 );

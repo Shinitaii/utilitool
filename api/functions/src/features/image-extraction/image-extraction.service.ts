@@ -1,7 +1,7 @@
-import { AppError } from "../../utils/error.util";
-import { geminiLib } from "../../lib/gemini.lib";
-import type { ExtractedReadingData, ExtractedBillingData } from "./image-extraction.model";
-import { Timestamp } from "firebase-admin/firestore";
+import {AppError} from "../../utils/error.util";
+import {geminiLib} from "../../lib/gemini.lib";
+import type {ExtractedReadingData, ExtractedBillingData} from "./image-extraction.model";
+import {Timestamp} from "firebase-admin/firestore";
 
 /**
  * Service for extracting structured data from images using vision AI.
