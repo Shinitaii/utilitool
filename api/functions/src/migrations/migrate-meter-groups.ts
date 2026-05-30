@@ -3,7 +3,7 @@
  * meter_group_id strings to { meter_group_id, is_main_meter: false } objects.
  *
  * Run once against the target environment:
- *   APP_ENV=dev npx tsx src/migrations/migrate-meter-groups.ts
+ *   APP_ENV=staging npx tsx src/migrations/migrate-meter-groups.ts
  *
  * Safe to re-run — skips documents already in the new format.
  */
@@ -45,7 +45,7 @@ async function migrate(): Promise<void> {
 
     for (const [utilityType, value] of Object.entries(meterGroups)) {
       if (typeof value === "string") {
-        updated[utilityType] = { meter_group_id: value, is_main_meter: false };
+        updated[utilityType] = {meter_group_id: value, is_main_meter: false};
         needsMigration = true;
       } else {
         // Already in new format — preserve as-is
@@ -58,7 +58,7 @@ async function migrate(): Promise<void> {
       continue;
     }
 
-    batch.update(doc.ref, { meter_groups: updated, updated_at: new Date() });
+    batch.update(doc.ref, {meter_groups: updated, updated_at: new Date()});
     migrated++;
     opsInBatch++;
 

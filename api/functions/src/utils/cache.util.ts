@@ -1,6 +1,6 @@
-import { getRedisClient } from '../config/redis.config';
-import { logger } from './logger.util';
-import { markCacheHit } from '../middlewares/request-context.middleware';
+import {getRedisClient} from "../config/redis.config";
+import {logger} from "./logger.util";
+import {markCacheHit} from "../middlewares/request-context.middleware";
 
 async function ensureConnected() {
   const client = getRedisClient();
@@ -11,7 +11,7 @@ async function ensureConnected() {
       await client.connect();
     }
   } catch (err) {
-    logger.warn({ err }, 'Failed to connect Redis client');
+    logger.warn({err}, "Failed to connect Redis client");
   }
 }
 
@@ -26,7 +26,7 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
     markCacheHit();
     return JSON.parse(value) as T;
   } catch (err) {
-    logger.warn({ err, key }, 'Cache get failed');
+    logger.warn({err, key}, "Cache get failed");
     return null;
   }
 }
@@ -44,7 +44,7 @@ export async function cacheSet<T>(
     const json = JSON.stringify(value);
     await client.setEx(key, ttlSeconds, json);
   } catch (err) {
-    logger.warn({ err, key }, 'Cache set failed');
+    logger.warn({err, key}, "Cache set failed");
   }
 }
 
@@ -56,7 +56,7 @@ export async function cacheDel(key: string): Promise<void> {
     await ensureConnected();
     await client.del(key);
   } catch (err) {
-    logger.warn({ err, key }, 'Cache del failed');
+    logger.warn({err, key}, "Cache del failed");
   }
 }
 
@@ -70,7 +70,7 @@ export async function cacheDelPattern(pattern: string): Promise<number> {
     let deletedCount = 0;
 
     do {
-      const result = await client.scan(cursor, { MATCH: pattern, COUNT: 100 });
+      const result = await client.scan(cursor, {MATCH: pattern, COUNT: 100});
       cursor = result.cursor as number;
       const keys = result.keys as string[];
 
@@ -81,7 +81,7 @@ export async function cacheDelPattern(pattern: string): Promise<number> {
 
     return deletedCount;
   } catch (err) {
-    logger.warn({ err, pattern }, 'Cache pattern delete failed');
+    logger.warn({err, pattern}, "Cache pattern delete failed");
     return 0;
   }
 }

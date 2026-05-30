@@ -1,12 +1,12 @@
-import type { BaseModel } from './model.util';
-import type { PaginatedResult } from './pagination.util';
-import { cacheGet, cacheSet } from './cache.util';
-import { logger } from './logger.util';
+import type {BaseModel} from "./model.util";
+import type {PaginatedResult} from "./pagination.util";
+import {cacheGet, cacheSet} from "./cache.util";
+import {logger} from "./logger.util";
 
 export interface PaginateOptions {
   limit: number;
   orderBy: string;
-  orderDirection?: 'asc' | 'desc';
+  orderDirection?: "asc" | "desc";
   cursor?: string | null | undefined;
 }
 
@@ -27,7 +27,7 @@ async function loadAllFromFirestore<T extends BaseModel>(
       cursor = result.nextCursor;
     }
   } catch (err) {
-    logger.error({ err }, 'Failed to load all items from Firestore');
+    logger.error({err}, "Failed to load all items from Firestore");
     throw err;
   }
 
@@ -71,15 +71,15 @@ export function paginate<T extends BaseModel>(
     if (bVal === undefined || bVal === null) return -1;
 
     let cmp = 0;
-    if (typeof aVal === 'string' && typeof bVal === 'string') {
+    if (typeof aVal === "string" && typeof bVal === "string") {
       cmp = aVal.localeCompare(bVal);
-    } else if (typeof aVal === 'number' && typeof bVal === 'number') {
+    } else if (typeof aVal === "number" && typeof bVal === "number") {
       cmp = aVal - bVal;
     } else {
       cmp = String(aVal).localeCompare(String(bVal));
     }
 
-    return options.orderDirection === 'asc' ? cmp : -cmp;
+    return options.orderDirection === "asc" ? cmp : -cmp;
   });
 
   // Find cursor position

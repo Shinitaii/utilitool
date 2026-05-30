@@ -58,14 +58,10 @@ export const requestLogger = pinoHttp({
     const status = res.statusCode;
     const cacheHit = (res as any).requestContext?.isCacheHit || false;
 
-    // Extract error message from various sources
+    // Extract error message from Error object
     let errorMsg = "";
-    if (err?.message) {
-      errorMsg = err.message;
-    } else if (err?.msg) {
-      errorMsg = err.msg;
-    } else if (typeof err === "string") {
-      errorMsg = err;
+    if (err && typeof err === "object" && "message" in err) {
+      errorMsg = (err as any).message;
     }
 
     // Duration is not available in customErrorMessage, use 0 as placeholder

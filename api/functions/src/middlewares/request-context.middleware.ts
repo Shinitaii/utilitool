@@ -1,5 +1,5 @@
-import { Request, Response, NextFunction } from "express";
-import { AsyncLocalStorage } from "async_hooks";
+import {Request, Response, NextFunction} from "express";
+import {AsyncLocalStorage} from "async_hooks";
 
 interface RequestContext {
   isCacheHit: boolean;
@@ -12,7 +12,7 @@ export function requestContextMiddleware(
   res: Response,
   next: NextFunction
 ) {
-  const context: RequestContext = { isCacheHit: false };
+  const context: RequestContext = {isCacheHit: false};
 
   // Make context and setter available to handlers
   (res as any).requestContext = context;

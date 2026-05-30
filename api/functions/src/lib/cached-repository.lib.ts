@@ -1,8 +1,8 @@
-import type { BaseModel, WithoutBaseModel } from "../utils/model.util";
-import type { PaginatedResult } from "../utils/pagination.util";
-import type { Repository, SearchOptions } from "./repository.lib";
-import { cacheGet, cacheSet, cacheDel } from "../utils/cache.util";
-import { loadAll, listAppend, listUpdate, listRemove, paginate } from "../utils/list-cache.util";
+import type {BaseModel, WithoutBaseModel} from "../utils/model.util";
+import type {PaginatedResult} from "../utils/pagination.util";
+import type {Repository, SearchOptions} from "./repository.lib";
+import {cacheGet, cacheSet, cacheDel} from "../utils/cache.util";
+import {loadAll, listAppend, listUpdate, listRemove, paginate} from "../utils/list-cache.util";
 
 /**
  * CachedRepository wraps Repository<T> with a two-tier caching strategy:
@@ -90,10 +90,10 @@ export class CachedRepository<T extends BaseModel> {
    * Load ALL items (no pagination), cached by user.
    * Useful for operations that need the full dataset.
    */
-  async searchAll(options: Omit<SearchOptions<T>, 'limit' | 'cursor'>): Promise<T[]> {
+  async searchAll(options: Omit<SearchOptions<T>, "limit" | "cursor">): Promise<T[]> {
     // Archive queries go direct to Firestore
     if (options.archived) {
-      let allItems: T[] = [];
+      const allItems: T[] = [];
       let cursor: string | undefined;
 
       while (true) {

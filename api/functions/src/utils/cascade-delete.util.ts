@@ -1,7 +1,7 @@
-import { firestore } from "../config/firebase.config";
-import { COLLECTIONS } from "../constants/collection.constants";
-import { collectionRef } from "../lib/firestore.lib";
-import { cacheDel } from "./cache.util";
+import {firestore} from "../config/firebase.config";
+import {COLLECTIONS} from "../constants/collection.constants";
+import {collectionRef} from "../lib/firestore.lib";
+import {cacheDel} from "./cache.util";
 
 export interface CascadeDeleteSummary {
   primary: number; // The entity being deleted (always 1)
@@ -14,7 +14,7 @@ export interface CascadeDeleteSummary {
  * Uses a transaction for atomicity.
  */
 export async function cascadeDeleteProperty(propertyId: string): Promise<CascadeDeleteSummary> {
-  let summary: CascadeDeleteSummary = { primary: 1, readings: 0, billings: 0 };
+  const summary: CascadeDeleteSummary = {primary: 1, readings: 0, billings: 0};
   const readingIds: string[] = [];
   const billingIds: string[] = [];
 
@@ -27,7 +27,7 @@ export async function cascadeDeleteProperty(propertyId: string): Promise<Cascade
     }
 
     // Soft-delete property
-    txn.update(propertyRef, { is_deleted: true, deleted_at: new Date() });
+    txn.update(propertyRef, {is_deleted: true, deleted_at: new Date()});
 
     // Find all readings for this property
     const readingsSnap = await collectionRef(COLLECTIONS.READINGS)
@@ -42,7 +42,7 @@ export async function cascadeDeleteProperty(propertyId: string): Promise<Cascade
     // Soft-delete all readings
     for (const readingId of foundReadingIds) {
       const readingRef = firestore.collection(COLLECTIONS.READINGS).doc(readingId);
-      txn.update(readingRef, { is_deleted: true, deleted_at: new Date() });
+      txn.update(readingRef, {is_deleted: true, deleted_at: new Date()});
     }
 
     // Find all billings for this property
@@ -57,7 +57,7 @@ export async function cascadeDeleteProperty(propertyId: string): Promise<Cascade
 
     // Soft-delete all billings
     for (const billingDoc of billingsSnap.docs) {
-      txn.update(billingDoc.ref, { is_deleted: true, deleted_at: new Date() });
+      txn.update(billingDoc.ref, {is_deleted: true, deleted_at: new Date()});
     }
   });
 
@@ -79,7 +79,7 @@ export async function cascadeDeleteProperty(propertyId: string): Promise<Cascade
  * Uses a transaction for atomicity.
  */
 export async function cascadeDeleteMeterGroup(meterGroupId: string): Promise<CascadeDeleteSummary> {
-  let summary: CascadeDeleteSummary = { primary: 1, readings: 0, billings: 0 };
+  const summary: CascadeDeleteSummary = {primary: 1, readings: 0, billings: 0};
   const readingIds: string[] = [];
   const billingIds: string[] = [];
 
@@ -92,7 +92,7 @@ export async function cascadeDeleteMeterGroup(meterGroupId: string): Promise<Cas
     }
 
     // Soft-delete meter group
-    txn.update(meterGroupRef, { is_deleted: true, deleted_at: new Date() });
+    txn.update(meterGroupRef, {is_deleted: true, deleted_at: new Date()});
 
     // Find all readings for this meter group
     const readingsSnap = await collectionRef(COLLECTIONS.READINGS)
@@ -107,7 +107,7 @@ export async function cascadeDeleteMeterGroup(meterGroupId: string): Promise<Cas
     // Soft-delete all readings
     for (const readingId of foundReadingIds) {
       const readingRef = firestore.collection(COLLECTIONS.READINGS).doc(readingId);
-      txn.update(readingRef, { is_deleted: true, deleted_at: new Date() });
+      txn.update(readingRef, {is_deleted: true, deleted_at: new Date()});
     }
 
     // Find all billings that reference these readings
@@ -130,7 +130,7 @@ export async function cascadeDeleteMeterGroup(meterGroupId: string): Promise<Cas
 
       // Soft-delete all related billings
       for (const billingDoc of billingsToDelete) {
-        txn.update(billingDoc.ref, { is_deleted: true, deleted_at: new Date() });
+        txn.update(billingDoc.ref, {is_deleted: true, deleted_at: new Date()});
       }
     }
   });
@@ -153,7 +153,7 @@ export async function cascadeDeleteMeterGroup(meterGroupId: string): Promise<Cas
  * Uses a transaction for atomicity.
  */
 export async function cascadeDeleteReading(readingId: string): Promise<CascadeDeleteSummary> {
-  let summary: CascadeDeleteSummary = { primary: 1, billings: 0 };
+  const summary: CascadeDeleteSummary = {primary: 1, billings: 0};
 
   await firestore.runTransaction(async (txn) => {
     const readingRef = firestore.collection(COLLECTIONS.READINGS).doc(readingId);
@@ -164,7 +164,7 @@ export async function cascadeDeleteReading(readingId: string): Promise<CascadeDe
     }
 
     // Soft-delete reading
-    txn.update(readingRef, { is_deleted: true, deleted_at: new Date() });
+    txn.update(readingRef, {is_deleted: true, deleted_at: new Date()});
 
     // Find all billings that reference this reading
     const billingsSnap = await collectionRef(COLLECTIONS.BILLINGS)
@@ -180,7 +180,7 @@ export async function cascadeDeleteReading(readingId: string): Promise<CascadeDe
 
     // Soft-delete all related billings
     for (const billingDoc of billingsToDelete) {
-      txn.update(billingDoc.ref, { is_deleted: true, deleted_at: new Date() });
+      txn.update(billingDoc.ref, {is_deleted: true, deleted_at: new Date()});
     }
   });
 
@@ -192,7 +192,7 @@ export async function cascadeDeleteReading(readingId: string): Promise<CascadeDe
  * Uses a transaction for atomicity.
  */
 export async function cascadeRestoreProperty(propertyId: string): Promise<CascadeDeleteSummary> {
-  let summary: CascadeDeleteSummary = { primary: 1, readings: 0, billings: 0 };
+  const summary: CascadeDeleteSummary = {primary: 1, readings: 0, billings: 0};
 
   await firestore.runTransaction(async (txn) => {
     const propertyRef = firestore.collection(COLLECTIONS.PROPERTIES).doc(propertyId);
@@ -203,7 +203,7 @@ export async function cascadeRestoreProperty(propertyId: string): Promise<Cascad
     }
 
     // Restore property
-    txn.update(propertyRef, { is_deleted: false, deleted_at: null });
+    txn.update(propertyRef, {is_deleted: false, deleted_at: null});
 
     // Find all soft-deleted readings for this property
     const readingsSnap = await collectionRef(COLLECTIONS.READINGS)
@@ -217,7 +217,7 @@ export async function cascadeRestoreProperty(propertyId: string): Promise<Cascad
     // Restore all readings
     for (const readingId of readingIds) {
       const readingRef = firestore.collection(COLLECTIONS.READINGS).doc(readingId);
-      txn.update(readingRef, { is_deleted: false, deleted_at: null });
+      txn.update(readingRef, {is_deleted: false, deleted_at: null});
     }
 
     // Find all soft-deleted billings for this property
@@ -230,7 +230,7 @@ export async function cascadeRestoreProperty(propertyId: string): Promise<Cascad
 
     // Restore all billings
     for (const billingDoc of billingsSnap.docs) {
-      txn.update(billingDoc.ref, { is_deleted: false, deleted_at: null });
+      txn.update(billingDoc.ref, {is_deleted: false, deleted_at: null});
     }
   });
 
@@ -242,7 +242,7 @@ export async function cascadeRestoreProperty(propertyId: string): Promise<Cascad
  * Uses a transaction for atomicity.
  */
 export async function cascadeRestoreMeterGroup(meterGroupId: string): Promise<CascadeDeleteSummary> {
-  let summary: CascadeDeleteSummary = { primary: 1, readings: 0, billings: 0 };
+  const summary: CascadeDeleteSummary = {primary: 1, readings: 0, billings: 0};
 
   await firestore.runTransaction(async (txn) => {
     const meterGroupRef = firestore.collection(COLLECTIONS.METER_GROUPS).doc(meterGroupId);
@@ -253,7 +253,7 @@ export async function cascadeRestoreMeterGroup(meterGroupId: string): Promise<Ca
     }
 
     // Restore meter group
-    txn.update(meterGroupRef, { is_deleted: false, deleted_at: null });
+    txn.update(meterGroupRef, {is_deleted: false, deleted_at: null});
 
     // Find all soft-deleted readings for this meter group
     const readingsSnap = await collectionRef(COLLECTIONS.READINGS)
@@ -267,7 +267,7 @@ export async function cascadeRestoreMeterGroup(meterGroupId: string): Promise<Ca
     // Restore all readings
     for (const readingId of readingIds) {
       const readingRef = firestore.collection(COLLECTIONS.READINGS).doc(readingId);
-      txn.update(readingRef, { is_deleted: false, deleted_at: null });
+      txn.update(readingRef, {is_deleted: false, deleted_at: null});
     }
 
     // Find all soft-deleted billings that reference these readings
@@ -288,7 +288,7 @@ export async function cascadeRestoreMeterGroup(meterGroupId: string): Promise<Ca
 
       // Restore all related billings
       for (const billingDoc of billingsToRestore) {
-        txn.update(billingDoc.ref, { is_deleted: false, deleted_at: null });
+        txn.update(billingDoc.ref, {is_deleted: false, deleted_at: null});
       }
     }
   });
@@ -301,7 +301,7 @@ export async function cascadeRestoreMeterGroup(meterGroupId: string): Promise<Ca
  * Uses a transaction for atomicity.
  */
 export async function cascadeRestoreReading(readingId: string): Promise<CascadeDeleteSummary> {
-  let summary: CascadeDeleteSummary = { primary: 1, billings: 0 };
+  const summary: CascadeDeleteSummary = {primary: 1, billings: 0};
 
   await firestore.runTransaction(async (txn) => {
     const readingRef = firestore.collection(COLLECTIONS.READINGS).doc(readingId);
@@ -312,7 +312,7 @@ export async function cascadeRestoreReading(readingId: string): Promise<CascadeD
     }
 
     // Restore reading
-    txn.update(readingRef, { is_deleted: false, deleted_at: null });
+    txn.update(readingRef, {is_deleted: false, deleted_at: null});
 
     // Find all soft-deleted billings that reference this reading
     const billingsSnap = await collectionRef(COLLECTIONS.BILLINGS)
@@ -328,7 +328,7 @@ export async function cascadeRestoreReading(readingId: string): Promise<CascadeD
 
     // Restore all related billings
     for (const billingDoc of billingsToRestore) {
-      txn.update(billingDoc.ref, { is_deleted: false, deleted_at: null });
+      txn.update(billingDoc.ref, {is_deleted: false, deleted_at: null});
     }
   });
 

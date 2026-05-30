@@ -63,7 +63,7 @@ export class Repository<T extends BaseModel> {
       for (const [field, value] of Object.entries(options.filters)) {
         if (value !== undefined && value !== null) {
           // Check if value is a range filter object
-          if (typeof value === 'object' && ('$gte' in value || '$lte' in value || '$gt' in value || '$lt' in value)) {
+          if (typeof value === "object" && ("$gte" in value || "$lte" in value || "$gt" in value || "$lt" in value)) {
             const rangeFilter = value as RangeFilter;
             if (rangeFilter.$gte !== undefined && rangeFilter.$gte !== null) {
               query = query.where(field, ">=", rangeFilter.$gte as never);

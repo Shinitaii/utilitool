@@ -25,7 +25,7 @@ function getCachedRole(userId: string): Role | null {
 }
 
 function setCachedRole(userId: string, role: Role): void {
-  roleCache.set(userId, { role, timestamp: Date.now() });
+  roleCache.set(userId, {role, timestamp: Date.now()});
 }
 
 /**
