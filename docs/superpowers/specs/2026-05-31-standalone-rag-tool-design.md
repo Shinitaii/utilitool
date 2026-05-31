@@ -101,7 +101,18 @@ rag-tool/
 
 ## Data Model
 
-One SQLite DB per project at `~/.rag/<project-id>/index.db`. `<project-id>` is a slug derived from the project's **absolute path** (e.g. a short hash of the normalized absolute path, optionally prefixed with the directory name for human readability — e.g. `new-utility-calculator-a1b2c3`). Absolute path is the single source of truth (git remote is not used, so non-git projects and multiple clones are handled uniformly). The `registry.json` stores the full mapping `absolute_path -> {project_id, db_path}`. Indexed projects are never written to.
+One SQLite DB per project at `~/.rag/<project-id>/index.db`.
+
+**`<project-id>` derivation** — `f"{dir_name}-{hash_suffix}"`, e.g. `new-utility-calculator-a1b2c3`:
+- `dir_name` = the project folder's basename, for human readability when browsing `~/.rag/`.
+- `hash_suffix` = first 6 hex chars of a **stable** hash of the normalized absolute path (`hashlib.sha1(norm_path.encode()).hexdigest()[:6]` — NOT Python's built-in `hash()`, which is per-process randomized). This guarantees uniqueness so two projects with the same folder name (e.g. `client-a/api` and `client-b/api`) never collide on the same DB.
+
+**Path normalization (must happen before hashing).** Resolve to a canonical form so the same project accessed via different path spellings maps to one DB:
+- `os.path.realpath()` to resolve symlinks and trailing-slash/relative differences.
+- On Windows, case-fold the result (the filesystem is case-insensitive; `C:\Users` and `c:\users` are the same project).
+- Cross-platform note: the *same* logical project on Windows vs Linux has genuinely different absolute paths (`C:\Users\rgvil\…` vs `/home/rgvil/…`) and correctly resolves to separate DBs per machine — `~/.rag` is not shared across OSes.
+
+Absolute path is the single source of truth (git remote is not used, so non-git projects and multiple clones are handled uniformly). The `registry.json` stores the full mapping `normalized_absolute_path -> {project_id, db_path}`. Indexed projects are never written to.
 
 ```sql
 -- Primary chunk store
