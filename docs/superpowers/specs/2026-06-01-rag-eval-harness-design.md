@@ -26,7 +26,7 @@ Retrieval quality is currently judged by eyeballing results ("those look right")
 ## Non-Goals (YAGNI)
 
 - **No dev/held-out split.** One set per project. (Revisit only if the set grows large and aggressive tuning begins, or if embedding fine-tuning is ever attempted — neither is planned.)
-- **No automatic label generation.** Labels are hand-written by the user (who knows the codebase). Auto-labeling would be circular.
+- **No RAG-derived labels (circular) — and no auto-labeling for now.** Deriving labels from the RAG tool's own output is forbidden: it would grade RAG against itself and measure nothing. *Independent* auto-labeling (e.g. a separate LLM reading ground-truth files to propose query→file pairs, or mining real usage) is NOT circular and is a valid technique — but it's deferred. At ~25 cases, hand-written labels from someone who knows the codebase are higher quality (real phrasings, real priorities) than generated ones. Auto-labeling earns its place only if the set must scale to hundreds of cases.
 - **No in-process / `--no-server` flag.** The eval runs through the warm server (the real path). If a future B-tuning workflow needs an in-process variant to avoid stale-server code, add it *then*, with a concrete reason. (Decided: don't build on speculation.)
 - **No tuning automation / knob search.** The harness reports numbers; the human reads them and decides.
 
