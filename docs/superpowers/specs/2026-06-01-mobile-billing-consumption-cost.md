@@ -107,20 +107,32 @@ const billings = await listBillings();  // Returns { data: Billing[], ... }
 ### On Expand (New)
 When user expands a billing:
 
-1. **Fetch previous reading**:
+1. **Fetch current and previous readings** (in parallel):
    ```typescript
-   const prevReading = await getReading(billing.previous_reading_id);
+   const [currReading, prevReading] = await Promise.all([
+     getReading(billing.current_reading_id),
+     getReading(billing.previous_reading_id)
+   ]);
    ```
 
-2. **Fetch all billing cycles** (to find the one containing this billing):
+2. **Query billing cycles** by meter group and date range:
    ```typescript
-   const cyclesResult = await listBillingCycles({ limit: 100 });
+   const cyclesResult = await listBillingCycles({
+     meterGroupId: currReading.meter_group_id,
+     limit: 50
+   });
    const cycles = cyclesResult.data;
    ```
 
-3. **Find the cycle** containing this billing:
+3. **Find the cycle** containing this billing (by date range):
    ```typescript
-   const cycle = cycles.find(c => billing.id in c.billing_ids);
+   const readingDate = new Date(currReading.reading_date);
+   const cycle = cycles.find(c => {
+     const startDate = new Date(c.billing_start_date);
+     const endDate = new Date(c.billing_end_date);
+     return startDate <= readingDate && readingDate <= endDate
+       && billing.id in c.billing_ids;
+   });
    ```
 
 4. **Extract data**:
@@ -176,12 +188,26 @@ let expandedBillingDetails: Record<string, {
 ```typescript
 async function getExpandedBillingDetails(billing: Billing) {
   try {
-    const [prevReading, cyclesResult] = await Promise.all([
-      getReading(billing.previous_reading_id),
-      listBillingCycles({ limit: 100 })
+    const [currReading, prevReading] = await Promise.all([
+      getReading(billing.current_reading_id),
+      getReading(billing.previous_reading_id)
     ]);
     
-    const cycle = cyclesResult.data.find(c => billing.id in c.billing_ids);
+    // Query cycles filtered by meter group
+    const cyclesResult = await listBillingCycles({ 
+      meterGroupId: currReading.meter_group_id,
+      limit: 50 
+    });
+    
+    // Find cycle containing this billing within the reading date range
+    const readingDate = new Date(currReading.reading_date);
+    const cycle = cyclesResult.data.find(c => {
+      const startDate = new Date(c.billing_start_date);
+      const endDate = new Date(c.billing_end_date);
+      return startDate <= readingDate && readingDate <= endDate
+        && billing.id in c.billing_ids;
+    });
+    
     const consumption = cycle?.billing_ids[billing.id] ?? 0;
     const rate = cycle?.billing_rate ?? 0;
     const totalCost = consumption * rate;
@@ -216,14 +242,15 @@ async function markAsPaidWithConfirm(billing: Billing) {
 ## Performance Considerations
 
 ### Lazy Loading
-- Fetch billing cycle + reading **only on expand**, not on initial list render
+- Fetch current + previous readings + filtered cycles **only on expand**, not on initial list render
 - Reduces initial load time and API calls
 - Details fetched in parallel (`Promise.all`)
+- Query only cycles for the relevant meter group (not all cycles)
 
 ### Caching
-- Consider caching fetched cycles per session (optional optimization)
-- Reuse cycle data if user expands multiple bills from same cycle
-- Clear cache on sign-out
+- Cache fetched readings per session to avoid duplicate API calls
+- Cache cycles by meter_group_id to reuse if user expands multiple bills from same meter
+- Clear all caches on sign-out
 
 ### Mobile Considerations
 - Show loading state while fetching details ("Loading...")
