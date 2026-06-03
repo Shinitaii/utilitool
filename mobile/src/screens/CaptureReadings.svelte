@@ -61,12 +61,14 @@
         allProperties = res.data || [];
         sessionCache.setProperties(allProperties);
       }
-      // Filter properties that have the selected meter group
-      properties = allProperties.filter((p: Property) =>
-        Object.values(p.meter_groups).some(
-          (entry) => entry.meter_group_id === selectedMeterGroupId
-        )
-      );
+      // Filter properties that have the selected meter group, excluding main meters
+      properties = allProperties.filter((p: Property) => {
+        const meterGroupEntry = Object.entries(p.meter_groups).find(
+          ([_, entry]) => entry.meter_group_id === selectedMeterGroupId
+        );
+        // Include if meter group exists AND it's not a main meter
+        return meterGroupEntry && meterGroupEntry[1].is_main_meter !== true;
+      });
 
       // Initialize readings object
       propertyReadings = {};
