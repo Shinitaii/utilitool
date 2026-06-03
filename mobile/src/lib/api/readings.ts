@@ -45,3 +45,15 @@ export async function createReadingsBatch(data: BatchReadingRequest) {
   }
   return apiPost('/readings/batch', data);
 }
+
+export interface CreateSeedReadingRequest {
+  meter_group_id: string;
+  property_id: string;
+  reading_amount: number;
+  reading_date: string;
+  image_url?: string;
+}
+
+export async function createSeedReading(data: CreateSeedReadingRequest) {
+  return apiPost('/readings/seed', data);
+}
