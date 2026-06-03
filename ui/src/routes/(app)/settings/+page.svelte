@@ -1,8 +1,8 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { clearAllCaches } from '$lib/api/cache';
-  import { listMeterGroups, type MeterGroup } from '$lib/api/meter-groups';
-  import { listProperties, type Property } from '$lib/api/properties';
+  import { getMeterGroups, type MeterGroup } from '$lib/api/meter-groups';
+  import { getProperties, type Property } from '$lib/api/properties';
   import { createSeedReading, getReadings } from '$lib/api/readings';
   import { uploadToStorage } from '$lib/utils/firebase-storage';
   import { authStore } from '$lib/stores/auth.svelte';
@@ -54,7 +54,7 @@
 
   async function loadSeedMeterGroups() {
     try {
-      const result = await listMeterGroups();
+      const result = await getMeterGroups();
       seedMeterGroups = result.data || [];
       selectedSeedMeterGroupId = '';
       seedProperties = [];
@@ -74,7 +74,7 @@
       seedFormError = '';
 
       // Get all properties for this meter group
-      const result = await listProperties();
+      const result = await getProperties();
       const allProperties = result.data || [];
 
       // Filter to main meters only for the selected meter group
