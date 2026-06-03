@@ -6,7 +6,7 @@
   import { Camera } from '@capacitor/camera';
   import { listMeterGroups, type MeterGroup } from '../lib/api/meter-groups';
   import { listProperties, type Property } from '../lib/api/properties';
-  import { createSeedReading, type CreateSeedReadingRequest } from '../lib/api/readings';
+  import { createSeedReading } from '../lib/api/readings';
   import { listReadings, type Reading } from '../lib/api/readings';
   import { getReadingUnit } from '../lib/utils/format';
 
@@ -53,9 +53,10 @@
             sessionCache.setMeterGroups(cached);
           }
           seedMeterGroups = cached;
-          seedMeterGroupsLoaded = true;
         } catch (e) {
           seedError = 'Failed to load meter groups';
+        } finally {
+          seedMeterGroupsLoaded = true;
         }
       })();
     }
@@ -101,7 +102,7 @@
       });
 
       // Fetch existing readings to filter out already-seeded
-      const readingsRes = await listReadings({ meter_group_id: seedSelectedMeterGroupId });
+      const readingsRes = await listReadings({ meterGroupId: seedSelectedMeterGroupId });
       const existingReadings = readingsRes.data || [];
 
       // Get current meter version from meter group

@@ -25,9 +25,15 @@ export interface BatchReadingRequest {
   readings: CreateReadingRequest[];
 }
 
-export async function listReadings(meterGroupId?: string) {
+export async function listReadings(options?: {
+  meterGroupId?: string;
+  limit?: number;
+  offset?: number;
+}) {
   const params = new URLSearchParams();
-  if (meterGroupId) params.append('meterGroupId', meterGroupId);
+  if (options?.meterGroupId) params.append('meterGroupId', options.meterGroupId);
+  if (options?.limit) params.append('limit', String(options.limit));
+  if (options?.offset) params.append('offset', String(options.offset));
   return apiGet(`/readings${params.toString() ? '?' + params.toString() : ''}`);
 }
 
@@ -46,14 +52,6 @@ export async function createReadingsBatch(data: BatchReadingRequest) {
   return apiPost('/readings/batch', data);
 }
 
-export interface CreateSeedReadingRequest {
-  meter_group_id: string;
-  property_id: string;
-  reading_amount: number;
-  reading_date: string;
-  image_url?: string;
-}
-
-export async function createSeedReading(data: CreateSeedReadingRequest) {
+export async function createSeedReading(data: CreateReadingRequest) {
   return apiPost('/readings/seed', data);
 }

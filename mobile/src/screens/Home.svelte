@@ -15,7 +15,7 @@
       ]);
 
       recentReadingsCount = readingsRes.data?.length || 0;
-      pendingBillingsCount = (billingsRes.data || []).filter(b => b.payment_status === 'pending').length;
+      pendingBillingsCount = (billingsRes.data || []).filter((b: any) => b.payment_status === 'pending').length;
     } catch (e) {
       console.error('Failed to load dashboard stats:', e);
     } finally {
