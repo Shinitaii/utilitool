@@ -4,7 +4,7 @@
   import { getMeterGroups } from '$lib/api/meterGroups';
   import { getProperties } from '$lib/api/properties';
   import { createSeedReading, getReadings } from '$lib/api/readings';
-  import { uploadFile } from '$lib/api/files';
+  import { uploadToStorage } from '$lib/utils/firebase-storage';
   import { authStore } from '$lib/stores/auth.svelte';
   import type { MeterGroup } from '$lib/types/meter-group.types';
   import type { Property } from '$lib/types/property.types';
@@ -129,7 +129,15 @@
     seedFormError = '';
 
     try {
-      const url = await uploadFile(file);
+      // Store data URL for immediate preview
+      const reader = new FileReader();
+      reader.onload = (loadEvent: any) => {
+        seedImageUrl = loadEvent.target.result;
+      };
+      reader.readAsDataURL(file);
+
+      // Upload to storage in background
+      const url = await uploadToStorage(file, `seed-readings/${Date.now()}_${file.name}`);
       seedImageUrl = url;
     } catch (err) {
       seedFormError = err instanceof Error ? err.message : 'Failed to upload image';
@@ -152,11 +160,14 @@
     isSubmittingSeed = true;
 
     try {
+      // Convert date string to ISO format for API
+      const dateObj = new Date(`${seedReadingDate}T00:00:00Z`);
+
       await createSeedReading({
         meter_group_id: selectedSeedMeterGroupId,
         property_id: selectedSeedPropertyId,
         reading_amount: seedReadingAmount,
-        reading_date: seedReadingDate,
+        reading_date: dateObj.toISOString(),
         image_url: seedImageUrl || undefined
       });
 
