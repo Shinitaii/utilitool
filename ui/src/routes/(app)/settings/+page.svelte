@@ -256,7 +256,7 @@
             class="w-full rounded border border-gray-300 bg-white px-4 py-2 text-left text-sm font-medium text-gray-900 hover:bg-gray-50"
           >
             {selectedSeedMeterGroupId
-              ? seedMeterGroups.find((mg) => mg.id === selectedSeedMeterGroupId)?.name || 'Select meter group'
+              ? seedMeterGroups.find((mg) => mg.id === selectedSeedMeterGroupId)?.meter_name || 'Select meter group'
               : 'Click to select meter group'}
           </button>
 
@@ -271,7 +271,7 @@
                     }}
                     class="w-full rounded px-3 py-2 text-left text-sm font-medium hover:bg-gray-200"
                   >
-                    {mg.name}
+                    {mg.meter_name} ({mg.utility_type})
                   </button>
                 {/each}
               </div>
@@ -289,7 +289,7 @@
             class="w-full rounded border border-gray-300 bg-white px-4 py-2 text-left text-sm font-medium text-gray-900 hover:bg-gray-50 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400"
           >
             {selectedSeedPropertyId
-              ? seedProperties.find((p) => p.id === selectedSeedPropertyId)?.name || 'Select property'
+              ? seedProperties.find((p) => p.id === selectedSeedPropertyId)?.room_name || 'Select property'
               : 'Select meter group first'}
           </button>
 
@@ -303,7 +303,7 @@
                     }}
                     class="w-full rounded px-3 py-2 text-left text-sm font-medium hover:bg-gray-200"
                   >
-                    {prop.name}
+                    {prop.room_name}
                   </button>
                 {/each}
               </div>
