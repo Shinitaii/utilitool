@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { clearAllCaches } from '$lib/api/cache';
-  import { auth } from '$lib/stores/auth.svelte';
+  import { authStore } from '$lib/stores/auth.svelte';
 
   let isClearingCache = $state(false);
   let cacheCleared = $state(false);
@@ -26,10 +26,11 @@
   }
 
   async function handleSignOut() {
+    error = '';
     try {
-      await auth.signOut();
+      await authStore.logout();
     } catch (err) {
-      console.error('Sign out failed:', err);
+      error = err instanceof Error ? err.message : 'Failed to sign out';
     }
   }
 </script>
@@ -58,7 +59,7 @@
     <div class="rounded-lg border border-gray-200 bg-white p-6">
       <h3 class="text-lg font-semibold text-gray-900 mb-2">User Profile</h3>
       <p class="text-sm text-gray-600 mb-4">
-        Email: <span class="font-medium">{$auth.user?.email || 'Not signed in'}</span>
+        Email: <span class="font-medium">{$authStore.user?.email || 'Not signed in'}</span>
       </p>
       <button
         onclick={handleSignOut}
