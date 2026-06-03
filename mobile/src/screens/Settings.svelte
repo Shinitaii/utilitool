@@ -29,13 +29,14 @@
 
 <div class="min-h-screen pb-20" style="background-color: var(--color-bg-primary)">
   <div class="p-4 flex items-center gap-3 bg-white border-b" style="border-color: var(--color-border); color: var(--color-text-primary)">
-    <button onclick={() => (window.location.hash = '#/home')} class="text-xl" style="color: var(--color-text-primary)">←</button>
+    <button onclick={() => window.history.back()} class="text-xl" style="color: var(--color-text-primary)">←</button>
     <h1 class="text-xl font-bold">Settings</h1>
   </div>
 
   {#if error}
-    <div class="p-4 m-4 rounded border" style="background-color: #fff0f0; border-color: var(--color-status-alert); color: var(--color-status-alert)">
-      {error}
+    <div class="p-4 m-4 rounded border flex items-center justify-between" style="background-color: #fff0f0; border-color: var(--color-status-alert); color: var(--color-status-alert)">
+      <span>{error}</span>
+      <button onclick={() => (error = null)} class="text-lg leading-none" style="color: var(--color-status-alert)">✕</button>
     </div>
   {/if}
 
@@ -82,7 +83,7 @@
         <button
           onclick={clearCache}
           class="w-full py-2 px-3 rounded font-semibold"
-          style="background-color: #888; color: white"
+          style="background-color: var(--color-text-secondary); color: white"
         >
           Clear Cache
         </button>
