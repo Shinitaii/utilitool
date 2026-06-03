@@ -3,10 +3,10 @@
   import { clearAllCaches } from '$lib/api/cache';
   import { getMeterGroups } from '$lib/api/meterGroups';
   import { getProperties } from '$lib/api/properties';
-  import { createSeedReading } from '$lib/api/readings';
+  import { createSeedReading, getReadings } from '$lib/api/readings';
   import { uploadFile } from '$lib/api/files';
   import { authStore } from '$lib/stores/auth.svelte';
-  import type { MeterGroup } from '$lib/types/meterGroup.types';
+  import type { MeterGroup } from '$lib/types/meter-group.types';
   import type { Property } from '$lib/types/property.types';
 
   let isClearingCache = $state(false);
@@ -73,9 +73,47 @@
     }
 
     try {
+      seedFormError = '';
+
+      // Get all properties for this meter group
       const result = await getProperties({ meterGroupId: selectedSeedMeterGroupId, limit: 100 });
-      seedProperties = result.data;
+      const allProperties = result.data;
+
+      // Filter to main meters only for the selected meter group
+      const mainMeterProperties = allProperties.filter((p) => {
+        const meterGroupEntry = Object.entries(p.meter_groups).find(
+          ([_, entry]) => {
+            // Handle both structured entry and string for backward compatibility
+            if (typeof entry === 'string') return false;
+            return entry.meter_group_id === selectedSeedMeterGroupId;
+          }
+        );
+        return meterGroupEntry && typeof meterGroupEntry[1] === 'object' && meterGroupEntry[1].is_main_meter === true;
+      });
+
+      // Get current meter version from the selected meter group
+      const meterGroup = seedMeterGroups.find(g => g.id === selectedSeedMeterGroupId);
+      const currentVersion = meterGroup?.current_version || 1;
+
+      // Fetch existing readings for this meter group
+      const readingsResponse = await getReadings({ meterGroupId: selectedSeedMeterGroupId, limit: 1000 });
+      const existingReadings = readingsResponse.data || [];
+
+      // Filter out properties that already have a reading for this version
+      const unseededProperties = mainMeterProperties.filter((p) => {
+        const hasExistingReading = existingReadings.some(
+          (r) => r.property_id === p.id && r.meter_version === currentVersion
+        );
+        return !hasExistingReading;
+      });
+
+      seedProperties = unseededProperties;
       selectedSeedPropertyId = '';
+
+      // If none available, show message
+      if (unseededProperties.length === 0) {
+        seedFormError = 'All main meters for this meter group have been seeded';
+      }
     } catch (err) {
       seedFormError = err instanceof Error ? err.message : 'Failed to load properties';
     }
