@@ -1,8 +1,10 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { clearAllCaches } from '$lib/api/cache';
-  import { getMeterGroups, type MeterGroup } from '$lib/api/meter-groups';
-  import { getProperties, type Property } from '$lib/api/properties';
+  import { getMeterGroups } from '$lib/api/meter-groups';
+  import { getProperties } from '$lib/api/properties';
+  import type { MeterGroup } from '$lib/types/meter-group.types';
+  import type { Property } from '$lib/types/property.types';
   import { createSeedReading, getReadings } from '$lib/api/readings';
   import { uploadToStorage } from '$lib/utils/firebase-storage';
   import { authStore } from '$lib/stores/auth.svelte';
