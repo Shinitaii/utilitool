@@ -1,56 +1,101 @@
 <script lang="ts">
-  import { signOut } from 'firebase/auth';
   import { auth } from '../firebase';
+  import { signOut } from 'firebase/auth';
   import { sessionCache } from '../lib/stores/session';
   import BottomNav from '../components/BottomNav.svelte';
 
-  let isLoading = $state(false);
+  let showSeedForm = $state(false);
+  let isSigningOut = $state(false);
   let error: string | null = $state(null);
 
-  const user = auth.currentUser;
-
   async function handleSignOut() {
-    isLoading = true;
-    error = null;
     try {
-      sessionCache.clear();
+      isSigningOut = true;
       await signOut(auth);
-      window.location.hash = '#/home';
+      sessionCache.clear();
+      window.location.hash = '#/login';
     } catch (e: any) {
       error = e.message || 'Failed to sign out';
     } finally {
-      isLoading = false;
+      isSigningOut = false;
     }
+  }
+
+  function clearCache() {
+    sessionCache.clear();
+    error = null;
   }
 </script>
 
 <div class="min-h-screen pb-20" style="background-color: var(--color-bg-primary)">
-  <div class="p-4 border-b bg-white" style="border-color: var(--color-border)">
-    <h1 class="text-xl font-bold" style="color: var(--color-text-primary)">Settings</h1>
+  <div class="p-4 flex items-center gap-3 bg-white border-b" style="border-color: var(--color-border); color: var(--color-text-primary)">
+    <button onclick={() => (window.location.hash = '#/home')} class="text-xl" style="color: var(--color-text-primary)">←</button>
+    <h1 class="text-xl font-bold">Settings</h1>
   </div>
 
-  <div class="p-4 space-y-4">
-    <!-- Profile card -->
-    <div class="card-base">
-      <p class="text-xs font-semibold uppercase tracking-wide mb-2" style="color: var(--color-text-secondary)">Account</p>
-      <p class="font-semibold" style="color: var(--color-text-primary)">{user?.email ?? '—'}</p>
+  {#if error}
+    <div class="p-4 m-4 rounded border" style="background-color: #fff0f0; border-color: var(--color-status-alert); color: var(--color-status-alert)">
+      {error}
+    </div>
+  {/if}
+
+  <div class="p-4 space-y-6">
+    <!-- Account Section -->
+    <div>
+      <h2 class="text-lg font-semibold mb-3" style="color: var(--color-text-primary)">Account</h2>
+      <div class="card-base space-y-3">
+        <p class="text-sm" style="color: var(--color-text-secondary)">User profile and authentication</p>
+        <button
+          onclick={handleSignOut}
+          disabled={isSigningOut}
+          class="w-full py-2 px-3 rounded font-semibold disabled:opacity-50"
+          style="background-color: var(--color-accent); color: white"
+        >
+          {isSigningOut ? 'Signing out...' : 'Sign Out'}
+        </button>
+      </div>
     </div>
 
-    {#if error}
-      <div class="p-3 rounded text-sm" style="background-color: #fde5e0; color: var(--color-status-alert); border: 1px solid var(--color-status-alert)">
-        {error}
+    <!-- Reading Operations Section -->
+    <div>
+      <h2 class="text-lg font-semibold mb-3" style="color: var(--color-text-primary)">Reading Operations</h2>
+      <div class="card-base space-y-3">
+        <p class="text-sm" style="color: var(--color-text-secondary)">Setup and manage meter readings</p>
+        <button
+          onclick={() => (showSeedForm = !showSeedForm)}
+          class="w-full py-2 px-3 rounded font-semibold"
+          style="background-color: var(--color-accent); color: white"
+        >
+          {showSeedForm ? '✕ Close' : '+ Seed Readings'}
+        </button>
       </div>
-    {/if}
+      {#if showSeedForm}
+        <!-- Seed Readings form will be inserted here in Task 2 -->
+      {/if}
+    </div>
 
-    <!-- Sign out -->
-    <button
-      onclick={handleSignOut}
-      disabled={isLoading}
-      class="w-full py-3 rounded-lg font-semibold text-white disabled:opacity-50"
-      style="background-color: var(--color-status-alert)"
-    >
-      {isLoading ? 'Signing out...' : 'Sign Out'}
-    </button>
+    <!-- System Section -->
+    <div>
+      <h2 class="text-lg font-semibold mb-3" style="color: var(--color-text-primary)">System</h2>
+      <div class="card-base space-y-3">
+        <p class="text-sm" style="color: var(--color-text-secondary)">System maintenance and cache</p>
+        <button
+          onclick={clearCache}
+          class="w-full py-2 px-3 rounded font-semibold"
+          style="background-color: #888; color: white"
+        >
+          Clear Cache
+        </button>
+      </div>
+    </div>
+
+    <!-- Configuration Section -->
+    <div>
+      <h2 class="text-lg font-semibold mb-3" style="color: var(--color-text-primary)">Configuration</h2>
+      <div class="card-base">
+        <p class="text-sm" style="color: var(--color-text-secondary)">Reserved for future settings</p>
+      </div>
+    </div>
   </div>
 
   <BottomNav active="settings" />
