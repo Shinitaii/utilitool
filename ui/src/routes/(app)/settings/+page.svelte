@@ -1,13 +1,11 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { clearAllCaches } from '$lib/api/cache';
-  import { getMeterGroups } from '$lib/api/meterGroups';
-  import { getProperties } from '$lib/api/properties';
+  import { listMeterGroups, type MeterGroup } from '$lib/api/meter-groups';
+  import { listProperties, type Property } from '$lib/api/properties';
   import { createSeedReading, getReadings } from '$lib/api/readings';
   import { uploadToStorage } from '$lib/utils/firebase-storage';
   import { authStore } from '$lib/stores/auth.svelte';
-  import type { MeterGroup } from '$lib/types/meter-group.types';
-  import type { Property } from '$lib/types/property.types';
 
   let isClearingCache = $state(false);
   let cacheCleared = $state(false);
@@ -56,8 +54,8 @@
 
   async function loadSeedMeterGroups() {
     try {
-      const result = await getMeterGroups({ limit: 100 });
-      seedMeterGroups = result.data;
+      const result = await listMeterGroups();
+      seedMeterGroups = result.data || [];
       selectedSeedMeterGroupId = '';
       seedProperties = [];
       selectedSeedPropertyId = '';
@@ -76,8 +74,8 @@
       seedFormError = '';
 
       // Get all properties for this meter group
-      const result = await getProperties({ meterGroupId: selectedSeedMeterGroupId, limit: 100 });
-      const allProperties = result.data;
+      const result = await listProperties();
+      const allProperties = result.data || [];
 
       // Filter to main meters only for the selected meter group
       const mainMeterProperties = allProperties.filter((p) => {
