@@ -96,7 +96,7 @@
       const currentVersion = meterGroup?.current_version || 1;
 
       // Fetch existing readings for this meter group
-      const readingsResponse = await getReadings({ meterGroupId: selectedSeedMeterGroupId, limit: 1000 });
+      const readingsResponse = await getReadings({ meterGroupId: selectedSeedMeterGroupId, limit: 100 });
       const existingReadings = readingsResponse.data || [];
 
       // Filter out properties that already have a reading for this version
