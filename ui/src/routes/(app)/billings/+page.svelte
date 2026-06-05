@@ -49,6 +49,10 @@
   let cycleFormRate = $state(0);
   let cycleFormDiscoveredBillings = $state<DiscoveredBilling[]>([]);
   let cycleFormTotalConsumption = $state(0);
+  let cycleFormTotalAmount = $state(0);
+  let cycleFormLastChanged = $state<'consumption' | 'rate' | 'total' | null>(null);
+  let cycleFormOverrideMode = $state(false);
+  let cycleFormOverrideSelections = $state<Map<string, { prev_reading_id: string; curr_reading_id: string }>>(new Map());
   let isCreatingCycle = $state(false);
 
   // OCR state
@@ -58,6 +62,7 @@
 
   interface DiscoveredBilling {
     billingId: string;
+    propertyId: string;
     propertyName: string;
     consumption: number;
     amount: number;
@@ -68,6 +73,7 @@
     previous_reading_id: '',
     current_reading_id: ''
   });
+  let meterGroupFilter = $state('');
 
   let isUpdating = $state(false);
   let isCreating = $state(false);
@@ -81,14 +87,30 @@
 
   // Filter readings for manual billing form based on selected property's meter groups
   const manualBillingReadings = $derived.by(() => {
-    if (!readings || !createFormData.property_id) return readings || [];
-    const selectedProp = properties.find(p => p.id === createFormData.property_id);
-    if (!selectedProp) return readings;
+    if (!readings || !meterGroupFilter || !createFormData.property_id) return [];
 
-    const meterGroupIds = Object.values(selectedProp.meter_groups || {})
-      .filter((e): e is any => e !== undefined && e !== null)
-      .map(e => e.meter_group_id);
-    return readings.filter(r => meterGroupIds.includes(r.meter_group_id) && r.property_id === createFormData.property_id);
+    const usedReadingIds = new Set<string>();
+    for (const billing of allBillings) {
+      usedReadingIds.add(billing.previous_reading_id);
+      usedReadingIds.add(billing.current_reading_id);
+    }
+
+    return readings.filter(
+      (r) =>
+        r.meter_group_id === meterGroupFilter &&
+        r.property_id === createFormData.property_id &&
+        !usedReadingIds.has(r.id)
+    );
+  });
+
+  const billingCycleReadings = $derived.by(() => {
+    if (!readings || !cycleFormMeterGroup || !cycleFormEndDate) return [];
+    const endDate = new Date(cycleFormEndDate);
+    return readings.filter((reading) => {
+      if (reading.meter_group_id !== cycleFormMeterGroup) return false;
+      const readingDate = toDate(reading.reading_date);
+      return readingDate.getUTCMonth() === endDate.getUTCMonth() && readingDate.getUTCFullYear() === endDate.getUTCFullYear();
+    });
   });
 
   // Filter readings for edit modal based on selected property's meter groups
@@ -107,6 +129,19 @@
   const cycleFormUtilityType = $derived.by(() => {
     const selectedMeterGroup = meterGroups.find(m => m.id === cycleFormMeterGroup);
     return selectedMeterGroup?.utility_type || 'electricity';
+  });
+
+  const cycleOverridePropertyOptions = $derived.by(() => {
+    if (!cycleFormMeterGroup) return [];
+    return properties.filter((property) =>
+      Object.values(property.meter_groups ?? {}).some((entry: any) => entry?.meter_group_id === cycleFormMeterGroup)
+    );
+  });
+
+  $effect(() => {
+    if (cycleFormLastChanged === 'consumption' || cycleFormLastChanged === 'rate' || cycleFormLastChanged === null) {
+      cycleFormTotalAmount = round(cycleFormTotalConsumption * cycleFormRate);
+    }
   });
 
   $effect(() => {
@@ -256,16 +291,13 @@
     if (!cycleFormMeterGroup || !cycleFormEndDate) return [];
 
     const endDate = new Date(cycleFormEndDate);
-    const endMonth = endDate.getUTCMonth();
-    const endYear = endDate.getUTCFullYear();
-
-    return allBillings
+    const base = allBillings
       .filter(billing => {
         const currReading = readings.find(r => r.id === billing.current_reading_id);
         if (!currReading) return false;
         if (currReading.meter_group_id !== cycleFormMeterGroup) return false;
         const readingDate = toDate(currReading.reading_date);
-        return readingDate.getUTCMonth() === endMonth && readingDate.getUTCFullYear() === endYear;
+        return readingDate.getUTCMonth() === endDate.getUTCMonth() && readingDate.getUTCFullYear() === endDate.getUTCFullYear();
       })
       .map(billing => {
         const currReading = readings.find(r => r.id === billing.current_reading_id)!;
@@ -282,11 +314,24 @@
 
         return {
           billingId: billing.id,
+          propertyId: property?.id ?? billing.property_id,
           propertyName: property?.room_name ?? billing.property_id.slice(0, 8),
           consumption,
           amount: round(consumption * cycleFormRate),
         };
       });
+
+    if (!cycleFormOverrideMode) return base;
+
+    return base.map((entry) => {
+      const override = cycleFormOverrideSelections.get(entry.propertyId);
+      if (!override) return entry;
+      const prevReading = readings.find((r) => r.id === override.prev_reading_id);
+      const currReading = readings.find((r) => r.id === override.curr_reading_id);
+      if (!prevReading || !currReading) return entry;
+      const consumption = round(currReading.reading_amount - prevReading.reading_amount);
+      return { ...entry, consumption, amount: round(consumption * cycleFormRate) };
+    });
   }
 
   function handleDiscoverBillings() {
@@ -302,6 +347,10 @@
     cycleFormRate = 0;
     cycleFormDiscoveredBillings = [];
     cycleFormTotalConsumption = 0;
+    cycleFormTotalAmount = 0;
+    cycleFormLastChanged = null;
+    cycleFormOverrideMode = false;
+    cycleFormOverrideSelections = new Map();
     billPhotoUrl = null;
     isBillOcrLoading = false;
     billOcrRawAmount = null;
@@ -378,6 +427,8 @@
       cycleFormEndDate = result.billing_end_date;
       cycleFormRate = result.billing_rate;
       cycleFormTotalConsumption = result.billing_consumption;
+      cycleFormTotalAmount = round(result.billing_consumption * result.billing_rate);
+      cycleFormLastChanged = null;
       billOcrRawAmount = result.raw_amount;
     } catch (err) {
       billPhotoUrl = null;  // Clear on error
@@ -388,9 +439,7 @@
   }
 
   async function handleCreateCycle() {
-    const discovered = cycleFormDiscoveredBillings.length > 0
-      ? cycleFormDiscoveredBillings
-      : discoverBillings();
+    const discovered = discoverBillings();
     if (discovered.length === 0) {
       error = 'No billings found for this period';
       return;
@@ -784,6 +833,10 @@
             step="0.01"
             min="0"
             bind:value={cycleFormRate}
+            oninput={() => {
+              cycleFormLastChanged = 'rate';
+              cycleFormTotalAmount = round(cycleFormTotalConsumption * cycleFormRate);
+            }}
             class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
           />
         </div>
@@ -829,6 +882,10 @@
                 step="0.01"
                 min="0"
                 bind:value={cycleFormTotalConsumption}
+                oninput={() => {
+                  cycleFormLastChanged = 'consumption';
+                  cycleFormTotalAmount = round(cycleFormTotalConsumption * cycleFormRate);
+                }}
                 class="mt-2 block w-full rounded border border-blue-300 px-3 py-2 font-mono bg-white"
               />
               <p class="mt-1 text-xs text-blue-700">
@@ -836,10 +893,23 @@
               </p>
             </div>
             <div>
-              <div class="block text-sm font-medium text-blue-900">Total Bill Amount</div>
-              <div class="mt-2 px-3 py-2 font-mono font-semibold text-lg text-blue-900 bg-white rounded border border-blue-300">
-                {formatCurrency(round(cycleFormTotalConsumption * cycleFormRate))}
-              </div>
+              <label for="cycle-total-amount" class="block text-sm font-medium text-blue-900">Total Bill Amount</label>
+              <input
+                id="cycle-total-amount"
+                type="number"
+                step="0.01"
+                min="0"
+                bind:value={cycleFormTotalAmount}
+                oninput={() => {
+                  cycleFormLastChanged = 'total';
+                  if (cycleFormTotalConsumption > 0) {
+                    cycleFormRate = round(cycleFormTotalAmount / cycleFormTotalConsumption);
+                  } else if (cycleFormRate > 0) {
+                    cycleFormTotalConsumption = round(cycleFormTotalAmount / cycleFormRate);
+                  }
+                }}
+                class="mt-2 block w-full rounded border border-blue-300 px-3 py-2 font-mono bg-white"
+              />
             </div>
           </div>
         </div>
@@ -882,6 +952,54 @@
           <p class="mt-2 text-xs text-gray-500">
             Sub-meter billings (regular properties). Main meter automatically receives the remainder.
           </p>
+          <label class="mt-4 flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" bind:checked={cycleFormOverrideMode} />
+            Override readings per property
+          </label>
+          {#if cycleFormOverrideMode}
+            <div class="mt-4 space-y-3">
+              {#each cycleFormDiscoveredBillings as d (d.billingId)}
+                {@const property = properties.find((p) => p.room_name === d.propertyName)}
+                <div class="rounded border border-gray-200 p-3">
+                  <div class="mb-2 font-medium text-gray-900">{d.propertyName}</div>
+                  <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <select
+                      class="rounded border border-gray-300 px-3 py-2"
+                      onchange={(e) => {
+                        const propertyId = property?.id;
+                        const prevId = (e.target as HTMLSelectElement).value;
+                        if (!propertyId || !prevId) return;
+                        const curr = readings.find((r) => r.property_id === propertyId && r.meter_group_id === cycleFormMeterGroup && r.id !== prevId);
+                        if (!curr) return;
+                        cycleFormOverrideSelections.set(property?.id ?? d.propertyId, { prev_reading_id: prevId, curr_reading_id: curr.id });
+                        cycleFormOverrideSelections = new Map(cycleFormOverrideSelections);
+                      }}
+                    >
+                      <option value="">Select previous reading</option>
+                      {#each billingCycleReadings.filter((r) => r.property_id === property?.id) as reading (reading.id)}
+                        <option value={reading.id}>{formatReading(reading.reading_amount, meterGroups.find(m => m.id === reading.meter_group_id)?.utility_type || 'electricity')} - {formatDate(toDate(reading.reading_date))}</option>
+                      {/each}
+                    </select>
+                    <select
+                      class="rounded border border-gray-300 px-3 py-2"
+                      onchange={(e) => {
+                        const currId = (e.target as HTMLSelectElement).value;
+                        const existing = cycleFormOverrideSelections.get(property?.id ?? d.propertyId);
+                        if (!currId || !existing) return;
+                        cycleFormOverrideSelections.set(property?.id ?? d.propertyId, { prev_reading_id: existing.prev_reading_id, curr_reading_id: currId });
+                        cycleFormOverrideSelections = new Map(cycleFormOverrideSelections);
+                      }}
+                    >
+                      <option value="">Select current reading</option>
+                      {#each billingCycleReadings.filter((r) => r.property_id === property?.id) as reading (reading.id)}
+                        <option value={reading.id}>{formatReading(reading.reading_amount, meterGroups.find(m => m.id === reading.meter_group_id)?.utility_type || 'electricity')} - {formatDate(toDate(reading.reading_date))}</option>
+                      {/each}
+                    </select>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
         </div>
       {:else if cycleFormMeterGroup && cycleFormEndDate}
         <p class="mt-4 text-sm text-gray-500">
@@ -919,15 +1037,36 @@
         <div class="px-6 pb-6">
           <form onsubmit={handleCreate} class="space-y-4">
             <div>
+              <label for="meter-group-filter" class="block text-sm font-medium text-gray-700">Meter Group</label>
+              <select
+                id="meter-group-filter"
+                bind:value={meterGroupFilter}
+                onchange={() => {
+                  createFormData.property_id = '';
+                  createFormData.previous_reading_id = '';
+                  createFormData.current_reading_id = '';
+                }}
+                class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
+              >
+                <option value="">Select a meter group</option>
+                {#each meterGroups as mg (mg.id)}
+                  <option value={mg.id}>{mg.meter_name} ({mg.utility_type})</option>
+                {/each}
+              </select>
+            </div>
+            <div>
               <label for="property-id" class="block text-sm font-medium text-gray-700">Property</label>
               <select
                 id="property-id"
                 bind:value={createFormData.property_id}
                 required
+                disabled={!meterGroupFilter}
                 class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
               >
                 <option value="">Select a property</option>
-                {#each properties as prop (prop.id)}
+                {#each properties.filter((prop) =>
+                  !meterGroupFilter || Object.values(prop.meter_groups ?? {}).some((entry: any) => entry?.meter_group_id === meterGroupFilter)
+                ) as prop (prop.id)}
                   <option value={prop.id}>{prop.room_name}</option>
                 {/each}
               </select>
@@ -938,7 +1077,7 @@
                 id="previous-reading"
                 bind:value={createFormData.previous_reading_id}
                 required
-                disabled={!createFormData.property_id}
+                disabled={!meterGroupFilter || !createFormData.property_id}
                 class="mt-1 block w-full rounded border border-gray-300 px-3 py-2 disabled:opacity-50"
               >
                 <option value="">Select previous reading</option>
@@ -955,7 +1094,7 @@
                 id="current-reading"
                 bind:value={createFormData.current_reading_id}
                 required
-                disabled={!createFormData.property_id}
+                disabled={!meterGroupFilter || !createFormData.property_id}
                 class="mt-1 block w-full rounded border border-gray-300 px-3 py-2 disabled:opacity-50"
               >
                 <option value="">Select current reading</option>

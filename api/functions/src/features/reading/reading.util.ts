@@ -40,6 +40,25 @@ export function getPreviousMonthWindow(readingDate: Timestamp): { start: Timesta
 }
 
 /**
+ * Compute the start (inclusive) / end (exclusive) of the calendar month
+ * containing the supplied reading_date, in Asia/Manila timezone.
+ */
+export function getCurrentMonthWindow(readingDate: Timestamp): { start: Timestamp; end: Timestamp } {
+  const manilaMs = readingDate.toMillis() + MANILA_OFFSET_MS;
+  const manilaDate = new Date(manilaMs);
+  const year = manilaDate.getUTCFullYear();
+  const month = manilaDate.getUTCMonth();
+
+  const startManilaMs = Date.UTC(year, month, 1) - MANILA_OFFSET_MS;
+  const endManilaMs = Date.UTC(year, month + 1, 1) - MANILA_OFFSET_MS;
+
+  return {
+    start: Timestamp.fromMillis(startManilaMs),
+    end: Timestamp.fromMillis(endManilaMs),
+  };
+}
+
+/**
  * Find the most recent reading for a specific property within a meter group
  * in the previous calendar month (Asia/Manila).
  * Returns {id, data} or null if none exists.
@@ -64,6 +83,32 @@ export async function findPreviousMonthReading(
   if (prevReadingSnap.empty) return null;
 
   const doc = prevReadingSnap.docs[0];
+  return {
+    id: doc.id,
+    data: doc.data(),
+  };
+}
+
+export async function findCurrentMonthReading(
+  meterGroupId: string,
+  propertyId: string,
+  readingDate: Timestamp
+): Promise<{id: string; data: any} | null> {
+  const currentWindow = getCurrentMonthWindow(readingDate);
+  const currentReadingSnap = await firestore
+    .collection(COLLECTIONS.READINGS)
+    .where("meter_group_id", "==", meterGroupId)
+    .where("property_id", "==", propertyId)
+    .where("is_deleted", "==", false)
+    .where("reading_date", ">=", currentWindow.start)
+    .where("reading_date", "<", currentWindow.end)
+    .orderBy("reading_date", "desc")
+    .limit(1)
+    .get();
+
+  if (currentReadingSnap.empty) return null;
+
+  const doc = currentReadingSnap.docs[0];
   return {
     id: doc.id,
     data: doc.data(),

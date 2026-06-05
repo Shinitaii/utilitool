@@ -144,7 +144,18 @@ export class ReadingValidator {
     meterGroupId: string,
     newReadingAmount: number,
     meterVersion: number,
+    propertyId?: string,
   ): Promise<void> {
+    if (propertyId) {
+      const property = await propertyRepository.getById(propertyId);
+      if (property) {
+        const entry = Object.values(property.meter_groups).find(
+          (e) => e.meter_group_id === meterGroupId
+        );
+        if (entry?.is_main_meter) return;
+      }
+    }
+
     const recentResult = await readingRepository.search({
       limit: 6,
       orderBy: "reading_date",

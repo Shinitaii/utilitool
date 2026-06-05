@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getReadings, createReadingsBatch, updateReading, softDeleteReading, ocrReadingImage } from '$lib/api/readings';
+  import { getReadings, createReadingsBatch, createReading, updateReading, softDeleteReading, ocrReadingImage } from '$lib/api/readings';
   import { getMeterGroups } from '$lib/api/meter-groups';
   import { getProperties } from '$lib/api/properties';
   import type { Reading, UpdateReadingRequest } from '$lib/types/reading.types';
@@ -31,6 +31,14 @@
     is_uploading: boolean;
   }
 
+  type ManualReadingForm = {
+    meter_group_id: string;
+    property_id: string;
+    reading_amount: number | null;
+    reading_date: string;
+    image_url: string;
+  };
+
   let readings = $state<PaginatedResult<Reading>>({
     data: [],
     nextCursor: null,
@@ -45,6 +53,25 @@
   let filterStartDate = $state('');
   let filterEndDate = $state('');
   let createFormOpen = $state(false);
+  let manualFormOpen = $state(false);
+  let manualReadingLoading = $state(false);
+  let manualReadingForm = $state<ManualReadingForm>({
+    meter_group_id: '',
+    property_id: '',
+    reading_amount: null,
+    reading_date: new Date().toISOString().split('T')[0],
+    image_url: ''
+  });
+
+  const manualReadingProperties = $derived.by(() => {
+    if (!manualReadingForm.meter_group_id) return [];
+
+    return properties.filter((property) =>
+      Object.values(property.meter_groups ?? {}).some(
+        (entry: any) => entry?.meter_group_id === manualReadingForm.meter_group_id
+      )
+    );
+  });
 
   // Batch reading form
   let batchDate = $state(new Date().toISOString().split('T')[0]);
@@ -203,6 +230,46 @@
     }
   }
 
+  function resetManualReadingForm() {
+    manualReadingForm = {
+      meter_group_id: '',
+      property_id: '',
+      reading_amount: null,
+      reading_date: new Date().toISOString().split('T')[0],
+      image_url: ''
+    };
+  }
+
+  async function handleCreateManualReading() {
+    if (!manualReadingForm.meter_group_id || !manualReadingForm.property_id || manualReadingForm.reading_amount === null) {
+      error = 'Please complete all required fields for the manual reading';
+      return;
+    }
+
+    manualReadingLoading = true;
+    error = '';
+    try {
+      await createReading({
+        meter_group_id: manualReadingForm.meter_group_id,
+        property_id: manualReadingForm.property_id,
+        reading_amount: manualReadingForm.reading_amount,
+        reading_date: {
+          _seconds: Math.floor(new Date(manualReadingForm.reading_date).getTime() / 1000),
+          _nanoseconds: 0,
+        },
+        image_url: manualReadingForm.image_url || undefined,
+      } as any);
+      manualFormOpen = false;
+      resetManualReadingForm();
+      await loadData();
+      alert('Manual reading created successfully. If this property has a previous-month reading, the billing was auto-created.');
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to create manual reading';
+    } finally {
+      manualReadingLoading = false;
+    }
+  }
+
   async function handleBatchImageUpload(rowIndex: number, file: File | null) {
     if (!file) return;
 
@@ -342,6 +409,13 @@
         {:else}
           <Plus size={20} />
         {/if}
+      </button>
+      <button
+        onclick={() => (manualFormOpen = !manualFormOpen)}
+        class="rounded px-3 py-2 text-white"
+        style="background-color: var(--color-accent)"
+      >
+        Add Manual Reading
       </button>
     </div>
   </div>
@@ -498,6 +572,62 @@
           </button>
         </div>
       {/if}
+    </div>
+  {/if}
+
+  {#if manualFormOpen}
+    <div class="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+      <h2 class="font-semibold">Add Manual Reading</h2>
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div>
+          <label class="block text-sm font-medium text-gray-700">
+            <span>Meter Group *</span>
+            <select bind:value={manualReadingForm.meter_group_id} class="mt-1 block w-full rounded border border-gray-300 px-3 py-2">
+              <option value="">Select meter group</option>
+              {#each meterGroups as group (group.id)}
+                <option value={group.id}>{group.meter_name} ({group.utility_type})</option>
+              {/each}
+            </select>
+          </label>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">
+            <span>Property *</span>
+            <select bind:value={manualReadingForm.property_id} disabled={!manualReadingForm.meter_group_id} class="mt-1 block w-full rounded border border-gray-300 px-3 py-2 disabled:opacity-50">
+              <option value="">Select property</option>
+              {#each manualReadingProperties as prop (prop.id)}
+                <option value={prop.id}>{prop.room_name}</option>
+              {/each}
+            </select>
+          </label>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">
+            <span>Reading Amount *</span>
+            <input bind:value={manualReadingForm.reading_amount} type="number" step="0.01" min="0" class="mt-1 block w-full rounded border border-gray-300 px-3 py-2" />
+          </label>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">
+            <span>Reading Date *</span>
+            <input bind:value={manualReadingForm.reading_date} type="date" class="mt-1 block w-full rounded border border-gray-300 px-3 py-2" />
+          </label>
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium text-gray-700">
+            <span>Optional Image URL</span>
+            <input bind:value={manualReadingForm.image_url} type="url" class="mt-1 block w-full rounded border border-gray-300 px-3 py-2" />
+          </label>
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button onclick={handleCreateManualReading} disabled={manualReadingLoading} class="rounded px-4 py-2 text-white font-medium disabled:opacity-50" style="background-color: var(--color-accent)">
+          {manualReadingLoading ? 'Creating...' : 'Create Reading'}
+        </button>
+        <button onclick={() => { manualFormOpen = false; resetManualReadingForm(); }} disabled={manualReadingLoading} class="rounded px-4 py-2 border border-gray-300 bg-white text-gray-700 font-medium hover:bg-gray-50">
+          Cancel
+        </button>
+      </div>
     </div>
   {/if}
 

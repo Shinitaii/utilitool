@@ -7,8 +7,11 @@ import {AppError} from "../../utils/error.util";
 import {propertyService} from "../property/property.service";
 import {readingService} from "../reading/reading.service";
 import {billingRepository} from "../billing/billing.repository";
-import {findPreviousMonthReading} from "../reading/reading.util";
+import {findPreviousMonthReading, findCurrentMonthReading} from "../reading/reading.util";
 import {CachedRepository} from "../../lib/cached-repository.lib";
+import {firestore} from "../../config/firebase.config";
+import {COLLECTIONS} from "../../constants/collection.constants";
+import {snapshotToModel} from "../../utils/firestore.util";
 
 const validator = new BillingCycleValidator();
 const CACHE_TTL = 15 * 60; // 15 minutes
@@ -58,12 +61,29 @@ async function injectMainMeterBilling(
   // apply to the derived reading. If the derived amount triggers the 5× anomaly
   // threshold (e.g. after meter replacement in the billing period), this will throw 422.
   // Operators should reset the meter group before creating the billing cycle.
-  const derivedReading = await readingService.create(userId, {
-    meter_group_id: data.meter_group_id,
-    property_id: mainMeterProperty.id,
-    reading_amount: derivedReadingAmount,
-    reading_date: data.billing_end_date,
-  });
+  let derivedReading;
+  try {
+    derivedReading = await readingService.create(userId, {
+      meter_group_id: data.meter_group_id,
+      property_id: mainMeterProperty.id,
+      reading_amount: derivedReadingAmount,
+      reading_date: data.billing_end_date,
+    });
+  } catch (err) {
+    if (!(err instanceof AppError) || err.statusCode !== 409) {
+      throw err;
+    }
+
+    const existing = await findCurrentMonthReading(
+      data.meter_group_id,
+      mainMeterProperty.id,
+      data.billing_end_date
+    );
+    if (!existing) throw err;
+
+    const existingSnap = await firestore.collection(COLLECTIONS.READINGS).doc(existing.id).get();
+    derivedReading = snapshotToModel(existingSnap);
+  }
 
   const {data: billings} = await billingRepository.search({
     limit: 1,
@@ -73,9 +93,11 @@ async function injectMainMeterBilling(
 
   if (!billings.length) {
     throw new AppError(
-      500,
-      "Failed to auto-create billing for main meter property. " +
-        "Ensure the main meter property has a seed reading from a prior month."
+      400,
+      `Main meter reading was recorded but no billing was auto-created. ` +
+        `Create it manually: POST /billings { property_id: "${mainMeterProperty.id}", ` +
+        `previous_reading_id: "${prevReading.id}", current_reading_id: "${derivedReading.id}" }, ` +
+        "then retry this billing cycle."
     );
   }
 

@@ -51,7 +51,12 @@ export const readingService = {
 
     const meterGroup = await meterGroupRepository.getById(data.meter_group_id);
     const meter_version = meterGroup!.current_version ?? 1;
-    await validator.validateAnomalous(data.meter_group_id, data.reading_amount, meter_version);
+    await validator.validateAnomalous(
+      data.meter_group_id,
+      data.reading_amount,
+      meter_version,
+      data.property_id
+    );
     await validator.validateMeterRollback(
       data.meter_group_id,
       data.property_id,
