@@ -6,7 +6,7 @@ import {Property} from "./property.model";
 import {MeterGroupVersionEntry} from "../meter-group/meter-group.model";
 import {readingRepository} from "../reading/reading.repository";
 import {PropertyValidator} from "./property.validator";
-import {listRemove, listAppend} from "../../utils/list-cache.util";
+import {listRemove} from "../../utils/list-cache.util";
 import {cacheDel, cacheSet} from "../../utils/cache.util";
 import {cascadeDeleteProperty, cascadeRestoreProperty} from "../../utils/cascade-delete.util";
 import {CachedRepository} from "../../lib/cached-repository.lib";
@@ -135,10 +135,12 @@ export const propertyService = {
       throw new AppError(404, "Property not found");
     }
 
+    // cascadeRestoreProperty already refreshes id caches and invalidates list
+    // caches (wholesale, for all users) for properties/readings/billings —
+    // appending here would race with that invalidation and risk duplicates.
     await cascadeRestoreProperty(id);
     const restored = await propertyRepository.getById(id);
     await cacheSet(`utilitool:properties:id:${id}`, restored!, CACHE_TTL);
-    await listAppend(`utilitool:properties:all:${userId}`, restored!);
     return restored!;
   },
 

@@ -1,7 +1,7 @@
 import type {BaseModel, WithoutBaseModel} from "../utils/model.util";
 import type {PaginatedResult} from "../utils/pagination.util";
 import type {Repository, SearchOptions} from "./repository.lib";
-import {cacheGet, cacheSet, cacheDel} from "../utils/cache.util";
+import {cacheGet, cacheSet, cacheDel, cacheDelPattern} from "../utils/cache.util";
 import {loadAll, listAppend, listUpdate, listRemove, paginate} from "../utils/list-cache.util";
 
 /**
@@ -251,14 +251,16 @@ export class CachedRepository<T extends BaseModel> {
   }
 
   /**
-   * Restore (undelete). Updates both cache tiers.
+   * Restore (undelete). Refreshes the ID cache and invalidates list caches
+   * (rather than appending) so a stale archived copy already sitting in a
+   * warm list cache can't produce a duplicate entry — the next GET repopulates
+   * the list cleanly from Firestore.
    */
   async restore(id: string): Promise<T> {
     const restored = await this.repo.restore(id);
 
-    // Update both cache tiers
     await cacheSet(this.idCacheKey(id), restored, this.cacheTTL);
-    await listAppend(this.listCacheKey(), restored);
+    await cacheDelPattern(this.listCachePattern());
 
     return restored;
   }
@@ -275,5 +277,12 @@ export class CachedRepository<T extends BaseModel> {
    */
   private listCacheKey(): string {
     return `utilitool:${this.featureName}:all:${this.userId}`;
+  }
+
+  /**
+   * Generate list cache pattern matching all users: `utilitool:{featureName}:all:*`
+   */
+  private listCachePattern(): string {
+    return `utilitool:${this.featureName}:all:*`;
   }
 }

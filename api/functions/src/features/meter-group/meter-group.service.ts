@@ -8,7 +8,7 @@ import {MeterGroupValidator} from "./meter-group.validator";
 import {AppError} from "../../utils/error.util";
 import {collectionRef} from "../../lib/firestore.lib";
 import {COLLECTIONS} from "../../constants/collection.constants";
-import {listRemove, listAppend} from "../../utils/list-cache.util";
+import {listRemove} from "../../utils/list-cache.util";
 import {cacheDel, cacheSet} from "../../utils/cache.util";
 import {cascadeDeleteMeterGroup, cascadeRestoreMeterGroup} from "../../utils/cascade-delete.util";
 import {CachedRepository} from "../../lib/cached-repository.lib";
@@ -157,10 +157,12 @@ export const meterGroupService = {
     if (!meterGroup) {
       throw new AppError(404, "Meter group not found");
     }
+    // cascadeRestoreMeterGroup already refreshes id caches and invalidates list
+    // caches (wholesale, for all users) for meter-groups/readings/billings —
+    // appending here would race with that invalidation and risk duplicates.
     await cascadeRestoreMeterGroup(id);
     const restored = await meterGroupRepository.getById(id);
     await cacheSet(`utilitool:meter-groups:id:${id}`, restored!, CACHE_TTL);
-    await listAppend(`utilitool:meter-groups:all:${userId}`, restored!);
     return restored!;
   },
 
