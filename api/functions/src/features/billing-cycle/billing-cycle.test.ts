@@ -20,6 +20,7 @@ import { Timestamp } from 'firebase-admin/firestore';
 const startTimestamp = new Timestamp(Math.floor(Date.now() / 1000) - 86400 * 30, 0);
 const endTimestamp = new Timestamp(Math.floor(Date.now() / 1000) - 86400, 0);
 const now = Timestamp.now();
+const TEST_USER_ID = 'user-1';
 
 const makeTimestamps = () => {
   const start = new Timestamp(Math.floor(Date.now() / 1000) - 86400 * 30, 0);
@@ -60,7 +61,7 @@ describe('billingCycleService', () => {
       jest.mocked(BillingCycleValidator.prototype.validateCreate).mockResolvedValue(undefined);
       jest.mocked(billingCycleRepository.create).mockResolvedValue(mockBillingCycle());
 
-      const result = await billingCycleService.create({
+      const result = await billingCycleService.create(TEST_USER_ID, {
         billing_ids: { 'billing-1': 100 },
         billing_rate: 5,
         billing_consumption: 100,
@@ -153,7 +154,7 @@ describe('billingCycleService', () => {
       );
 
       await expect(
-        billingCycleService.create({
+        billingCycleService.create(TEST_USER_ID, {
           billing_ids: { 'bad-billing': 100 },
           billing_rate: 5,
           billing_consumption: 100,
@@ -174,7 +175,7 @@ describe('billingCycleService', () => {
       );
 
       await expect(
-        billingCycleService.create({
+        billingCycleService.create(TEST_USER_ID, {
           billing_ids: { 'billing-1': 100 },
           billing_rate: 5,
           billing_consumption: 104,
@@ -193,7 +194,7 @@ describe('billingCycleService', () => {
       jest.mocked(BillingCycleValidator.prototype.validateCreate).mockResolvedValue(undefined);
       jest.mocked(billingCycleRepository.create).mockResolvedValue(mockBillingCycle());
 
-      const result = await billingCycleService.create({
+      const result = await billingCycleService.create(TEST_USER_ID, {
         billing_ids: { 'billing-1': 100 },
         billing_rate: 5,
         billing_consumption: 103,
@@ -230,7 +231,7 @@ describe('billingCycleService', () => {
           billing_end_date: end,
         },
       ];
-      const result = await billingCycleService.createBatch(input);
+      const result = await billingCycleService.createBatch(TEST_USER_ID, input);
 
       expect(billingCycleRepository.createBatch).toHaveBeenCalledWith(expect.any(Array));
       expect(result).toHaveLength(2);
@@ -263,7 +264,7 @@ describe('billingCycleService', () => {
     it('should return the billing cycle details for the given billing cycle ID', async () => {
       jest.mocked(billingCycleRepository.getById).mockResolvedValue(mockBillingCycle());
 
-      const result = await billingCycleService.getById('billing-cycle-1');
+      const result = await billingCycleService.getById(TEST_USER_ID, 'billing-cycle-1');
 
       expect(billingCycleRepository.getById).toHaveBeenCalledWith('billing-cycle-1');
       expect(result).toEqual(mockBillingCycle());
@@ -279,7 +280,7 @@ describe('billingCycleService', () => {
     it('should return an error if the billing cycle ID does not exist', async () => {
       jest.mocked(billingCycleRepository.getById).mockResolvedValue(null);
 
-      const result = await billingCycleService.getById('nonexistent');
+      const result = await billingCycleService.getById(TEST_USER_ID, 'nonexistent');
 
       expect(result).toBeNull();
     });
@@ -292,7 +293,7 @@ describe('billingCycleService', () => {
       const paginated = { data: [mockBillingCycle()], hasMore: false, nextCursor: null };
       jest.mocked(billingCycleRepository.search).mockResolvedValue(paginated);
 
-      const result = await billingCycleService.search({ limit: 20 });
+      const result = await billingCycleService.search(TEST_USER_ID, { limit: 20 });
 
       expect(result.data).toHaveLength(1);
       expect(result.hasMore).toBe(false);
@@ -302,23 +303,26 @@ describe('billingCycleService', () => {
     it('should return an empty list if there are no billing cycles matching the query', async () => {
       jest.mocked(billingCycleRepository.search).mockResolvedValue({ data: [], hasMore: false, nextCursor: null });
 
-      const result = await billingCycleService.search({ limit: 20 });
+      const result = await billingCycleService.search(TEST_USER_ID, { limit: 20 });
 
       expect(result.data).toHaveLength(0);
     });
 
     // It should return nextCursor when more results exist.
     it('should return nextCursor when more results exist', async () => {
-      jest.mocked(billingCycleRepository.search).mockResolvedValue({
-        data: [mockBillingCycle()],
-        hasMore: true,
-        nextCursor: 'cursor-abc',
-      });
+      // CachedRepository.search loads ALL pages via loadAll (loops until hasMore
+      // is false) before paginating in-memory — the mock must terminate the loop.
+      jest.mocked(billingCycleRepository.search)
+        .mockResolvedValueOnce({
+          data: [mockBillingCycle({ id: 'billing-cycle-1' }), mockBillingCycle({ id: 'billing-cycle-2' })],
+          hasMore: false,
+          nextCursor: null,
+        });
 
-      const result = await billingCycleService.search({ limit: 1 });
+      const result = await billingCycleService.search(TEST_USER_ID, { limit: 1 });
 
       expect(result.hasMore).toBe(true);
-      expect(result.nextCursor).toBe('cursor-abc');
+      expect(result.nextCursor).toBe('billing-cycle-1');
     });
   });
 
@@ -331,7 +335,7 @@ describe('billingCycleService', () => {
       jest.mocked(BillingCycleValidator.prototype.validateUpdate).mockResolvedValue(undefined);
       jest.mocked(billingCycleRepository.update).mockResolvedValue(updated);
 
-      const result = await billingCycleService.update('billing-cycle-1', { billing_rate: 10 });
+      const result = await billingCycleService.update(TEST_USER_ID, 'billing-cycle-1', { billing_rate: 10 });
 
       expect(result.billing_rate).toBe(10);
     });
@@ -346,7 +350,7 @@ describe('billingCycleService', () => {
     it('should return an error if the billing cycle ID does not exist', async () => {
       jest.mocked(billingCycleRepository.update).mockRejectedValue(new AppError(404, 'Billing cycle not found'));
 
-      await expect(billingCycleService.update('nonexistent', { billing_rate: 10 })).rejects.toMatchObject({
+      await expect(billingCycleService.update(TEST_USER_ID, 'nonexistent', { billing_rate: 10 })).rejects.toMatchObject({
         statusCode: 404,
       });
     });
@@ -357,7 +361,7 @@ describe('billingCycleService', () => {
       jest.mocked(billingCycleRepository.update).mockResolvedValue(mockBillingCycle());
 
       await expect(
-        billingCycleService.update('billing-cycle-1', { billing_rate: 10 })
+        billingCycleService.update(TEST_USER_ID, 'billing-cycle-1', { billing_rate: 10 })
       ).resolves.toBeDefined();
     });
 
@@ -367,7 +371,7 @@ describe('billingCycleService', () => {
       jest.mocked(billingCycleRepository.update).mockResolvedValue(mockBillingCycle());
 
       await expect(
-        billingCycleService.update('billing-cycle-1', { billing_consumption: 100 })
+        billingCycleService.update(TEST_USER_ID, 'billing-cycle-1', { billing_consumption: 100 })
       ).resolves.toBeDefined();
     });
 
@@ -377,7 +381,7 @@ describe('billingCycleService', () => {
       jest.mocked(billingCycleRepository.update).mockResolvedValue(mockBillingCycle());
 
       await expect(
-        billingCycleService.update('billing-cycle-1', { billing_rate: 10 })
+        billingCycleService.update(TEST_USER_ID, 'billing-cycle-1', { billing_rate: 10 })
       ).resolves.toBeDefined();
     });
 
@@ -387,7 +391,7 @@ describe('billingCycleService', () => {
       jest.mocked(billingCycleRepository.update).mockResolvedValue(mockBillingCycle());
 
       await expect(
-        billingCycleService.update('billing-cycle-1', { billing_rate: 10 })
+        billingCycleService.update(TEST_USER_ID, 'billing-cycle-1', { billing_rate: 10 })
       ).resolves.toBeDefined();
     });
 
@@ -397,7 +401,7 @@ describe('billingCycleService', () => {
       jest.mocked(billingCycleRepository.update).mockResolvedValue(mockBillingCycle());
 
       await expect(
-        billingCycleService.update('billing-cycle-1', { billing_rate: 10 })
+        billingCycleService.update(TEST_USER_ID, 'billing-cycle-1', { billing_rate: 10 })
       ).resolves.toBeDefined();
     });
 
@@ -417,7 +421,7 @@ describe('billingCycleService', () => {
         new AppError(404, 'Billing not found')
       );
 
-      await expect(billingCycleService.update('billing-cycle-1', { billing_ids: { 'bad-billing': 100 } })).rejects.toMatchObject({
+      await expect(billingCycleService.update(TEST_USER_ID, 'billing-cycle-1', { billing_ids: { 'bad-billing': 100 } })).rejects.toMatchObject({
         statusCode: 404,
         message: 'Billing not found',
       });
@@ -430,7 +434,7 @@ describe('billingCycleService', () => {
       );
 
       await expect(
-        billingCycleService.update('billing-cycle-1', { billing_consumption: 105 })
+        billingCycleService.update(TEST_USER_ID, 'billing-cycle-1', { billing_consumption: 105 })
       ).rejects.toMatchObject({
         statusCode: 400,
         message: expect.stringContaining('Consumption mismatch'),
@@ -449,7 +453,7 @@ describe('billingCycleService', () => {
         { id: 'billing-cycle-1', data: { billing_rate: 10 } },
         { id: 'billing-cycle-2', data: { billing_rate: 12 } },
       ];
-      const result = await billingCycleService.updateBatch(input);
+      const result = await billingCycleService.updateBatch(TEST_USER_ID, input);
 
       expect(billingCycleRepository.updateBatch).toHaveBeenCalledWith(input);
       expect(result).toHaveLength(2);
@@ -475,7 +479,7 @@ describe('billingCycleService', () => {
     it('should delete the billing cycle', async () => {
       jest.mocked(billingCycleRepository.delete).mockResolvedValue(undefined);
 
-      await expect(billingCycleService.delete('billing-cycle-1')).resolves.toBeUndefined();
+      await expect(billingCycleService.delete(TEST_USER_ID, 'billing-cycle-1')).resolves.toBeUndefined();
 
       expect(billingCycleRepository.delete).toHaveBeenCalledWith('billing-cycle-1');
     });
@@ -490,7 +494,7 @@ describe('billingCycleService', () => {
     it('should return an error if the billing cycle ID does not exist', async () => {
       jest.mocked(billingCycleRepository.delete).mockRejectedValue(new AppError(404, 'Billing cycle not found'));
 
-      await expect(billingCycleService.delete('nonexistent')).rejects.toMatchObject({
+      await expect(billingCycleService.delete(TEST_USER_ID, 'nonexistent')).rejects.toMatchObject({
         statusCode: 404,
       });
     });
@@ -503,7 +507,7 @@ describe('billingCycleService', () => {
       const softDeleted = mockBillingCycle({ deleted_at: Timestamp.now() });
       jest.mocked(billingCycleRepository.softDelete).mockResolvedValue(softDeleted);
 
-      const result = await billingCycleService.softDelete('billing-cycle-1');
+      const result = await billingCycleService.softDelete(TEST_USER_ID, 'billing-cycle-1');
 
       expect(result.deleted_at).toBeDefined();
     });
@@ -518,7 +522,7 @@ describe('billingCycleService', () => {
     it('should return an error if the billing cycle ID does not exist', async () => {
       jest.mocked(billingCycleRepository.softDelete).mockRejectedValue(new AppError(404, 'Billing cycle not found'));
 
-      await expect(billingCycleService.softDelete('nonexistent')).rejects.toMatchObject({
+      await expect(billingCycleService.softDelete(TEST_USER_ID, 'nonexistent')).rejects.toMatchObject({
         statusCode: 404,
       });
     });
@@ -604,7 +608,7 @@ describe('billingCycleService.create - main meter injection', () => {
       deleted_at: null,
     });
 
-    await billingCycleService.create(baseInput);
+    await billingCycleService.create(TEST_USER_ID, baseInput);
 
     const repoCallArg = jest.mocked(billingCycleRepository.create).mock.calls[0][0];
     expect(repoCallArg.billing_ids).toMatchObject({
@@ -637,7 +641,7 @@ describe('billingCycleService.create - main meter injection', () => {
     // findPreviousMonthReading returns null → injectMainMeterBilling throws AppError(400)
     jest.mocked(findPreviousMonthReading).mockResolvedValue(null);
 
-    await expect(billingCycleService.create(baseInput)).rejects.toMatchObject({
+    await expect(billingCycleService.create(TEST_USER_ID, baseInput)).rejects.toMatchObject({
       statusCode: 400,
     });
   });
@@ -671,7 +675,7 @@ describe('billingCycleService.create - main meter injection', () => {
       deleted_at: null,
     });
 
-    await billingCycleService.create(baseInput);
+    await billingCycleService.create(TEST_USER_ID, baseInput);
 
     expect(readingService.create).not.toHaveBeenCalled();
     const repoCallArg = jest.mocked(billingCycleRepository.create).mock.calls[0][0];

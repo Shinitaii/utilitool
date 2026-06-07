@@ -34,6 +34,12 @@ jest.mock('../../utils/firestore.util', () => ({
 }));
 jest.mock('./reading.repository');
 jest.mock('./reading.validator');
+// softDelete/restore now delegate to cascadeDeleteReading/cascadeRestoreReading
+// (which run real Firestore transactions) — mock those out for unit-level service tests.
+jest.mock('../../utils/cascade-delete.util', () => ({
+  cascadeDeleteReading: jest.fn().mockResolvedValue({ primary: 1, billings: 0 }),
+  cascadeRestoreReading: jest.fn().mockResolvedValue({ primary: 1, billings: 0 }),
+}));
 jest.mock('../meter-group/meter-group.repository', () => ({
   meterGroupRepository: {
     getById: jest.fn().mockResolvedValue({ id: 'mg-1', meter_name: 'Main Electric', utility_type: 'electricity', current_version: 1, versions: {} }),
@@ -48,6 +54,7 @@ jest.mock('../property/property.repository', () => ({
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import { readingService } from './reading.service';
 import { readingRepository } from './reading.repository';
+import { cascadeDeleteReading } from '../../utils/cascade-delete.util';
 import { ReadingValidator } from './reading.validator';
 import { CreateReadingDTOSchema, UpdateReadingDTOSchema, ReadingByIdParamsDTOSchema, CreateReadingBatchDTOSchema, UpdateReadingBatchDTOSchema } from './reading.dto';
 import { AppError } from '../../utils/error.util';
@@ -60,6 +67,7 @@ import { Timestamp } from 'firebase-admin/firestore';
 /// You can also add edge cases and error cases as well.
 
 const now = Timestamp.now();
+const TEST_USER_ID = 'user-1';
 
 const mockReading = (overrides?: Record<string, any>) => ({
   id: 'reading-1',
@@ -93,7 +101,7 @@ describe('readingService', () => {
         reading_amount: 100,
         reading_date: Timestamp.now(),
       };
-      const result = await readingService.create(input);
+      const result = await readingService.create(TEST_USER_ID, input);
 
       expect(readingRepository.create).toHaveBeenCalledWith({ ...input, meter_version: 1 });
       expect(result.id).toBe('reading-1');
@@ -115,7 +123,7 @@ describe('readingService', () => {
       );
 
       await expect(
-        readingService.create({
+        readingService.create(TEST_USER_ID, {
           meter_group_id: 'nonexistent',
           reading_amount: 100,
           reading_date: Timestamp.now(),
@@ -140,7 +148,7 @@ describe('readingService', () => {
       );
 
       await expect(
-        readingService.create({
+        readingService.create(TEST_USER_ID, {
           meter_group_id: 'mg-1',
           reading_amount: -50,
           reading_date: Timestamp.now(),
@@ -166,7 +174,7 @@ describe('readingService', () => {
       );
 
       await expect(
-        readingService.create({
+        readingService.create(TEST_USER_ID, {
           meter_group_id: 'mg-1',
           reading_amount: 100,
           reading_date: futureDate,
@@ -181,7 +189,7 @@ describe('readingService', () => {
       );
 
       await expect(
-        readingService.create({
+        readingService.create(TEST_USER_ID, {
           meter_group_id: 'mg-full',
           reading_amount: 100,
           reading_date: Timestamp.now(),
@@ -196,7 +204,7 @@ describe('readingService', () => {
         jest.mocked(ReadingValidator.prototype.validateCreate).mockResolvedValue(undefined);
         jest.mocked(readingRepository.create).mockResolvedValue(mockReading());
 
-        const result = await readingService.create({
+        const result = await readingService.create(TEST_USER_ID, {
           meter_group_id: 'mg-1',
           reading_amount: 200,
           reading_date: Timestamp.now(),
@@ -250,7 +258,7 @@ describe('readingService', () => {
 
         jest.mocked(ReadingValidator.prototype.validateCreate).mockResolvedValue(undefined);
 
-        const result = await readingService.create({
+        const result = await readingService.create(TEST_USER_ID, {
           meter_group_id: 'mg-1',
           property_id: 'prop-1',
           reading_amount: 200,
@@ -278,7 +286,7 @@ describe('readingService', () => {
         );
 
         await expect(
-          readingService.create({
+          readingService.create(TEST_USER_ID, {
             meter_group_id: 'mg-1',
             reading_amount: 200,
             reading_date: Timestamp.now(),
@@ -309,7 +317,7 @@ describe('readingService', () => {
           reading_date: Timestamp.now(),
         },
       ];
-      const result = await readingService.createBatch(input);
+      const result = await readingService.createBatch(TEST_USER_ID, input);
 
       expect(readingRepository.create).toHaveBeenCalledTimes(2);
       expect(result).toHaveLength(2);
@@ -351,7 +359,7 @@ describe('readingService', () => {
         },
       ];
 
-      await expect(readingService.createBatch(input)).rejects.toMatchObject({ statusCode: 400 });
+      await expect(readingService.createBatch(TEST_USER_ID, input)).rejects.toMatchObject({ statusCode: 400 });
     });
   });
 
@@ -361,7 +369,7 @@ describe('readingService', () => {
     it('should return the reading details for the given reading ID', async () => {
       jest.mocked(readingRepository.getById).mockResolvedValue(mockReading());
 
-      const result = await readingService.getById('reading-1');
+      const result = await readingService.getById(TEST_USER_ID, 'reading-1');
 
       expect(readingRepository.getById).toHaveBeenCalledWith('reading-1');
       expect(result).toEqual(mockReading());
@@ -377,7 +385,7 @@ describe('readingService', () => {
     it('should return an error if the reading ID does not exist', async () => {
       jest.mocked(readingRepository.getById).mockResolvedValue(null);
 
-      const result = await readingService.getById('nonexistent');
+      const result = await readingService.getById(TEST_USER_ID, 'nonexistent');
 
       expect(result).toBeNull();
     });
@@ -390,7 +398,7 @@ describe('readingService', () => {
       const paginated = { data: [mockReading()], hasMore: false, nextCursor: null };
       jest.mocked(readingRepository.search).mockResolvedValue(paginated);
 
-      const result = await readingService.search({ meterGroupId: 'mg-1', limit: 20 });
+      const result = await readingService.search(TEST_USER_ID, { meterGroupId: 'mg-1', limit: 20 });
 
       expect(result.data).toHaveLength(1);
       expect(result.hasMore).toBe(false);
@@ -400,23 +408,26 @@ describe('readingService', () => {
     it('should return an empty list if there are no readings matching the query', async () => {
       jest.mocked(readingRepository.search).mockResolvedValue({ data: [], hasMore: false, nextCursor: null });
 
-      const result = await readingService.search({ meterGroupId: 'nonexistent', limit: 20 });
+      const result = await readingService.search(TEST_USER_ID, { meterGroupId: 'nonexistent', limit: 20 });
 
       expect(result.data).toHaveLength(0);
     });
 
     // It should return nextCursor when more results exist.
     it('should return nextCursor when more results exist', async () => {
-      jest.mocked(readingRepository.search).mockResolvedValue({
-        data: [mockReading()],
-        hasMore: true,
-        nextCursor: 'cursor-abc',
-      });
+      // CachedRepository.search loads ALL pages via loadAll (loops until hasMore
+      // is false) before paginating in-memory — the mock must terminate the loop.
+      jest.mocked(readingRepository.search)
+        .mockResolvedValueOnce({
+          data: [mockReading({ id: 'reading-1' }), mockReading({ id: 'reading-2' })],
+          hasMore: false,
+          nextCursor: null,
+        });
 
-      const result = await readingService.search({ limit: 1 });
+      const result = await readingService.search(TEST_USER_ID, { limit: 1 });
 
       expect(result.hasMore).toBe(true);
-      expect(result.nextCursor).toBe('cursor-abc');
+      expect(result.nextCursor).toBe('reading-1');
     });
 
     // It should handle cursor pagination edge cases.
@@ -427,7 +438,7 @@ describe('readingService', () => {
         nextCursor: null,
       });
 
-      const result = await readingService.search({ cursor: 'cursor-xyz', limit: 20 });
+      const result = await readingService.search(TEST_USER_ID, { cursor: 'cursor-xyz', limit: 20 });
 
       expect(result.nextCursor).toBeNull();
       expect(result.hasMore).toBe(false);
@@ -442,7 +453,7 @@ describe('readingService', () => {
       jest.mocked(ReadingValidator.prototype.validateUpdate).mockResolvedValue(undefined);
       jest.mocked(readingRepository.update).mockResolvedValue(updated);
 
-      const result = await readingService.update('reading-1', { reading_amount: 150 });
+      const result = await readingService.update(TEST_USER_ID, 'reading-1', { reading_amount: 150 });
 
       expect(readingRepository.update).toHaveBeenCalledWith('reading-1', { reading_amount: 150 });
       expect(result.reading_amount).toBe(150);
@@ -459,7 +470,7 @@ describe('readingService', () => {
       jest.mocked(readingRepository.update).mockRejectedValue(new AppError(404, 'Reading not found'));
 
       await expect(
-        readingService.update('nonexistent', { reading_amount: 150 })
+        readingService.update(TEST_USER_ID, 'nonexistent', { reading_amount: 150 })
       ).rejects.toMatchObject({ statusCode: 404 });
     });
 
@@ -470,7 +481,7 @@ describe('readingService', () => {
       );
 
       await expect(
-        readingService.update('reading-1', { meter_group_id: 'nonexistent' })
+        readingService.update(TEST_USER_ID, 'reading-1', { meter_group_id: 'nonexistent' })
       ).rejects.toMatchObject({ statusCode: 404 });
     });
 
@@ -487,7 +498,7 @@ describe('readingService', () => {
       );
 
       await expect(
-        readingService.update('reading-1', { reading_amount: -50 })
+        readingService.update(TEST_USER_ID, 'reading-1', { reading_amount: -50 })
       ).rejects.toMatchObject({ statusCode: 400 });
     });
 
@@ -505,7 +516,7 @@ describe('readingService', () => {
       );
 
       await expect(
-        readingService.update('reading-1', { reading_date: futureDate })
+        readingService.update(TEST_USER_ID, 'reading-1', { reading_date: futureDate })
       ).rejects.toMatchObject({ statusCode: 400 });
     });
   });
@@ -525,7 +536,7 @@ describe('readingService', () => {
         { id: 'reading-1', data: { reading_amount: 150 } },
         { id: 'reading-2', data: { reading_amount: 250 } },
       ];
-      const result = await readingService.updateBatch(input);
+      const result = await readingService.updateBatch(TEST_USER_ID, input);
 
       expect(readingRepository.updateBatch).toHaveBeenCalledWith(input);
       expect(result).toHaveLength(2);
@@ -551,7 +562,7 @@ describe('readingService', () => {
     it('should delete the reading', async () => {
       jest.mocked(readingRepository.delete).mockResolvedValue(undefined);
 
-      await expect(readingService.delete('reading-1')).resolves.toBeUndefined();
+      await expect(readingService.delete(TEST_USER_ID, 'reading-1')).resolves.toBeUndefined();
 
       expect(readingRepository.delete).toHaveBeenCalledWith('reading-1');
     });
@@ -566,7 +577,7 @@ describe('readingService', () => {
     it('should return an error if the reading ID does not exist', async () => {
       jest.mocked(readingRepository.delete).mockRejectedValue(new AppError(404, 'Reading not found'));
 
-      await expect(readingService.delete('nonexistent')).rejects.toMatchObject({ statusCode: 404 });
+      await expect(readingService.delete(TEST_USER_ID, 'nonexistent')).rejects.toMatchObject({ statusCode: 404 });
     });
   });
 
@@ -575,11 +586,13 @@ describe('readingService', () => {
     // It should soft delete the reading for the given reading ID and return a success message.
     it('should soft delete the reading', async () => {
       const softDeleted = mockReading({ deleted_at: Timestamp.now() });
-      jest.mocked(readingRepository.softDelete).mockResolvedValue(softDeleted);
+      jest.mocked(readingRepository.getById)
+        .mockResolvedValueOnce(mockReading())
+        .mockResolvedValueOnce(softDeleted);
 
-      const result = await readingService.softDelete('reading-1');
+      const result = await readingService.softDelete(TEST_USER_ID, 'reading-1');
 
-      expect(readingRepository.softDelete).toHaveBeenCalledWith('reading-1');
+      expect(cascadeDeleteReading).toHaveBeenCalledWith('reading-1');
       expect(result.deleted_at).toBeDefined();
     });
 
@@ -593,7 +606,7 @@ describe('readingService', () => {
     it('should return an error if the reading ID does not exist', async () => {
       jest.mocked(readingRepository.softDelete).mockRejectedValue(new AppError(404, 'Reading not found'));
 
-      await expect(readingService.softDelete('nonexistent')).rejects.toMatchObject({ statusCode: 404 });
+      await expect(readingService.softDelete(TEST_USER_ID, 'nonexistent')).rejects.toMatchObject({ statusCode: 404 });
     });
   });
 });

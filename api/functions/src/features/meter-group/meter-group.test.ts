@@ -12,15 +12,24 @@ jest.mock('../../config/firebase.config', () => ({
   },
 }));
 
+// softDelete/restore now delegate to cascadeDeleteMeterGroup/cascadeRestoreMeterGroup
+// (which run real Firestore transactions) — mock those out for unit-level service tests.
+jest.mock('../../utils/cascade-delete.util', () => ({
+  cascadeDeleteMeterGroup: jest.fn().mockResolvedValue({ primary: 1, readings: 0, billings: 0 }),
+  cascadeRestoreMeterGroup: jest.fn().mockResolvedValue({ primary: 1, readings: 0, billings: 0 }),
+}));
+
 import { describe, it, expect } from '@jest/globals';
 import { meterGroupService } from './meter-group.service';
 import { meterGroupRepository } from './meter-group.repository';
+import { cascadeDeleteMeterGroup } from '../../utils/cascade-delete.util';
 import { MeterGroupValidator } from './meter-group.validator';
 import { CreateMeterGroupDTOSchema, UpdateMeterGroupDTOSchema, MeterGroupByIdParamsDTOSchema, CreateMeterGroupBatchDTOSchema, UpdateMeterGroupBatchDTOSchema } from './meter-group.dto';
 import { AppError } from '../../utils/error.util';
 import { Timestamp } from 'firebase-admin/firestore';
 
 const now = Timestamp.now();
+const TEST_USER_ID = 'user-1';
 
 const mockMeterGroup = (overrides?: Record<string, any>) => ({
   id: 'mg-1',
@@ -43,7 +52,7 @@ describe('meterGroupService', () => {
       jest.mocked(MeterGroupValidator.prototype.validateCreate).mockResolvedValue(undefined);
       jest.mocked(meterGroupRepository.create).mockResolvedValue(mockMeterGroup());
 
-      const result = await meterGroupService.create({ meter_name: 'Main Electric', utility_type: 'electricity' });
+      const result = await meterGroupService.create(TEST_USER_ID, { meter_name: 'Main Electric', utility_type: 'electricity' });
 
       expect(meterGroupRepository.create).toHaveBeenCalledWith({ meter_name: 'Main Electric', utility_type: 'electricity', current_version: 1, versions: {} });
       expect(result.id).toBe('mg-1');
@@ -74,7 +83,7 @@ describe('meterGroupService', () => {
       );
 
       await expect(
-        meterGroupService.create({ meter_name: 'Duplicate', utility_type: 'electricity' })
+        meterGroupService.create(TEST_USER_ID, { meter_name: 'Duplicate', utility_type: 'electricity' })
       ).rejects.toMatchObject({
         statusCode: 409,
         message: 'Meter name already exists for the selected utility type',
@@ -94,7 +103,7 @@ describe('meterGroupService', () => {
         { meter_name: 'Main Electric', utility_type: 'electricity' as const },
         { meter_name: 'Water', utility_type: 'water' as const },
       ];
-      const result = await meterGroupService.createBatch(input);
+      const result = await meterGroupService.createBatch(TEST_USER_ID, input);
 
       expect(meterGroupRepository.createBatch).toHaveBeenCalledWith(
         input.map((item) => ({ ...item, current_version: 1, versions: {} }))
@@ -126,7 +135,7 @@ describe('meterGroupService', () => {
         { meter_name: 'Main Electric', utility_type: 'electricity' as const },
       ];
 
-      await expect(meterGroupService.createBatch(input)).rejects.toMatchObject({ statusCode: 409 });
+      await expect(meterGroupService.createBatch(TEST_USER_ID, input)).rejects.toMatchObject({ statusCode: 409 });
     });
   });
 
@@ -136,7 +145,7 @@ describe('meterGroupService', () => {
     it('should return the meter group details for the given meter group ID', async () => {
       jest.mocked(meterGroupRepository.getById).mockResolvedValue(mockMeterGroup());
 
-      const result = await meterGroupService.getById('mg-1');
+      const result = await meterGroupService.getById(TEST_USER_ID, 'mg-1');
 
       expect(meterGroupRepository.getById).toHaveBeenCalledWith('mg-1');
       expect(result).toEqual(mockMeterGroup());
@@ -152,7 +161,7 @@ describe('meterGroupService', () => {
     it('should return an error if the meter group ID does not exist', async () => {
       jest.mocked(meterGroupRepository.getById).mockResolvedValue(null);
 
-      const result = await meterGroupService.getById('nonexistent');
+      const result = await meterGroupService.getById(TEST_USER_ID, 'nonexistent');
 
       expect(result).toBeNull();
     });
@@ -165,7 +174,7 @@ describe('meterGroupService', () => {
       const paginated = { data: [mockMeterGroup()], hasMore: false, nextCursor: null };
       jest.mocked(meterGroupRepository.search).mockResolvedValue(paginated);
 
-      const result = await meterGroupService.search({ limit: 20 });
+      const result = await meterGroupService.search(TEST_USER_ID, { limit: 20 });
 
       expect(result.data).toHaveLength(1);
       expect(result.hasMore).toBe(false);
@@ -175,23 +184,26 @@ describe('meterGroupService', () => {
     it('should return an empty list if there are no meter groups matching the query', async () => {
       jest.mocked(meterGroupRepository.search).mockResolvedValue({ data: [], hasMore: false, nextCursor: null });
 
-      const result = await meterGroupService.search({ limit: 20, utilityType: 'water' });
+      const result = await meterGroupService.search(TEST_USER_ID, { limit: 20, utilityType: 'water' });
 
       expect(result.data).toHaveLength(0);
     });
 
     // It should return nextCursor when more results exist.
     it('should return nextCursor when more results exist', async () => {
-      jest.mocked(meterGroupRepository.search).mockResolvedValue({
-        data: [mockMeterGroup()],
-        hasMore: true,
-        nextCursor: 'cursor-abc',
-      });
+      // CachedRepository.search loads ALL pages via loadAll (loops until hasMore
+      // is false) before paginating in-memory — the mock must terminate the loop.
+      jest.mocked(meterGroupRepository.search)
+        .mockResolvedValueOnce({
+          data: [mockMeterGroup({ id: 'mg-1' }), mockMeterGroup({ id: 'mg-2' })],
+          hasMore: false,
+          nextCursor: null,
+        });
 
-      const result = await meterGroupService.search({ limit: 1 });
+      const result = await meterGroupService.search(TEST_USER_ID, { limit: 1 });
 
       expect(result.hasMore).toBe(true);
-      expect(result.nextCursor).toBe('cursor-abc');
+      expect(result.nextCursor).toBe('mg-1');
     });
   });
 
@@ -203,7 +215,7 @@ describe('meterGroupService', () => {
       jest.mocked(meterGroupRepository.getById).mockResolvedValue(mockMeterGroup());
       jest.mocked(meterGroupRepository.update).mockResolvedValue(updated);
 
-      const result = await meterGroupService.update('mg-1', { meter_name: 'Updated Name' });
+      const result = await meterGroupService.update(TEST_USER_ID, 'mg-1', { meter_name: 'Updated Name' });
 
       expect(meterGroupRepository.update).toHaveBeenCalledWith('mg-1', { meter_name: 'Updated Name' });
       expect(result.meter_name).toBe('Updated Name');
@@ -219,7 +231,7 @@ describe('meterGroupService', () => {
     it('should return an error if the meter group ID does not exist', async () => {
       jest.mocked(meterGroupRepository.update).mockRejectedValue(new AppError(404, 'Meter group not found'));
 
-      await expect(meterGroupService.update('nonexistent', { meter_name: 'X' })).rejects.toMatchObject({
+      await expect(meterGroupService.update(TEST_USER_ID, 'nonexistent', { meter_name: 'X' })).rejects.toMatchObject({
         statusCode: 404,
       });
     });
@@ -242,7 +254,7 @@ describe('meterGroupService', () => {
         { id: 'mg-1', data: { meter_name: 'Updated 1' } },
         { id: 'mg-2', data: { meter_name: 'Updated 2' } },
       ];
-      const result = await meterGroupService.updateBatch(input);
+      const result = await meterGroupService.updateBatch(TEST_USER_ID, input);
 
       expect(meterGroupRepository.updateBatch).toHaveBeenCalledWith(input);
       expect(result).toHaveLength(2);
@@ -268,7 +280,7 @@ describe('meterGroupService', () => {
     it('should delete the meter group', async () => {
       jest.mocked(meterGroupRepository.delete).mockResolvedValue(undefined);
 
-      await expect(meterGroupService.delete('mg-1')).resolves.toBeUndefined();
+      await expect(meterGroupService.delete(TEST_USER_ID, 'mg-1')).resolves.toBeUndefined();
 
       expect(meterGroupRepository.delete).toHaveBeenCalledWith('mg-1');
     });
@@ -283,7 +295,7 @@ describe('meterGroupService', () => {
     it('should return an error if the meter group ID does not exist', async () => {
       jest.mocked(meterGroupRepository.delete).mockRejectedValue(new AppError(404, 'Meter group not found'));
 
-      await expect(meterGroupService.delete('nonexistent')).rejects.toMatchObject({
+      await expect(meterGroupService.delete(TEST_USER_ID, 'nonexistent')).rejects.toMatchObject({
         statusCode: 404,
       });
     });
@@ -294,11 +306,13 @@ describe('meterGroupService', () => {
     // It should soft delete the meter group for the given meter group ID and return a success message.
     it('should soft delete the meter group', async () => {
       const softDeleted = mockMeterGroup({ deleted_at: Timestamp.now() });
-      jest.mocked(meterGroupRepository.softDelete).mockResolvedValue(softDeleted);
+      jest.mocked(meterGroupRepository.getById)
+        .mockResolvedValueOnce(mockMeterGroup())
+        .mockResolvedValueOnce(softDeleted);
 
-      const result = await meterGroupService.softDelete('mg-1');
+      const result = await meterGroupService.softDelete(TEST_USER_ID, 'mg-1');
 
-      expect(meterGroupRepository.softDelete).toHaveBeenCalledWith('mg-1');
+      expect(cascadeDeleteMeterGroup).toHaveBeenCalledWith('mg-1');
       expect(result.deleted_at).toBeDefined();
     });
 
@@ -310,9 +324,9 @@ describe('meterGroupService', () => {
 
     // It should return an error if the meter group ID does not exist.
     it('should return an error if the meter group ID does not exist', async () => {
-      jest.mocked(meterGroupRepository.softDelete).mockRejectedValue(new AppError(404, 'Meter group not found'));
+      jest.mocked(meterGroupRepository.getById).mockResolvedValue(null);
 
-      await expect(meterGroupService.softDelete('nonexistent')).rejects.toMatchObject({
+      await expect(meterGroupService.softDelete(TEST_USER_ID, 'nonexistent')).rejects.toMatchObject({
         statusCode: 404,
       });
     });

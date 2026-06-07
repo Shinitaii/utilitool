@@ -16,6 +16,7 @@ import { Timestamp } from 'firebase-admin/firestore';
 /// You can also add edge cases and error cases as well.
 
 const now = Timestamp.now();
+const TEST_USER_ID = 'user-1';
 
 const mockTenant = (overrides?: Record<string, any>) => ({
   id: 'tenant-1',
@@ -39,7 +40,7 @@ describe('tenantService', () => {
       jest.mocked(TenantValidator.prototype.validateCreate).mockResolvedValue(undefined);
       jest.mocked(tenantRepository.create).mockResolvedValue(mockTenant());
 
-      const result = await tenantService.create({ tenant_name: 'John Doe', property_id: 'prop-1' });
+      const result = await tenantService.create(TEST_USER_ID, { tenant_name: 'John Doe', property_id: 'prop-1' });
 
       expect(tenantRepository.create).toHaveBeenCalled();
       expect(result.id).toBe('tenant-1');
@@ -64,7 +65,7 @@ describe('tenantService', () => {
       );
 
       await expect(
-        tenantService.create({ tenant_name: 'John', property_id: 'bad-prop' })
+        tenantService.create(TEST_USER_ID, { tenant_name: 'John', property_id: 'bad-prop' })
       ).rejects.toMatchObject({
         statusCode: 404,
         message: 'Property not found',
@@ -78,7 +79,7 @@ describe('tenantService', () => {
       );
 
       await expect(
-        tenantService.create({ tenant_name: 'John', property_id: 'prop-1' })
+        tenantService.create(TEST_USER_ID, { tenant_name: 'John', property_id: 'prop-1' })
       ).rejects.toMatchObject({
         statusCode: 409,
         message: 'Tenant name already exists for the selected property',
@@ -92,7 +93,7 @@ describe('tenantService', () => {
       );
 
       await expect(
-        tenantService.create({ tenant_name: 'Jane', property_id: 'prop-1' })
+        tenantService.create(TEST_USER_ID, { tenant_name: 'Jane', property_id: 'prop-1' })
       ).rejects.toMatchObject({
         statusCode: 409,
         message: 'Property has reached the maximum number of tenants allowed',
@@ -112,7 +113,7 @@ describe('tenantService', () => {
         { tenant_name: 'John Doe', property_id: 'prop-1' },
         { tenant_name: 'Jane Doe', property_id: 'prop-1' },
       ];
-      const result = await tenantService.createBatch(input);
+      const result = await tenantService.createBatch(TEST_USER_ID, input);
 
       expect(tenantRepository.createBatch).toHaveBeenCalledWith(expect.any(Array));
       expect(result).toHaveLength(2);
@@ -138,7 +139,7 @@ describe('tenantService', () => {
     it('should return the tenant details for the given tenant ID', async () => {
       jest.mocked(tenantRepository.getById).mockResolvedValue(mockTenant());
 
-      const result = await tenantService.getById('tenant-1');
+      const result = await tenantService.getById(TEST_USER_ID, 'tenant-1');
 
       expect(tenantRepository.getById).toHaveBeenCalledWith('tenant-1');
       expect(result).toEqual(mockTenant());
@@ -154,7 +155,7 @@ describe('tenantService', () => {
     it('should return an error if the tenant ID does not exist', async () => {
       jest.mocked(tenantRepository.getById).mockResolvedValue(null);
 
-      const result = await tenantService.getById('nonexistent');
+      const result = await tenantService.getById(TEST_USER_ID, 'nonexistent');
 
       expect(result).toBeNull();
     });
@@ -167,7 +168,7 @@ describe('tenantService', () => {
       const paginated = { data: [mockTenant()], hasMore: false, nextCursor: null };
       jest.mocked(tenantRepository.search).mockResolvedValue(paginated);
 
-      const result = await tenantService.search({ limit: 20 });
+      const result = await tenantService.search(TEST_USER_ID, { limit: 20 });
 
       expect(result.data).toHaveLength(1);
       expect(result.hasMore).toBe(false);
@@ -177,23 +178,27 @@ describe('tenantService', () => {
     it('should return an empty list if there are no tenants matching the query', async () => {
       jest.mocked(tenantRepository.search).mockResolvedValue({ data: [], hasMore: false, nextCursor: null });
 
-      const result = await tenantService.search({ limit: 20, tenantName: 'NonExistent' });
+      const result = await tenantService.search(TEST_USER_ID, { limit: 20, tenantName: 'NonExistent' });
 
       expect(result.data).toHaveLength(0);
     });
 
     // It should return nextCursor when more results exist.
     it('should return nextCursor when more results exist', async () => {
-      jest.mocked(tenantRepository.search).mockResolvedValue({
-        data: [mockTenant()],
-        hasMore: true,
-        nextCursor: 'cursor-abc',
-      });
+      // CachedRepository.search loads ALL pages from the repo (loadAll loops until
+      // hasMore is false), then paginates in-memory — so the mock must terminate
+      // the loop or it spins forever accumulating memory.
+      jest.mocked(tenantRepository.search)
+        .mockResolvedValueOnce({
+          data: [mockTenant({ id: 'tenant-1' }), mockTenant({ id: 'tenant-2' })],
+          hasMore: false,
+          nextCursor: null,
+        });
 
-      const result = await tenantService.search({ limit: 1 });
+      const result = await tenantService.search(TEST_USER_ID, { limit: 1 });
 
       expect(result.hasMore).toBe(true);
-      expect(result.nextCursor).toBe('cursor-abc');
+      expect(result.nextCursor).toBe('tenant-1');
     });
   });
 
@@ -206,7 +211,7 @@ describe('tenantService', () => {
       jest.mocked(TenantValidator.prototype.validateUpdate).mockResolvedValue(undefined);
       jest.mocked(tenantRepository.update).mockResolvedValue(updated);
 
-      const result = await tenantService.update('tenant-1', { tenant_name: 'Jane Smith' });
+      const result = await tenantService.update(TEST_USER_ID, 'tenant-1', { tenant_name: 'Jane Smith' });
 
       expect(result.tenant_name).toBe('Jane Smith');
     });
@@ -221,7 +226,7 @@ describe('tenantService', () => {
     it('should return an error if the tenant ID does not exist', async () => {
       jest.mocked(tenantRepository.getById).mockResolvedValue(null);
 
-      await expect(tenantService.update('nonexistent', { tenant_name: 'New Name' })).rejects.toMatchObject({
+      await expect(tenantService.update(TEST_USER_ID, 'nonexistent', { tenant_name: 'New Name' })).rejects.toMatchObject({
         statusCode: 404,
         message: 'Tenant not found',
       });
@@ -234,7 +239,7 @@ describe('tenantService', () => {
         new AppError(404, 'Property not found')
       );
 
-      await expect(tenantService.update('tenant-1', { property_id: 'bad-prop' })).rejects.toMatchObject({
+      await expect(tenantService.update(TEST_USER_ID, 'tenant-1', { property_id: 'bad-prop' })).rejects.toMatchObject({
         statusCode: 404,
         message: 'Property not found',
       });
@@ -247,7 +252,7 @@ describe('tenantService', () => {
         new AppError(409, 'Tenant name already exists for the selected property')
       );
 
-      await expect(tenantService.update('tenant-1', { tenant_name: 'Existing Name' })).rejects.toMatchObject({
+      await expect(tenantService.update(TEST_USER_ID, 'tenant-1', { tenant_name: 'Existing Name' })).rejects.toMatchObject({
         statusCode: 409,
         message: 'Tenant name already exists for the selected property',
       });
@@ -266,7 +271,7 @@ describe('tenantService', () => {
         { id: 'tenant-1', data: { tenant_name: 'Updated 1' } },
         { id: 'tenant-2', data: { tenant_name: 'Updated 2' } },
       ];
-      const result = await tenantService.updateBatch(input);
+      const result = await tenantService.updateBatch(TEST_USER_ID, input);
 
       expect(tenantRepository.updateBatch).toHaveBeenCalledWith(input);
       expect(result).toHaveLength(2);
@@ -293,7 +298,7 @@ describe('tenantService', () => {
       jest.mocked(tenantRepository.getById).mockResolvedValue(mockTenant());
       jest.mocked(tenantRepository.delete).mockResolvedValue(undefined);
 
-      await expect(tenantService.delete('tenant-1')).resolves.toBeUndefined();
+      await expect(tenantService.delete(TEST_USER_ID, 'tenant-1')).resolves.toBeUndefined();
 
       expect(tenantRepository.delete).toHaveBeenCalledWith('tenant-1');
     });
@@ -308,7 +313,7 @@ describe('tenantService', () => {
     it('should return an error if the tenant ID does not exist', async () => {
       jest.mocked(tenantRepository.getById).mockResolvedValue(null);
 
-      await expect(tenantService.delete('nonexistent')).rejects.toMatchObject({
+      await expect(tenantService.delete(TEST_USER_ID, 'nonexistent')).rejects.toMatchObject({
         statusCode: 404,
         message: 'Tenant not found',
       });
@@ -323,7 +328,7 @@ describe('tenantService', () => {
       jest.mocked(tenantRepository.getById).mockResolvedValue(mockTenant());
       jest.mocked(tenantRepository.softDelete).mockResolvedValue(softDeleted);
 
-      const result = await tenantService.softDelete('tenant-1');
+      const result = await tenantService.softDelete(TEST_USER_ID, 'tenant-1');
 
       expect(result.deleted_at).toBeDefined();
     });
@@ -338,7 +343,7 @@ describe('tenantService', () => {
     it('should return an error if the tenant ID does not exist', async () => {
       jest.mocked(tenantRepository.getById).mockResolvedValue(null);
 
-      await expect(tenantService.softDelete('nonexistent')).rejects.toMatchObject({
+      await expect(tenantService.softDelete(TEST_USER_ID, 'nonexistent')).rejects.toMatchObject({
         statusCode: 404,
         message: 'Tenant not found',
       });

@@ -37,6 +37,7 @@ import { AppError } from '../../utils/error.util';
 import { Timestamp } from 'firebase-admin/firestore';
 
 const now = Timestamp.now();
+const TEST_USER_ID = 'user-1';
 
 const mockBilling = (overrides?: Record<string, any>) => ({
   id: 'billing-1',
@@ -57,7 +58,7 @@ describe('billingService', () => {
   describe('create', () => {
     it('should create a billing via Firestore transaction and return result', async () => {
       // The transaction mock returns a snapshot; we verify the service resolves
-      await expect(billingService.create({
+      await expect(billingService.create(TEST_USER_ID, {
         property_id: 'prop-1',
         previous_reading_id: 'reading-1',
         current_reading_id: 'reading-2',
@@ -84,7 +85,7 @@ describe('billingService', () => {
         { property_id: 'prop-1', previous_reading_id: 'reading-1', current_reading_id: 'reading-2' },
         { property_id: 'prop-1', previous_reading_id: 'reading-2', current_reading_id: 'reading-3' },
       ];
-      const result = await billingService.createBatch(input);
+      const result = await billingService.createBatch(TEST_USER_ID, input);
 
       expect(billingRepository.createBatch).toHaveBeenCalledWith(expect.any(Array));
       expect(result).toHaveLength(2);
@@ -114,7 +115,7 @@ describe('billingService', () => {
     it('should return the billing details for the given billing ID', async () => {
       jest.mocked(billingRepository.getById).mockResolvedValue(mockBilling());
 
-      const result = await billingService.getById('billing-1');
+      const result = await billingService.getById(TEST_USER_ID, 'billing-1');
 
       expect(billingRepository.getById).toHaveBeenCalledWith('billing-1');
       expect(result).toEqual(mockBilling());
@@ -130,7 +131,7 @@ describe('billingService', () => {
     it('should return an error if the billing ID does not exist', async () => {
       jest.mocked(billingRepository.getById).mockResolvedValue(null);
 
-      const result = await billingService.getById('nonexistent');
+      const result = await billingService.getById(TEST_USER_ID, 'nonexistent');
 
       expect(result).toBeNull();
     });
@@ -143,7 +144,7 @@ describe('billingService', () => {
       const paginated = { data: [mockBilling()], hasMore: false, nextCursor: null };
       jest.mocked(billingRepository.search).mockResolvedValue(paginated);
 
-      const result = await billingService.search({ limit: 20 });
+      const result = await billingService.search(TEST_USER_ID, { limit: 20 });
 
       expect(result.data).toHaveLength(1);
       expect(result.hasMore).toBe(false);
@@ -153,23 +154,26 @@ describe('billingService', () => {
     it('should return an empty list if there are no billings matching the query', async () => {
       jest.mocked(billingRepository.search).mockResolvedValue({ data: [], hasMore: false, nextCursor: null });
 
-      const result = await billingService.search({ limit: 20, propertyId: 'nonexistent' });
+      const result = await billingService.search(TEST_USER_ID, { limit: 20, propertyId: 'nonexistent' });
 
       expect(result.data).toHaveLength(0);
     });
 
     // It should return nextCursor when more results exist.
     it('should return nextCursor when more results exist', async () => {
-      jest.mocked(billingRepository.search).mockResolvedValue({
-        data: [mockBilling()],
-        hasMore: true,
-        nextCursor: 'cursor-abc',
-      });
+      // CachedRepository.search loads ALL pages via loadAll (loops until hasMore
+      // is false) before paginating in-memory — the mock must terminate the loop.
+      jest.mocked(billingRepository.search)
+        .mockResolvedValueOnce({
+          data: [mockBilling({ id: 'billing-1' }), mockBilling({ id: 'billing-2' })],
+          hasMore: false,
+          nextCursor: null,
+        });
 
-      const result = await billingService.search({ limit: 1 });
+      const result = await billingService.search(TEST_USER_ID, { limit: 1 });
 
       expect(result.hasMore).toBe(true);
-      expect(result.nextCursor).toBe('cursor-abc');
+      expect(result.nextCursor).toBe('billing-1');
     });
   });
 
@@ -181,7 +185,7 @@ describe('billingService', () => {
       jest.mocked(BillingValidator.prototype.validateUpdate).mockResolvedValue(undefined);
       jest.mocked(billingRepository.update).mockResolvedValue(updated);
 
-      const result = await billingService.update('billing-1', { property_id: 'prop-2' });
+      const result = await billingService.update(TEST_USER_ID, 'billing-1', { property_id: 'prop-2' });
 
       expect(result.property_id).toBe('prop-2');
     });
@@ -191,7 +195,7 @@ describe('billingService', () => {
       jest.mocked(BillingValidator.prototype.validateUpdate).mockResolvedValue(undefined);
       jest.mocked(billingRepository.update).mockResolvedValue(paid);
 
-      await billingService.update('billing-1', { payment_status: 'paid' });
+      await billingService.update(TEST_USER_ID, 'billing-1', { payment_status: 'paid' });
 
       const callArgs = jest.mocked(billingRepository.update).mock.calls[0];
       const updateData = callArgs[1] as Record<string, unknown>;
@@ -205,7 +209,7 @@ describe('billingService', () => {
       jest.mocked(BillingValidator.prototype.validateUpdate).mockResolvedValue(undefined);
       jest.mocked(billingRepository.update).mockResolvedValue(paid);
 
-      await billingService.update('billing-1', { payment_status: 'paid', paid_at: existingPaidAt });
+      await billingService.update(TEST_USER_ID, 'billing-1', { payment_status: 'paid', paid_at: existingPaidAt });
 
       const callArgs = jest.mocked(billingRepository.update).mock.calls[0];
       const updateData = callArgs[1] as Record<string, unknown>;
@@ -218,7 +222,7 @@ describe('billingService', () => {
       jest.mocked(billingRepository.update).mockResolvedValue(mockBilling());
 
       await expect(
-        billingService.update('billing-1', { previous_reading_id: 'reading-3' })
+        billingService.update(TEST_USER_ID, 'billing-1', { previous_reading_id: 'reading-3' })
       ).resolves.toBeDefined();
     });
 
@@ -228,7 +232,7 @@ describe('billingService', () => {
         new AppError(404, 'Property not found')
       );
 
-      await expect(billingService.update('billing-1', { property_id: 'bad-prop' })).rejects.toMatchObject({
+      await expect(billingService.update(TEST_USER_ID, 'billing-1', { property_id: 'bad-prop' })).rejects.toMatchObject({
         statusCode: 404,
         message: 'Property not found',
       });
@@ -240,7 +244,7 @@ describe('billingService', () => {
       jest.mocked(billingRepository.update).mockResolvedValue(mockBilling());
 
       await expect(
-        billingService.update('billing-1', { property_id: 'prop-1' })
+        billingService.update(TEST_USER_ID, 'billing-1', { property_id: 'prop-1' })
       ).resolves.toBeDefined();
     });
 
@@ -251,7 +255,7 @@ describe('billingService', () => {
       );
 
       await expect(
-        billingService.update('billing-1', { previous_reading_id: 'bad-reading' })
+        billingService.update(TEST_USER_ID, 'billing-1', { previous_reading_id: 'bad-reading' })
       ).rejects.toMatchObject({
         statusCode: 404,
         message: 'Reading not found',
@@ -264,7 +268,7 @@ describe('billingService', () => {
       jest.mocked(billingRepository.update).mockResolvedValue(mockBilling());
 
       await expect(
-        billingService.update('billing-1', { property_id: 'prop-1' })
+        billingService.update(TEST_USER_ID, 'billing-1', { property_id: 'prop-1' })
       ).resolves.toBeDefined();
     });
 
@@ -275,7 +279,7 @@ describe('billingService', () => {
       );
 
       await expect(
-        billingService.update('billing-1', { current_reading_id: 'bad-reading' })
+        billingService.update(TEST_USER_ID, 'billing-1', { current_reading_id: 'bad-reading' })
       ).rejects.toMatchObject({
         statusCode: 404,
         message: 'Reading not found',
@@ -289,7 +293,7 @@ describe('billingService', () => {
       );
 
       await expect(
-        billingService.update('billing-1', { current_reading_id: 'reading-3' })
+        billingService.update(TEST_USER_ID, 'billing-1', { current_reading_id: 'reading-3' })
       ).rejects.toMatchObject({
         statusCode: 400,
         message: 'Previous and current readings must belong to the same meter group',
@@ -309,7 +313,7 @@ describe('billingService', () => {
         { id: 'billing-1', data: { property_id: 'prop-2' } },
         { id: 'billing-2', data: { property_id: 'prop-3' } },
       ];
-      const result = await billingService.updateBatch(input);
+      const result = await billingService.updateBatch(TEST_USER_ID, input);
 
       expect(billingRepository.updateBatch).toHaveBeenCalledWith(input);
       expect(result).toHaveLength(2);
@@ -335,7 +339,7 @@ describe('billingService', () => {
     it('should delete the billing', async () => {
       jest.mocked(billingRepository.delete).mockResolvedValue(undefined);
 
-      await expect(billingService.delete('billing-1')).resolves.toBeUndefined();
+      await expect(billingService.delete(TEST_USER_ID, 'billing-1')).resolves.toBeUndefined();
 
       expect(billingRepository.delete).toHaveBeenCalledWith('billing-1');
     });
@@ -350,7 +354,7 @@ describe('billingService', () => {
     it('should return an error if the billing ID does not exist', async () => {
       jest.mocked(billingRepository.delete).mockRejectedValue(new AppError(404, 'Billing not found'));
 
-      await expect(billingService.delete('nonexistent')).rejects.toMatchObject({
+      await expect(billingService.delete(TEST_USER_ID, 'nonexistent')).rejects.toMatchObject({
         statusCode: 404,
       });
     });
@@ -363,7 +367,7 @@ describe('billingService', () => {
       const softDeleted = mockBilling({ deleted_at: Timestamp.now() });
       jest.mocked(billingRepository.softDelete).mockResolvedValue(softDeleted);
 
-      const result = await billingService.softDelete('billing-1');
+      const result = await billingService.softDelete(TEST_USER_ID, 'billing-1');
 
       expect(result.deleted_at).toBeDefined();
     });
@@ -378,7 +382,7 @@ describe('billingService', () => {
     it('should return an error if the billing ID does not exist', async () => {
       jest.mocked(billingRepository.softDelete).mockRejectedValue(new AppError(404, 'Billing not found'));
 
-      await expect(billingService.softDelete('nonexistent')).rejects.toMatchObject({
+      await expect(billingService.softDelete(TEST_USER_ID, 'nonexistent')).rejects.toMatchObject({
         statusCode: 404,
       });
     });

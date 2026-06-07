@@ -11,6 +11,7 @@ import { AppError } from '../../utils/error.util';
 import { Timestamp } from 'firebase-admin/firestore';
 
 const now = Timestamp.now();
+const TEST_USER_ID = 'user-1';
 
 const mockMeterGroup = (overrides?: Record<string, any>) => ({
   id: 'mg-1',
@@ -63,7 +64,7 @@ describe('meterGroupService - Business Rules', () => {
         },
       });
 
-      const result = await meterGroupService.recordReset('mg-1');
+      const result = await meterGroupService.recordReset(TEST_USER_ID, 'mg-1');
 
       expect(meterGroupRepository.update).toHaveBeenCalledWith('mg-1', {
         current_version: 2,
@@ -87,7 +88,7 @@ describe('meterGroupService - Business Rules', () => {
         nextCursor: null,
       });
 
-      await expect(meterGroupService.recordReset('mg-1')).rejects.toMatchObject({
+      await expect(meterGroupService.recordReset(TEST_USER_ID, 'mg-1')).rejects.toMatchObject({
         statusCode: 422,
         message: expect.stringContaining('no readings found'),
       });
@@ -97,7 +98,7 @@ describe('meterGroupService - Business Rules', () => {
     it('should fail if meter group does not exist', async () => {
       jest.mocked(meterGroupRepository.getById).mockResolvedValue(null);
 
-      await expect(meterGroupService.recordReset('bad-mg')).rejects.toMatchObject({
+      await expect(meterGroupService.recordReset(TEST_USER_ID, 'bad-mg')).rejects.toMatchObject({
         statusCode: 404,
         message: 'Meter group not found',
       });
@@ -114,7 +115,7 @@ describe('meterGroupService - Business Rules', () => {
       };
       jest.mocked(collectionRef).mockReturnValue(mockQuery as any);
 
-      await expect(meterGroupService.delete('mg-1')).rejects.toMatchObject({
+      await expect(meterGroupService.delete(TEST_USER_ID, 'mg-1')).rejects.toMatchObject({
         statusCode: 409,
         message: expect.stringContaining('has active readings'),
       });
@@ -130,7 +131,7 @@ describe('meterGroupService - Business Rules', () => {
       jest.mocked(collectionRef).mockReturnValue(mockQuery as any);
       jest.mocked(meterGroupRepository.delete).mockResolvedValue(undefined);
 
-      await meterGroupService.delete('mg-1');
+      await meterGroupService.delete(TEST_USER_ID, 'mg-1');
 
       expect(meterGroupRepository.delete).toHaveBeenCalledWith('mg-1');
     });

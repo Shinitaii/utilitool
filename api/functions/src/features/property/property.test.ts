@@ -1,9 +1,17 @@
 ﻿jest.mock('./property.repository');
 jest.mock('./property.validator');
 
+// softDelete/restore now delegate to cascadeDeleteProperty/cascadeRestoreProperty
+// (which run real Firestore transactions) — mock those out for unit-level service tests.
+jest.mock('../../utils/cascade-delete.util', () => ({
+  cascadeDeleteProperty: jest.fn().mockResolvedValue({ primary: 1, readings: 0, billings: 0 }),
+  cascadeRestoreProperty: jest.fn().mockResolvedValue({ primary: 1, readings: 0, billings: 0 }),
+}));
+
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import { propertyService } from './property.service';
 import { propertyRepository } from './property.repository';
+import { cascadeDeleteProperty } from '../../utils/cascade-delete.util';
 import { PropertyValidator } from './property.validator';
 import { CreatePropertyDTOSchema, UpdatePropertyDTOSchema, PropertyByIdParamsDTOSchema, CreatePropertyBatchDTOSchema, UpdatePropertyBatchDTOSchema } from './property.dto';
 import { AppError } from '../../utils/error.util';
@@ -16,6 +24,7 @@ import { Timestamp } from 'firebase-admin/firestore';
 /// You can also add edge cases and error cases as well.
 
 const now = Timestamp.now();
+const TEST_USER_ID = 'user-1';
 
 const mockProperty = (overrides?: Record<string, any>) => ({
   id: 'prop-1',
@@ -39,16 +48,16 @@ describe('propertyService', () => {
       jest.mocked(PropertyValidator.prototype.validateCreate).mockResolvedValue(undefined);
       jest.mocked(propertyRepository.create).mockResolvedValue(mockProperty());
 
-      const result = await propertyService.create({
+      const result = await propertyService.create(TEST_USER_ID, {
         room_name: 'Room 101',
         tenant_amount: 2,
-        meter_group_id: 'mg-1',
+        meter_groups: { electricity: { meter_group_id: 'mg-1', is_main_meter: true } },
       });
 
       expect(propertyRepository.create).toHaveBeenCalledWith({
         room_name: 'Room 101',
         tenant_amount: 2,
-        meter_group_id: 'mg-1',
+        meter_groups: { electricity: { meter_group_id: 'mg-1', is_main_meter: true } },
       });
       expect(result.id).toBe('prop-1');
     });
@@ -78,7 +87,7 @@ describe('propertyService', () => {
       );
 
       await expect(
-        propertyService.create({ room_name: 'Room 101', tenant_amount: 2, meter_group_id: 'nonexistent' })
+        propertyService.create(TEST_USER_ID, { room_name: 'Room 101', tenant_amount: 2, meter_group_id: 'nonexistent' })
       ).rejects.toMatchObject({
         statusCode: 404,
         message: 'Meter group not found',
@@ -92,7 +101,7 @@ describe('propertyService', () => {
       );
 
       await expect(
-        propertyService.create({ room_name: 'Room 101', tenant_amount: 2, meter_group_id: 'mg-1' })
+        propertyService.create(TEST_USER_ID, { room_name: 'Room 101', tenant_amount: 2, meter_group_id: 'mg-1' })
       ).rejects.toMatchObject({
         statusCode: 409,
         message: 'Room name already exists for the selected meter group',
@@ -109,10 +118,10 @@ describe('propertyService', () => {
       jest.mocked(propertyRepository.createBatch).mockResolvedValue(mocks);
 
       const input = [
-        { room_name: 'Room 101', tenant_amount: 2, meter_group_id: 'mg-1' },
-        { room_name: 'Room 102', tenant_amount: 3, meter_group_id: 'mg-1' },
+        { room_name: 'Room 101', tenant_amount: 2, meter_groups: { electricity: { meter_group_id: 'mg-1', is_main_meter: true } } },
+        { room_name: 'Room 102', tenant_amount: 3, meter_groups: { electricity: { meter_group_id: 'mg-1', is_main_meter: true } } },
       ];
-      const result = await propertyService.createBatch(input);
+      const result = await propertyService.createBatch(TEST_USER_ID, input);
 
       expect(propertyRepository.createBatch).toHaveBeenCalledWith(input);
       expect(result).toHaveLength(2);
@@ -142,7 +151,7 @@ describe('propertyService', () => {
     it('should return the property details for the given property ID', async () => {
       jest.mocked(propertyRepository.getById).mockResolvedValue(mockProperty());
 
-      const result = await propertyService.getById('prop-1');
+      const result = await propertyService.getById(TEST_USER_ID, 'prop-1');
 
       expect(propertyRepository.getById).toHaveBeenCalledWith('prop-1');
       expect(result).toEqual(mockProperty());
@@ -158,7 +167,7 @@ describe('propertyService', () => {
     it('should return an error if the property ID does not exist', async () => {
       jest.mocked(propertyRepository.getById).mockResolvedValue(null);
 
-      const result = await propertyService.getById('nonexistent');
+      const result = await propertyService.getById(TEST_USER_ID, 'nonexistent');
 
       expect(result).toBeNull();
     });
@@ -171,7 +180,7 @@ describe('propertyService', () => {
       const paginated = { data: [mockProperty()], hasMore: false, nextCursor: null };
       jest.mocked(propertyRepository.search).mockResolvedValue(paginated);
 
-      const result = await propertyService.search({ limit: 20 });
+      const result = await propertyService.search(TEST_USER_ID, { limit: 20 });
 
       expect(result.data).toHaveLength(1);
       expect(result.hasMore).toBe(false);
@@ -181,23 +190,26 @@ describe('propertyService', () => {
     it('should return an empty list if there are no properties matching the query', async () => {
       jest.mocked(propertyRepository.search).mockResolvedValue({ data: [], hasMore: false, nextCursor: null });
 
-      const result = await propertyService.search({ limit: 20, roomName: 'NonExistent' });
+      const result = await propertyService.search(TEST_USER_ID, { limit: 20, roomName: 'NonExistent' });
 
       expect(result.data).toHaveLength(0);
     });
 
     // It should return nextCursor when more results exist.
     it('should return nextCursor when more results exist', async () => {
-      jest.mocked(propertyRepository.search).mockResolvedValue({
-        data: [mockProperty()],
-        hasMore: true,
-        nextCursor: 'cursor-abc',
-      });
+      // CachedRepository.search loads ALL pages via loadAll (loops until hasMore
+      // is false) before paginating in-memory — the mock must terminate the loop.
+      jest.mocked(propertyRepository.search)
+        .mockResolvedValueOnce({
+          data: [mockProperty({ id: 'prop-1' }), mockProperty({ id: 'prop-2' })],
+          hasMore: false,
+          nextCursor: null,
+        });
 
-      const result = await propertyService.search({ limit: 1 });
+      const result = await propertyService.search(TEST_USER_ID, { limit: 1 });
 
       expect(result.hasMore).toBe(true);
-      expect(result.nextCursor).toBe('cursor-abc');
+      expect(result.nextCursor).toBe('prop-1');
     });
   });
 
@@ -210,7 +222,7 @@ describe('propertyService', () => {
       jest.mocked(PropertyValidator.prototype.validateUpdate).mockResolvedValue(undefined);
       jest.mocked(propertyRepository.update).mockResolvedValue(updated);
 
-      const result = await propertyService.update('prop-1', { room_name: 'Room 202' });
+      const result = await propertyService.update(TEST_USER_ID, 'prop-1', { room_name: 'Room 202' });
 
       expect(result.room_name).toBe('Room 202');
     });
@@ -225,7 +237,7 @@ describe('propertyService', () => {
     it('should return an error if the property ID does not exist', async () => {
       jest.mocked(propertyRepository.getById).mockResolvedValue(null);
 
-      await expect(propertyService.update('nonexistent', { room_name: 'New Name' })).rejects.toMatchObject({
+      await expect(propertyService.update(TEST_USER_ID, 'nonexistent', { room_name: 'New Name' })).rejects.toMatchObject({
         statusCode: 404,
         message: 'Property not found',
       });
@@ -238,7 +250,7 @@ describe('propertyService', () => {
         new AppError(404, 'Meter group not found')
       );
 
-      await expect(propertyService.update('prop-1', { meter_group_id: 'bad-mg' })).rejects.toMatchObject({
+      await expect(propertyService.update(TEST_USER_ID, 'prop-1', { meter_group_id: 'bad-mg' })).rejects.toMatchObject({
         statusCode: 404,
         message: 'Meter group not found',
       });
@@ -257,7 +269,7 @@ describe('propertyService', () => {
         new AppError(409, 'Tenant amount cannot be less than current tenant count')
       );
 
-      await expect(propertyService.update('prop-1', { tenant_amount: 1 })).rejects.toMatchObject({
+      await expect(propertyService.update(TEST_USER_ID, 'prop-1', { tenant_amount: 1 })).rejects.toMatchObject({
         statusCode: 409,
         message: 'Tenant amount cannot be less than current tenant count',
       });
@@ -270,7 +282,7 @@ describe('propertyService', () => {
         new AppError(409, 'Room name already exists for the selected meter group')
       );
 
-      await expect(propertyService.update('prop-1', { room_name: 'Existing Room' })).rejects.toMatchObject({
+      await expect(propertyService.update(TEST_USER_ID, 'prop-1', { room_name: 'Existing Room' })).rejects.toMatchObject({
         statusCode: 409,
         message: 'Room name already exists for the selected meter group',
       });
@@ -282,13 +294,16 @@ describe('propertyService', () => {
     // It should update multiple properties in a batch.
     it('should update multiple properties in a batch', async () => {
       jest.mocked(PropertyValidator.prototype.validateBatchUpdate).mockResolvedValue(undefined);
-      jest.mocked(propertyRepository.update).mockResolvedValue(mockProperty());
+      jest.mocked(propertyRepository.updateBatch).mockResolvedValue([
+        mockProperty({ id: 'prop-1', room_name: 'Updated 1' }),
+        mockProperty({ id: 'prop-2', room_name: 'Updated 2' }),
+      ]);
 
       const input = [
         { id: 'prop-1', data: { room_name: 'Updated 1' } },
         { id: 'prop-2', data: { room_name: 'Updated 2' } },
       ];
-      const result = await propertyService.updateBatch(input);
+      const result = await propertyService.updateBatch(TEST_USER_ID, input);
 
       expect(result).toHaveLength(2);
     });
@@ -314,7 +329,7 @@ describe('propertyService', () => {
       jest.mocked(propertyRepository.getById).mockResolvedValue(mockProperty());
       jest.mocked(propertyRepository.delete).mockResolvedValue(undefined);
 
-      await expect(propertyService.delete('prop-1')).resolves.toBeUndefined();
+      await expect(propertyService.delete(TEST_USER_ID, 'prop-1')).resolves.toBeUndefined();
 
       expect(propertyRepository.delete).toHaveBeenCalledWith('prop-1');
     });
@@ -329,7 +344,7 @@ describe('propertyService', () => {
     it('should return an error if the property ID does not exist', async () => {
       jest.mocked(propertyRepository.getById).mockResolvedValue(null);
 
-      await expect(propertyService.delete('nonexistent')).rejects.toMatchObject({
+      await expect(propertyService.delete(TEST_USER_ID, 'nonexistent')).rejects.toMatchObject({
         statusCode: 404,
         message: 'Property not found',
       });
@@ -341,11 +356,13 @@ describe('propertyService', () => {
     // It should soft delete the property for the given property ID and return a success message.
     it('should soft delete the property', async () => {
       const softDeleted = mockProperty({ deleted_at: Timestamp.now() });
-      jest.mocked(propertyRepository.getById).mockResolvedValue(mockProperty());
-      jest.mocked(propertyRepository.softDelete).mockResolvedValue(softDeleted);
+      jest.mocked(propertyRepository.getById)
+        .mockResolvedValueOnce(mockProperty())
+        .mockResolvedValueOnce(softDeleted);
 
-      const result = await propertyService.softDelete('prop-1');
+      const result = await propertyService.softDelete(TEST_USER_ID, 'prop-1');
 
+      expect(cascadeDeleteProperty).toHaveBeenCalledWith('prop-1');
       expect(result.deleted_at).toBeDefined();
     });
 
@@ -359,7 +376,7 @@ describe('propertyService', () => {
     it('should return an error if the property ID does not exist', async () => {
       jest.mocked(propertyRepository.getById).mockResolvedValue(null);
 
-      await expect(propertyService.softDelete('nonexistent')).rejects.toMatchObject({
+      await expect(propertyService.softDelete(TEST_USER_ID, 'nonexistent')).rejects.toMatchObject({
         statusCode: 404,
         message: 'Property not found',
       });
@@ -373,7 +390,7 @@ describe('propertyService', () => {
       );
 
       await expect(
-        propertyService.create({
+        propertyService.create(TEST_USER_ID, {
           room_name: 'Unit 200',
           tenant_amount: 1,
           meter_groups: {
@@ -398,7 +415,7 @@ describe('propertyService', () => {
         })
       );
 
-      const result = await propertyService.create({
+      const result = await propertyService.create(TEST_USER_ID, {
         room_name: 'Unit 300',
         tenant_amount: 1,
         meter_groups: {
