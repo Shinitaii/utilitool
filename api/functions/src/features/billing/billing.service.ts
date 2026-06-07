@@ -67,11 +67,6 @@ export const billingService = {
         currMeterVersion
       );
 
-      const propertyData = propertySnap.data()!;
-      const meterGroupEntry = (Object.values(propertyData.meter_groups ?? {}) as any[]).find(
-        (e: any) => e.meter_group_id === currReading.meter_group_id
-      );
-
       const newRef = firestore.collection(COLLECTIONS.BILLINGS).doc();
       newBillingId = newRef.id;
       txn.set(newRef, {
