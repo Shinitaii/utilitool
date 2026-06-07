@@ -52,8 +52,8 @@
   let selectedProperty = $state('');
   let filterStartDate = $state('');
   let filterEndDate = $state('');
-  let createFormOpen = $state(false);
-  let manualFormOpen = $state(false);
+  let readingFormOpen = $state(false);
+  let readingFormTab = $state<'batch' | 'manual'>('batch');
   let manualReadingLoading = $state(false);
   let manualReadingForm = $state<ManualReadingForm>({
     meter_group_id: '',
@@ -176,11 +176,10 @@
     await applyFilters();
   }
 
-  function openCreateForm() {
-    createFormOpen = true;
+  function resetReadingForm() {
     batchRows = [];
     batchDate = new Date().toISOString().split('T')[0];
-    loadBatchProperties();
+    resetManualReadingForm();
   }
 
   async function loadBatchProperties() {
@@ -281,7 +280,7 @@
         await createReading(payload);
       }
 
-      manualFormOpen = false;
+      readingFormOpen = false;
       resetManualReadingForm();
       await loadData();
       alert(isSeed
@@ -350,7 +349,7 @@
 
       await createReadingsBatch(readingsData);
 
-      createFormOpen = false;
+      readingFormOpen = false;
       batchRows = [];
       batchDate = new Date().toISOString().split('T')[0];
       await handleMeterGroupChange();
@@ -421,25 +420,18 @@
         <Archive size={20} />
       </a>
       <button
-        onclick={() => (createFormOpen = !createFormOpen)}
+        onclick={() => (readingFormOpen = !readingFormOpen)}
         disabled={batchLoading}
         class="p-2 rounded text-white disabled:opacity-50"
         style="background-color: var(--color-accent)"
-        title={createFormOpen ? 'Cancel' : 'Create new reading'}
-        aria-label={createFormOpen ? 'Cancel new reading' : 'Create new reading'}
+        title={readingFormOpen ? 'Cancel' : 'Create new reading'}
+        aria-label={readingFormOpen ? 'Cancel new reading' : 'Create new reading'}
       >
-        {#if createFormOpen}
+        {#if readingFormOpen}
           <X size={20} />
         {:else}
           <Plus size={20} />
         {/if}
-      </button>
-      <button
-        onclick={() => (manualFormOpen = !manualFormOpen)}
-        class="rounded px-3 py-2 text-white"
-        style="background-color: var(--color-accent)"
-      >
-        Add Manual Reading
       </button>
     </div>
   </div>
@@ -450,11 +442,35 @@
     </div>
   {/if}
 
-  <!-- Batch Reading Form -->
-  {#if createFormOpen}
+  {#if readingFormOpen}
     <div class="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
-      <h2 class="font-semibold">Create Readings</h2>
+      <h2 class="font-semibold">Add Reading</h2>
 
+      <!-- Tabs -->
+      <div class="flex border-b border-gray-200">
+        <button
+          onclick={() => { readingFormTab = 'batch'; resetReadingForm(); }}
+          class="px-4 py-2 font-medium text-sm border-b-2"
+          class:border-blue-500={readingFormTab === 'batch'}
+          class:border-transparent={readingFormTab !== 'batch'}
+          class:text-blue-600={readingFormTab === 'batch'}
+          class:text-gray-600={readingFormTab !== 'batch'}
+        >
+          Batch / OCR
+        </button>
+        <button
+          onclick={() => { readingFormTab = 'manual'; resetReadingForm(); }}
+          class="px-4 py-2 font-medium text-sm border-b-2"
+          class:border-blue-500={readingFormTab === 'manual'}
+          class:border-transparent={readingFormTab !== 'manual'}
+          class:text-blue-600={readingFormTab === 'manual'}
+          class:text-gray-600={readingFormTab !== 'manual'}
+        >
+          Manual
+        </button>
+      </div>
+
+      {#if readingFormTab === 'batch'}
       <div class="grid grid-cols-2 gap-4">
         <div>
           <label for="batch-meter-group" class="block text-sm font-medium text-gray-700">Meter Group *</label>
@@ -588,7 +604,7 @@
             {batchLoading ? 'Creating...' : 'Create All Readings'}
           </button>
           <button
-            onclick={() => (createFormOpen = false)}
+            onclick={() => (readingFormOpen = false)}
             disabled={batchLoading}
             class="rounded px-4 py-2 border border-gray-300 bg-white text-gray-700 font-medium hover:bg-gray-50"
           >
@@ -596,12 +612,8 @@
           </button>
         </div>
       {/if}
-    </div>
-  {/if}
 
-  {#if manualFormOpen}
-    <div class="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
-      <h2 class="font-semibold">Add Manual Reading</h2>
+      {:else if readingFormTab === 'manual'}
       <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
           <label class="block text-sm font-medium text-gray-700">
@@ -648,10 +660,11 @@
         <button onclick={handleCreateManualReading} disabled={manualReadingLoading} class="rounded px-4 py-2 text-white font-medium disabled:opacity-50" style="background-color: var(--color-accent)">
           {manualReadingLoading ? 'Creating...' : 'Create Reading'}
         </button>
-        <button onclick={() => { manualFormOpen = false; resetManualReadingForm(); }} disabled={manualReadingLoading} class="rounded px-4 py-2 border border-gray-300 bg-white text-gray-700 font-medium hover:bg-gray-50">
+        <button onclick={() => { readingFormOpen = false; resetManualReadingForm(); }} disabled={manualReadingLoading} class="rounded px-4 py-2 border border-gray-300 bg-white text-gray-700 font-medium hover:bg-gray-50">
           Cancel
         </button>
       </div>
+      {/if}
     </div>
   {/if}
 
