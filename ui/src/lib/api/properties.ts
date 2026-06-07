@@ -54,6 +54,10 @@ export async function restoreProperty(id: string): Promise<Property> {
   return apiPatch<Property>(`/properties/${id}/restore`, {});
 }
 
+export async function recordPropertyMeterGroupReset(propertyId: string, meterGroupId: string): Promise<Property> {
+  return apiPost<Property>(`/properties/${propertyId}/meter-groups/${meterGroupId}/reset`, {});
+}
+
 export async function clearCache(): Promise<{ message: string }> {
   return apiPost<{ message: string }>('/properties/cache/clear', {});
 }

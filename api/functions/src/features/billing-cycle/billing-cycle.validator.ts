@@ -5,17 +5,40 @@ import {billingRepository} from "../billing/billing.repository";
 import {readingRepository} from "../reading/reading.repository";
 import {meterGroupRepository} from "../meter-group/meter-group.repository";
 import {billingCycleRepository} from "./billing-cycle.repository";
-import {MeterGroup} from "../meter-group/meter-group.model";
+import {MeterGroup, MeterGroupVersionEntry} from "../meter-group/meter-group.model";
+import {propertyRepository} from "../property/property.repository";
 import {Timestamp} from "firebase-admin/firestore";
 
 const CONSUMPTION_TOLERANCE = 0.03;
 
 export class BillingCycleValidator {
-  private getCumulativeOffset(meterGroup: MeterGroup | null, version: number): number {
-    if (!meterGroup?.versions) return 0;
+  /**
+   * Resolve the versions map that scopes a reading's true-reading calculation.
+   * Main-meter properties resolve from the meter group (authoritative there);
+   * submeter properties track their own reset history on their MeterGroupEntry.
+   */
+  private async getVersionsSource(
+    propertyId: string,
+    meterGroupId: string,
+    meterGroup: MeterGroup | null
+  ): Promise<Record<string, MeterGroupVersionEntry> | undefined> {
+    const property = await propertyRepository.getById(propertyId);
+    const entry = property ?
+      Object.values(property.meter_groups).find((e) => e.meter_group_id === meterGroupId) :
+      undefined;
+
+    if (entry && !entry.is_main_meter) {
+      return entry.versions;
+    }
+
+    return meterGroup?.versions;
+  }
+
+  private getCumulativeOffset(versions: Record<string, MeterGroupVersionEntry> | undefined, version: number): number {
+    if (!versions) return 0;
     let offset = 0;
     for (let v = 1; v < version; v++) {
-      const versionData = meterGroup.versions[String(v)];
+      const versionData = versions[String(v)];
       if (versionData) offset += versionData.last_reading;
     }
     return offset;
@@ -56,8 +79,9 @@ export class BillingCycleValidator {
 
       const prevVersion = prevReading.meter_version ?? 1;
       const currVersion = currReading.meter_version ?? 1;
-      const prevOffset = this.getCumulativeOffset(meterGroup, prevVersion);
-      const currOffset = this.getCumulativeOffset(meterGroup, currVersion);
+      const versionsSource = await this.getVersionsSource(billing.property_id, currReading.meter_group_id, meterGroup);
+      const prevOffset = this.getCumulativeOffset(versionsSource, prevVersion);
+      const currOffset = this.getCumulativeOffset(versionsSource, currVersion);
       const expectedConsumption = (currOffset + currReading.reading_amount) - (prevOffset + prevReading.reading_amount);
 
       const tolerance = Math.abs(expectedConsumption) * PER_BILLING_TOLERANCE;

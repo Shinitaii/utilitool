@@ -629,4 +629,79 @@ export const propertyPaths = {
       },
     },
   },
+  "/properties/{id}/meter-groups/{meterGroupId}/reset": {
+    post: {
+      tags: ["Properties"],
+      summary: "Record a submeter reset for a property",
+      description:
+        "Increments the property's per-meter-group current_version and records the last reading as the version's closing value. Only valid for SUBMETER entries (is_main_meter === false) — main-meter resets stay on POST /meter-groups/{id}/reset. Requires admin or landlord role.",
+      security: [{BearerAuth: []}],
+      parameters: [
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: {type: "string", minLength: 1},
+        },
+        {
+          name: "meterGroupId",
+          in: "path",
+          required: true,
+          schema: {type: "string", minLength: 1},
+        },
+      ],
+      responses: {
+        "200": {
+          description: "Submeter reset recorded",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/Property",
+              },
+            },
+          },
+        },
+        "400": {
+          description: "Property is the main meter for this meter group",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/ErrorResponse",
+              },
+            },
+          },
+        },
+        "401": {
+          description: "Unauthorized",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/ErrorResponse",
+              },
+            },
+          },
+        },
+        "404": {
+          description: "Property not found or not associated with this meter group",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/ErrorResponse",
+              },
+            },
+          },
+        },
+        "422": {
+          description: "No readings found for this property's meter to close out",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/ErrorResponse",
+              },
+            },
+          },
+        },
+      },
+    },
+  },
 };

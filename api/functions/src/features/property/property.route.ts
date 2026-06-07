@@ -8,6 +8,7 @@ import {
   restoreProperty,
   updateProperty,
   updateBatchProperties,
+  recordPropertyMeterGroupReset,
   clearCache,
 } from "./property.controller";
 import {
@@ -15,6 +16,7 @@ import {
   CreatePropertyDTOSchema,
   GetPropertiesQueryDTOSchema,
   PropertyByIdParamsDTOSchema,
+  PropertyMeterGroupResetParamsDTOSchema,
   UpdatePropertyBatchDTOSchema,
   UpdatePropertyDTOSchema,
 } from "./property.dto";
@@ -59,6 +61,13 @@ router.get(
   "/:id",
   validateRequest({params: PropertyByIdParamsDTOSchema}),
   getPropertyById
+);
+
+router.post(
+  "/:id/meter-groups/:meterGroupId/reset",
+  validateRequest({params: PropertyMeterGroupResetParamsDTOSchema}),
+  requireRole("admin", "landlord"),
+  recordPropertyMeterGroupReset
 );
 
 router.patch(

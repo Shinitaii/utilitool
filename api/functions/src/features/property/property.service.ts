@@ -3,11 +3,14 @@ import {PaginatedResult} from "../../utils/pagination.util";
 import {propertyRepository} from "./property.repository";
 import {CreatePropertyDTO, UpdatePropertyDTO} from "./property.dto";
 import {Property} from "./property.model";
+import {MeterGroupVersionEntry} from "../meter-group/meter-group.model";
+import {readingRepository} from "../reading/reading.repository";
 import {PropertyValidator} from "./property.validator";
 import {listRemove, listAppend} from "../../utils/list-cache.util";
 import {cacheDel, cacheSet} from "../../utils/cache.util";
 import {cascadeDeleteProperty, cascadeRestoreProperty} from "../../utils/cascade-delete.util";
 import {CachedRepository} from "../../lib/cached-repository.lib";
+import {Timestamp} from "firebase-admin/firestore";
 
 const validator = new PropertyValidator();
 const CACHE_TTL = 20 * 60; // 20 minutes
@@ -137,5 +140,68 @@ export const propertyService = {
     await cacheSet(`utilitool:properties:id:${id}`, restored!, CACHE_TTL);
     await listAppend(`utilitool:properties:all:${userId}`, restored!);
     return restored!;
+  },
+
+  /**
+   * Record a physical meter reset for a SUBMETER entry on a property.
+   * Mirrors meterGroupService.recordReset(), but scoped to the property's
+   * own MeterGroupEntry version tracking (main meters stay on the meter group).
+   */
+  async recordMeterGroupReset(userId: string, propertyId: string, meterGroupId: string): Promise<Property> {
+    const property = await propertyRepository.getById(propertyId);
+    if (!property) {
+      throw new AppError(404, "Property not found");
+    }
+
+    const entryKey = Object.keys(property.meter_groups).find(
+      (key) => property.meter_groups[key].meter_group_id === meterGroupId
+    );
+    const entry = entryKey ? property.meter_groups[entryKey] : undefined;
+    if (!entry || !entryKey) {
+      throw new AppError(404, "This property is not associated with the given meter group");
+    }
+    if (entry.is_main_meter) {
+      throw new AppError(
+        400,
+        "This property is the main meter for this meter group. Record the reset on the meter group instead."
+      );
+    }
+
+    const latestReadingsResult = await readingRepository.search({
+      limit: 1,
+      orderBy: "reading_date",
+      orderDirection: "desc",
+      archived: false,
+      filters: {meter_group_id: meterGroupId, property_id: propertyId},
+    });
+
+    if (latestReadingsResult.data.length === 0) {
+      throw new AppError(422, "Cannot record reset: no readings found for this property's meter");
+    }
+
+    const latestReading = latestReadingsResult.data[0];
+    const currentVersion = entry.current_version ?? 1;
+
+    const updatedVersions: Record<string, MeterGroupVersionEntry> = {
+      ...(entry.versions ?? {}),
+      [String(currentVersion)]: {
+        reset_at: Timestamp.now(),
+        last_reading: latestReading.reading_amount,
+      },
+    };
+
+    const updatedEntry = {
+      ...entry,
+      current_version: currentVersion + 1,
+      versions: updatedVersions,
+    };
+
+    const cachedRepo = new CachedRepository(propertyRepository, userId, "properties", CACHE_TTL);
+    return cachedRepo.update(propertyId, {
+      meter_groups: {
+        ...property.meter_groups,
+        [entryKey]: updatedEntry,
+      },
+    } as Partial<Property>);
   },
 };

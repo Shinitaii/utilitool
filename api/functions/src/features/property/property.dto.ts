@@ -37,6 +37,12 @@ export const PropertyByIdParamsDTOSchema = z.object({
 });
 export type PropertyByIdParamsDTO = z.infer<typeof PropertyByIdParamsDTOSchema>;
 
+export const PropertyMeterGroupResetParamsDTOSchema = z.object({
+  id: z.string().trim().min(1),
+  meterGroupId: z.string().trim().min(1),
+});
+export type PropertyMeterGroupResetParamsDTO = z.infer<typeof PropertyMeterGroupResetParamsDTOSchema>;
+
 const UpdatePropertyBaseDTOSchema = z.object({
   room_name: z.string().trim().min(1).max(255).transform(stripHtml).optional(),
   tenant_amount: z.number().int().min(1).optional(),

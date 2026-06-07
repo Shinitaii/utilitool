@@ -11,6 +11,8 @@ import {readingRepository} from "./reading.repository";
 import {CachedRepository} from "../../lib/cached-repository.lib";
 import type {CreateReadingDTO} from "./reading.dto";
 import type {Reading} from "./reading.model";
+import type {MeterGroup} from "../meter-group/meter-group.model";
+import type {Property} from "../property/property.model";
 
 const CACHE_TTL = 10 * 60; // 10 minutes
 type ReadingCreatePayload = CreateReadingDTO & { meter_version: number };
@@ -113,6 +115,28 @@ export async function findCurrentMonthReading(
     id: doc.id,
     data: doc.data(),
   };
+}
+
+/**
+ * Resolve the meter_version that should be stamped on a new reading for the
+ * given property + meter group. Main-meter properties resolve from the meter
+ * group's scope (current_version is authoritative there). Submeter properties
+ * track their own version independently on their MeterGroupEntry.
+ */
+export function resolveMeterVersion(
+  property: Property | null | undefined,
+  meterGroupId: string,
+  meterGroup: MeterGroup | null | undefined
+): number {
+  const entry = property ?
+    Object.values(property.meter_groups).find((e) => e.meter_group_id === meterGroupId) :
+    undefined;
+
+  if (entry && !entry.is_main_meter) {
+    return entry.current_version ?? 1;
+  }
+
+  return meterGroup?.current_version ?? 1;
 }
 
 /**

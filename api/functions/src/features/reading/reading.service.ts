@@ -10,8 +10,9 @@ import {cacheSet, cacheDel} from "../../utils/cache.util";
 import {listRemove, listAppend} from "../../utils/list-cache.util";
 import {cascadeDeleteReading, cascadeRestoreReading} from "../../utils/cascade-delete.util";
 import {CachedRepository} from "../../lib/cached-repository.lib";
-import {createReadingWithAutoBilling, createBatchReadingsWithAutoBilling} from "./reading.util";
+import {createReadingWithAutoBilling, createBatchReadingsWithAutoBilling, resolveMeterVersion} from "./reading.util";
 import {propertyRepository} from "../property/property.repository";
+import {Property} from "../property/property.model";
 import {collectionRef} from "../../lib/firestore.lib";
 import {snapshotToModel} from "../../utils/firestore.util";
 import type {Query} from "firebase-admin/firestore";
@@ -50,7 +51,8 @@ export const readingService = {
     await validator.validateCreate(data);
 
     const meterGroup = await meterGroupRepository.getById(data.meter_group_id);
-    const meter_version = meterGroup!.current_version ?? 1;
+    const property = await propertyRepository.getById(data.property_id);
+    const meter_version = resolveMeterVersion(property, data.meter_group_id, meterGroup);
     await validator.validateAnomalous(
       data.meter_group_id,
       data.reading_amount,
@@ -80,8 +82,15 @@ export const readingService = {
     await validator.validateBatch(data);
 
     // Reject if any reading targets a main meter property — those are derived automatically
+    const propertyIds = [...new Set(data.map((r) => r.property_id))];
+    const propertyMap = new Map<string, Property>();
+    for (const propertyId of propertyIds) {
+      const property = await propertyRepository.getById(propertyId);
+      if (property) propertyMap.set(propertyId, property);
+    }
+
     for (const r of data) {
-      const property = await propertyRepository.getById(r.property_id);
+      const property = propertyMap.get(r.property_id);
       if (!property) continue;
       const entry = Object.values(property.meter_groups).find(
         (e) => e.meter_group_id === r.meter_group_id
@@ -104,7 +113,7 @@ export const readingService = {
 
     const readingsWithVersion: ReadingCreatePayload[] = data.map((r) => ({
       ...r,
-      meter_version: meterGroupMap.get(r.meter_group_id)?.current_version ?? 1,
+      meter_version: resolveMeterVersion(propertyMap.get(r.property_id), r.meter_group_id, meterGroupMap.get(r.meter_group_id)),
     }));
 
     // Validate ALL readings for anomalies before any writes

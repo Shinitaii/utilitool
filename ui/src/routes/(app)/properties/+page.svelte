@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getProperties, createProperty, updateProperty, softDeleteProperty } from '$lib/api/properties';
+  import { getProperties, createProperty, updateProperty, softDeleteProperty, recordPropertyMeterGroupReset } from '$lib/api/properties';
   import { getMeterGroups } from '$lib/api/meter-groups';
   import { getTenants } from '$lib/api/tenants';
   import { getReadings } from '$lib/api/readings';
@@ -11,12 +11,13 @@
   import type { Reading } from '$lib/types/reading.types';
   import type { Billing } from '$lib/types/billing.types';
   import type { PaginatedResult } from '$lib/types/api.types';
-  import { formatDate, formatCurrency, formatReading, getReadingUnit } from '$lib/utils/format';
+  import { formatDate, formatDateTime, formatCurrency, formatReading, getReadingUnit } from '$lib/utils/format';
   import { toDate } from '$lib/utils/timestamp';
+  import { getUtilityTypeBadgeClasses } from '$lib/utils/utility-colors';
   import EmptyState from '$lib/components/shared/EmptyState.svelte';
   import TableSkeleton from '$lib/components/shared/TableSkeleton.svelte';
   import EditModal from '$lib/components/shared/EditModal.svelte';
-  import { Plus, Archive } from 'lucide-svelte';
+  import { Plus, Archive, RotateCcw } from 'lucide-svelte';
   import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
   import SelectionToolbar from '$lib/components/shared/SelectionToolbar.svelte';
   import { createCrudStore } from '$lib/stores/crud.svelte';
@@ -51,6 +52,7 @@
   let billingsUtilityFilter = $state<'all' | 'electricity' | 'water'>('all');
   let showNewPropertyForm = $state(false);
   let isUpdating = $state(false);
+  let resettingMeterGroupId = $state<string | null>(null);
 
   let newPropertyForm = $state({
     room_name: '',
@@ -132,6 +134,22 @@
     const mainMeterId = getMainMeterPropertyForMeterGroup(meterGroupId);
     if (!mainMeterId) return null;
     return properties.data.find(p => p.id === mainMeterId)?.room_name || null;
+  }
+
+  async function handleRecordSubmeterReset(meterGroupId: string, currentVersion: number) {
+    if (!selectedProperty) return;
+    const meterGroupName = getMeterGroupName(meterGroupId);
+    const nextVersion = currentVersion + 1;
+    if (!confirm(`Record a meter reset for "${meterGroupName}" on "${selectedProperty.room_name}"?\n\nThis will start version ${nextVersion}. The server will use the latest recorded reading as the previous meter total.\n\nContinue?`)) return;
+    resettingMeterGroupId = meterGroupId;
+    try {
+      selectedProperty = await recordPropertyMeterGroupReset(selectedProperty.id, meterGroupId);
+      await loadProperties();
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to record meter reset';
+    } finally {
+      resettingMeterGroupId = null;
+    }
   }
 
   onMount(async () => {
@@ -817,10 +835,73 @@
                 {/if}
               </div>
             {:else if activeTab === 'history'}
+              {@const submeterEntries = Object.entries(selectedProperty.meter_groups).filter(
+                ([, entry]) => typeof entry !== 'string' && entry.is_main_meter === false
+              ) as [string, import('$lib/types/property.types').MeterGroupEntry][]}
               <div role="tabpanel" id="tab-panel-history" aria-labelledby="tab-history">
-                <div class="p-6">
-                  <EmptyState title="History" message="Property history coming soon" />
-                </div>
+                {#if submeterEntries.length === 0}
+                  <div class="p-6">
+                    <EmptyState title="No submeters" message="This property has no submeter-tracked meter groups" />
+                  </div>
+                {:else}
+                  <div class="space-y-6 p-6">
+                    {#each submeterEntries as [utilityType, entry] (entry.meter_group_id)}
+                      {@const meterGroup = electricityMeters.find(m => m.id === entry.meter_group_id) || waterMeters.find(m => m.id === entry.meter_group_id)}
+                      {@const versions = Object.entries(entry.versions ?? {}).sort(([a], [b]) => Number(a) - Number(b))}
+                      <div class="rounded border border-gray-200">
+                        <div class="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-4 py-3">
+                          <div class="flex items-center gap-2">
+                            <span class="font-medium text-gray-800">{getMeterGroupName(entry.meter_group_id)}</span>
+                            {#if meterGroup}
+                              <span class="rounded {getUtilityTypeBadgeClasses(meterGroup.utility_type)} px-2 py-1 text-xs font-medium capitalize">
+                                {meterGroup.utility_type}
+                              </span>
+                            {/if}
+                            <span class="text-sm text-gray-600">v{entry.current_version ?? 1}</span>
+                          </div>
+                          <button
+                            onclick={() => handleRecordSubmeterReset(entry.meter_group_id, entry.current_version ?? 1)}
+                            disabled={resettingMeterGroupId === entry.meter_group_id}
+                            class="flex items-center gap-1.5 px-3 py-1.5 rounded hover:bg-orange-100 text-orange-700 disabled:opacity-50 text-sm font-medium"
+                            title="Record submeter reset"
+                            aria-label="Record submeter reset"
+                          >
+                            <RotateCcw size={16} />
+                            Record Reset
+                          </button>
+                        </div>
+                        {#if versions.length === 0}
+                          <div class="p-4">
+                            <EmptyState title="No reset history" message="No resets have been recorded for this submeter" />
+                          </div>
+                        {:else}
+                          <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                              <thead class="border-b border-gray-200 bg-gray-50">
+                                <tr>
+                                  <th scope="col" class="px-4 py-2 text-left font-semibold text-gray-700">Version</th>
+                                  <th scope="col" class="px-4 py-2 text-left font-semibold text-gray-700">Reset At</th>
+                                  <th scope="col" class="px-4 py-2 text-left font-semibold text-gray-700">Last Reading</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {#each versions as [version, versionEntry] (version)}
+                                  <tr class="border-b border-gray-200 hover:bg-gray-50">
+                                    <td class="px-4 py-2 text-gray-700">v{version}</td>
+                                    <td class="px-4 py-2 text-gray-600">{formatDateTime(toDate(versionEntry.reset_at))}</td>
+                                    <td class="px-4 py-2 font-mono text-gray-700">
+                                      {meterGroup ? formatReading(versionEntry.last_reading, meterGroup.utility_type) : versionEntry.last_reading}
+                                    </td>
+                                  </tr>
+                                {/each}
+                              </tbody>
+                            </table>
+                          </div>
+                        {/if}
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
               </div>
             {/if}
           </div>

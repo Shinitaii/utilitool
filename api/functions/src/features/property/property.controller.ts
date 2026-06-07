@@ -6,6 +6,7 @@ import {
   CreatePropertyDTO,
   GetPropertiesQueryDTO,
   PropertyByIdParamsDTO,
+  PropertyMeterGroupResetParamsDTO,
   UpdatePropertyBatchDTO,
   UpdatePropertyDTO,
 } from "./property.dto";
@@ -124,6 +125,17 @@ export const restoreProperty = async (
   const userId = req.user?.userId;
   if (!userId) throw new AppError(401, "User not authenticated");
   const result = await propertyService.restore(userId, id);
+  res.status(200).json(result);
+};
+
+export const recordPropertyMeterGroupReset = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  const {id, meterGroupId} = req.params as unknown as PropertyMeterGroupResetParamsDTO;
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
+  const result = await propertyService.recordMeterGroupReset(userId, id, meterGroupId);
   res.status(200).json(result);
 };
 
