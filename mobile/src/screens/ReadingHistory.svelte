@@ -5,6 +5,7 @@
   import { getReadingUnit } from '../lib/utils/format';
   import { formatDate } from '../lib/utils/timestamp';
   import { sessionCache } from '../lib/stores/session';
+  import { getUtilityTypeBadgeClasses } from '../lib/utils/utility-colors';
   import BottomNav from '../components/BottomNav.svelte';
 
   let readings: Reading[] = $state([]);
@@ -93,10 +94,12 @@
       {#each [['all', 'All'], ['electricity', 'Electricity'], ['water', 'Water']] as [value, label]}
         <button
           onclick={() => { utilityFilter = value as typeof utilityFilter; }}
-          class="px-3 py-1 rounded-full text-sm font-semibold border transition"
+          class="px-3 py-1 rounded-full text-sm font-semibold border transition {value !== 'all' && utilityFilter !== value ? getUtilityTypeBadgeClasses(value) : ''}"
           style={utilityFilter === value
             ? 'background-color: var(--color-accent); color: white; border-color: var(--color-accent)'
-            : 'background-color: transparent; color: var(--color-text-secondary); border-color: var(--color-border)'}
+            : value === 'all'
+              ? 'background-color: transparent; color: var(--color-text-secondary); border-color: var(--color-border)'
+              : 'border-color: var(--color-border)'}
         >
           {label}
         </button>

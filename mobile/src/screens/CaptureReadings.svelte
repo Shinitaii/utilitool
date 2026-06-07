@@ -4,6 +4,7 @@
   import { listProperties, type Property } from '../lib/api/properties';
   import { createReadingsBatch, type CreateReadingRequest } from '../lib/api/readings';
   import { getReadingUnit } from '../lib/utils/format';
+  import { getUtilityTypeBadgeClasses } from '../lib/utils/utility-colors';
   import { sessionCache } from '../lib/stores/session';
   import BottomNav from '../components/BottomNav.svelte';
 
@@ -181,6 +182,11 @@
             </option>
           {/each}
         </select>
+        {#if selectedMeterGroup}
+          <span class="inline-block mt-2 rounded-full px-2 py-0.5 text-xs font-medium capitalize {getUtilityTypeBadgeClasses(selectedMeterGroup.utility_type)}">
+            {selectedMeterGroup.utility_type}
+          </span>
+        {/if}
       </div>
 
       <div>

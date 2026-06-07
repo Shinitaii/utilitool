@@ -5,6 +5,7 @@
   import type { PaginatedResult } from '$lib/types/api.types';
   import { formatDate } from '$lib/utils/format';
   import { toDate } from '$lib/utils/timestamp';
+  import { getUtilityTypeBadgeClasses } from '$lib/utils/utility-colors';
   import EmptyState from '$lib/components/shared/EmptyState.svelte';
   import EditModal from '$lib/components/shared/EditModal.svelte';
   import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
@@ -220,7 +221,7 @@
               </td>
               <td class="px-6 py-4">{item.meter_name}</td>
               <td class="px-6 py-4">
-                <span class="rounded bg-gray-100 px-2 py-1 text-xs font-medium capitalize">
+                <span class="rounded {getUtilityTypeBadgeClasses(item.utility_type)} px-2 py-1 text-xs font-medium capitalize">
                   {item.utility_type}
                 </span>
               </td>
