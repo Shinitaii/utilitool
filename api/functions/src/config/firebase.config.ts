@@ -1,6 +1,12 @@
 import * as admin from "firebase-admin";
 import * as fs from "node:fs";
 
+// Side-effect import: env.config calls dotenv.config() to load secrets/.env.<APP_ENV>
+// (e.g. FIRESTORE_EMULATOR_HOST, PROJECT_ID for `test`). Without this import, files that
+// reach firebase.config without first importing env.config (e.g. test suites importing
+// repositories directly) would read process.env before the secrets file is loaded.
+import "./env.config";
+
 // When the Firestore emulator host is set (test / dev:emulator), the Admin SDK talks to
 // the local emulators and does NOT need a real service-account credential — initialize
 // with the project id only. Otherwise use the service-account key file.

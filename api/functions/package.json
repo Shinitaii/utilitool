@@ -9,6 +9,7 @@
     "dev:watch": "cross-env START_LOCAL_SERVER=true NODE_ENV=development ts-node-dev --respawn --transpile-only src/index.ts",
     "dev:emulator": "cross-env START_LOCAL_SERVER=true NODE_ENV=development APP_ENV=test ts-node-dev --respawn --transpile-only src/index.ts",
     "serve": "npm run build && firebase emulators:start --only functions",
+    "test:emulator": "cd .. && firebase emulators:start --project utilitool-test --only firestore,auth",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
