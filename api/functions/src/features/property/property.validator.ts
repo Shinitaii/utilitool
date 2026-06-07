@@ -1,5 +1,6 @@
 import {AppError} from "../../utils/error.util";
 import {logger} from "../../utils/logger.util";
+import {fetchAllPages} from "../../utils/list-cache.util";
 import {meterGroupRepository} from "../meter-group/meter-group.repository";
 import {tenantRepository} from "../tenant/tenant.repository";
 import {propertyRepository} from "./property.repository";
@@ -29,21 +30,14 @@ export class PropertyValidator {
   }
 
   private async countTenantsForProperty(propertyId: string): Promise<number> {
-    let cursor: string | null = null;
-    let total = 0;
+    const tenants = await fetchAllPages((cursor) => tenantRepository.search({
+      limit: 1000,
+      orderBy: "created_at",
+      cursor,
+      filters: {property_id: propertyId},
+    }));
 
-    do {
-      const {data, hasMore, nextCursor} = await tenantRepository.search({
-        limit: 1000,
-        orderBy: "created_at",
-        cursor,
-        filters: {property_id: propertyId},
-      });
-      total += data.length;
-      cursor = hasMore ? nextCursor : null;
-    } while (cursor);
-
-    return total;
+    return tenants.length;
   }
 
   private async ensureMeterGroupsExist(meterGroupIds: string[]): Promise<void> {
@@ -65,17 +59,11 @@ export class PropertyValidator {
     if (mainMeterEntries.length === 0) return;
 
     // Fetch all properties with cursor-based pagination to avoid the 100-item hard limit
-    const allProperties: Property[] = [];
-    let cursor: string | null = null;
-    do {
-      const {data, hasMore, nextCursor} = await propertyRepository.search({
-        limit: 1000,
-        orderBy: "created_at",
-        cursor,
-      });
-      allProperties.push(...data);
-      cursor = hasMore ? nextCursor : null;
-    } while (cursor);
+    const allProperties = await fetchAllPages((cursor) => propertyRepository.search({
+      limit: 1000,
+      orderBy: "created_at",
+      cursor,
+    }));
 
     for (const entry of mainMeterEntries) {
       const conflict = allProperties.find((p) => {

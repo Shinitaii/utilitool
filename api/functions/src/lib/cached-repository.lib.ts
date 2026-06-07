@@ -2,7 +2,7 @@ import type {BaseModel, WithoutBaseModel} from "../utils/model.util";
 import type {PaginatedResult} from "../utils/pagination.util";
 import type {Repository, SearchOptions} from "./repository.lib";
 import {cacheGet, cacheSet, cacheDel, cacheDelPattern} from "../utils/cache.util";
-import {loadAll, listAppend, listUpdate, listRemove, paginate} from "../utils/list-cache.util";
+import {loadAll, listAppend, listUpdate, listRemove, paginate, fetchAllPages} from "../utils/list-cache.util";
 
 /**
  * CachedRepository wraps Repository<T> with a two-tier caching strategy:
@@ -93,25 +93,14 @@ export class CachedRepository<T extends BaseModel> {
   async searchAll(options: Omit<SearchOptions<T>, "limit" | "cursor">): Promise<T[]> {
     // Archive queries go direct to Firestore
     if (options.archived) {
-      const allItems: T[] = [];
-      let cursor: string | undefined;
-
-      while (true) {
-        const result = await this.repo.search({
-          limit: 1000,
-          orderBy: options.orderBy,
-          orderDirection: options.orderDirection,
-          cursor,
-          archived: true,
-          filters: options.filters,
-        });
-
-        allItems.push(...result.data);
-        if (!result.hasMore || !result.nextCursor) break;
-        cursor = result.nextCursor;
-      }
-
-      return allItems;
+      return fetchAllPages((cursor) => this.repo.search({
+        limit: 1000,
+        orderBy: options.orderBy,
+        orderDirection: options.orderDirection,
+        cursor,
+        archived: true,
+        filters: options.filters,
+      }));
     }
 
     // Load all active items from cache

@@ -10,28 +10,49 @@ export interface PaginateOptions {
   cursor?: string | null | undefined;
 }
 
-async function loadAllFromFirestore<T extends BaseModel>(
+// Safety bound for unbounded "load everything" pagination loops below: at 1000
+// items/page, this caps a single load at 200k items. If a Firestore response
+// ever misreports `hasMore`/`nextCursor` (bug, bad cursor, schema drift), these
+// loops would otherwise run forever and OOM the Cloud Function — abort instead.
+const MAX_LOAD_ALL_PAGES = 200;
+
+export async function fetchAllPages<T extends BaseModel>(
   fetchFn: (cursor?: string) => Promise<PaginatedResult<T>>
 ): Promise<T[]> {
   const allItems: T[] = [];
   let cursor: string | undefined;
+  let pages = 0;
 
-  try {
-    while (true) {
-      const result = await fetchFn(cursor);
-      allItems.push(...result.data);
+  while (true) {
+    const result = await fetchFn(cursor);
+    allItems.push(...result.data);
+    pages++;
 
-      if (!result.hasMore || !result.nextCursor) {
-        break;
-      }
-      cursor = result.nextCursor;
+    if (!result.hasMore || !result.nextCursor) {
+      break;
     }
+    if (pages >= MAX_LOAD_ALL_PAGES) {
+      throw new Error(
+        `Pagination exceeded ${MAX_LOAD_ALL_PAGES} pages (${allItems.length} items) without ` +
+        "reporting hasMore=false — aborting to prevent unbounded memory growth. " +
+        "This likely indicates a bad cursor or a misreported hasMore from the data source."
+      );
+    }
+    cursor = result.nextCursor;
+  }
+
+  return allItems;
+}
+
+async function loadAllFromFirestore<T extends BaseModel>(
+  fetchFn: (cursor?: string) => Promise<PaginatedResult<T>>
+): Promise<T[]> {
+  try {
+    return await fetchAllPages(fetchFn);
   } catch (err) {
     logger.error({err}, "Failed to load all items from Firestore");
     throw err;
   }
-
-  return allItems;
 }
 
 export async function loadAll<T extends BaseModel>(
