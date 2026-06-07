@@ -7,7 +7,7 @@
   import { getMeterGroups } from '$lib/api/meter-groups';
   import { authStore, type AuthState } from '$lib/stores/auth.svelte';
   import type { BillingCycle } from '$lib/types/billing-cycle.types';
-  import type { Billing, CreateBillingRequest, UpdateBillingRequest } from '$lib/types/billing.types';
+  import type { Billing, UpdateBillingRequest } from '$lib/types/billing.types';
   import type { Reading } from '$lib/types/reading.types';
   import type { Property } from '$lib/types/property.types';
   import type { MeterGroup } from '$lib/types/meter-group.types';
@@ -38,17 +38,15 @@
   let error = $state('');
   let expandedCycleId = $state<string | null>(null);
 
-  let createFormOpen = $state(false);
-
   // Billing cycle form state
   let cycleFormOpen = $state(false);
-  let cycleFormTab = $state<'manual' | 'auto'>('auto');
   let cycleFormMeterGroup = $state('');
   let cycleFormStartDate = $state('');
   let cycleFormEndDate = $state('');
   let cycleFormDueDate = $state('');
   let cycleFormRate = $state(0);
   let cycleFormDiscoveredBillings = $state<DiscoveredBilling[]>([]);
+  let cycleFormGapProperties = $state<GapProperty[]>([]);
   let cycleFormTotalConsumption = $state(0);
   let cycleFormTotalAmount = $state(0);
   let cycleFormLastChanged = $state<'consumption' | 'rate' | 'total' | null>(null);
@@ -69,15 +67,17 @@
     amount: number;
   }
 
-  let createFormData = $state<CreateBillingRequest>({
-    property_id: '',
-    previous_reading_id: '',
-    current_reading_id: ''
-  });
-  let meterGroupFilter = $state('');
+  // A "gap" property has readings for the period but no billing yet — filled in inline
+  // alongside discovery results instead of through a separate manual-billing form.
+  interface GapProperty {
+    propertyId: string;
+    propertyName: string;
+    availableReadings: Reading[];
+    selectedPrevReadingId: string;
+    selectedCurrReadingId: string;
+  }
 
   let isUpdating = $state(false);
-  let isCreating = $state(false);
   let markingAsPaidId = $state<string | null>(null);
   let selectedCyclesForPrint = $state<string[]>([]);
 
@@ -85,24 +85,6 @@
 
   // Round to 2 decimal places to avoid floating-point precision errors
   const round = (value: number, decimals = 2) => Math.round(value * Math.pow(10, decimals)) / Math.pow(10, decimals);
-
-  // Filter readings for manual billing form based on selected property's meter groups
-  const manualBillingReadings = $derived.by(() => {
-    if (!readings || !meterGroupFilter || !createFormData.property_id) return [];
-
-    const usedReadingIds = new Set<string>();
-    for (const billing of allBillings) {
-      usedReadingIds.add(billing.previous_reading_id);
-      usedReadingIds.add(billing.current_reading_id);
-    }
-
-    return readings.filter(
-      (r) =>
-        r.meter_group_id === meterGroupFilter &&
-        r.property_id === createFormData.property_id &&
-        !usedReadingIds.has(r.id)
-    );
-  });
 
   const billingCycleReadings = $derived.by(() => {
     if (!readings || !cycleFormMeterGroup || !cycleFormEndDate) return [];
@@ -216,25 +198,6 @@
     }
   }
 
-  async function handleCreate(e: SubmitEvent) {
-    e.preventDefault();
-    isCreating = true;
-    try {
-      await createBilling(createFormData);
-      createFormOpen = false;
-      createFormData = {
-        property_id: '',
-        previous_reading_id: '',
-        current_reading_id: ''
-      };
-      await loadData();
-    } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to create billing';
-    } finally {
-      isCreating = false;
-    }
-  }
-
   function openEditModal(billing: Billing) {
     crud.openEditModal(billing, {
       property_id: billing.property_id,
@@ -335,9 +298,38 @@
     });
   }
 
-  function handleDiscoverBillings() {
+  function discoverGapProperties(): GapProperty[] {
+    if (!cycleFormMeterGroup || !cycleFormEndDate) return [];
+
+    const usedReadingIds = new Set<string>();
+    for (const billing of allBillings) {
+      usedReadingIds.add(billing.previous_reading_id);
+      usedReadingIds.add(billing.current_reading_id);
+    }
+
+    const discoveredPropertyIds = new Set(discoverBillings().map((d) => d.propertyId));
+
+    return properties
+      .filter((property) =>
+        !discoveredPropertyIds.has(property.id) &&
+        Object.values(property.meter_groups ?? {}).some((entry: any) => entry?.meter_group_id === cycleFormMeterGroup)
+      )
+      .map((property) => ({
+        propertyId: property.id,
+        propertyName: property.room_name,
+        availableReadings: readings.filter(
+          (r) => r.meter_group_id === cycleFormMeterGroup && r.property_id === property.id && !usedReadingIds.has(r.id)
+        ),
+        selectedPrevReadingId: '',
+        selectedCurrReadingId: '',
+      }))
+      .filter((g) => g.availableReadings.length >= 2);
+  }
+
+  function runDiscovery() {
     error = '';
     cycleFormDiscoveredBillings = discoverBillings();
+    cycleFormGapProperties = discoverGapProperties();
   }
 
   function resetCycleForm() {
@@ -347,6 +339,7 @@
     cycleFormDueDate = '';
     cycleFormRate = 0;
     cycleFormDiscoveredBillings = [];
+    cycleFormGapProperties = [];
     cycleFormTotalConsumption = 0;
     cycleFormTotalAmount = 0;
     cycleFormLastChanged = null;
@@ -441,7 +434,8 @@
 
   async function handleCreateCycle() {
     const discovered = discoverBillings();
-    if (discovered.length === 0) {
+    const gapsToFill = cycleFormGapProperties.filter((g) => g.selectedPrevReadingId && g.selectedCurrReadingId);
+    if (discovered.length === 0 && gapsToFill.length === 0) {
       error = 'No billings found for this period';
       return;
     }
@@ -459,6 +453,21 @@
       const billing_ids: Record<string, number> = {};
       for (const d of discovered) {
         billing_ids[d.billingId] = d.consumption;
+      }
+
+      // Gap-fill billings don't exist yet — create them first, then fold their
+      // consumption into the same billing_ids map the cycle expects.
+      for (const gap of gapsToFill) {
+        const prevReading = readings.find((r) => r.id === gap.selectedPrevReadingId);
+        const currReading = readings.find((r) => r.id === gap.selectedCurrReadingId);
+        if (!prevReading || !currReading) continue;
+
+        const newBilling = await createBilling({
+          property_id: gap.propertyId,
+          previous_reading_id: gap.selectedPrevReadingId,
+          current_reading_id: gap.selectedCurrReadingId,
+        });
+        billing_ids[newBilling.id] = round(currReading.reading_amount - prevReading.reading_amount);
       }
 
       const totalConsumption = cycleFormTotalConsumption;
@@ -755,30 +764,9 @@
   {#if cycleFormOpen}
     <div class="rounded-lg border border-gray-200 bg-white p-6">
       <h2 class="font-semibold">New Billing Cycle</h2>
-
-      <!-- Tabs -->
-      <div class="mt-4 flex border-b border-gray-200">
-        <button
-          onclick={() => { cycleFormTab = 'manual'; resetCycleForm(); cycleFormTab = 'manual'; }}
-          class="px-4 py-2 font-medium text-sm border-b-2"
-          class:border-blue-500={cycleFormTab === 'manual'}
-          class:border-transparent={cycleFormTab !== 'manual'}
-          class:text-blue-600={cycleFormTab === 'manual'}
-          class:text-gray-600={cycleFormTab !== 'manual'}
-        >
-          Manual
-        </button>
-        <button
-          onclick={() => { cycleFormTab = 'auto'; resetCycleForm(); autoCalculateCycleDates(); cycleFormTab = 'auto'; }}
-          class="px-4 py-2 font-medium text-sm border-b-2"
-          class:border-blue-500={cycleFormTab === 'auto'}
-          class:border-transparent={cycleFormTab !== 'auto'}
-          class:text-blue-600={cycleFormTab === 'auto'}
-          class:text-gray-600={cycleFormTab !== 'auto'}
-        >
-          Automated
-        </button>
-      </div>
+      <p class="mt-1 text-sm text-gray-500">
+        Select a meter group and end date — billings for the period are discovered automatically.
+      </p>
 
       <!-- Bill Photo OCR -->
       <div class="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-2">
@@ -815,8 +803,8 @@
             id="cycle-meter-group"
             bind:value={cycleFormMeterGroup}
             onchange={() => {
-              if (cycleFormTab === 'auto') autoCalculateCycleDates();
-              if (cycleFormEndDate) handleDiscoverBillings();
+              autoCalculateCycleDates();
+              if (cycleFormEndDate) runDiscovery();
             }}
             class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
           >
@@ -856,6 +844,9 @@
             id="cycle-end-date"
             type="date"
             bind:value={cycleFormEndDate}
+            onchange={() => {
+              if (cycleFormMeterGroup) runDiscovery();
+            }}
             class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
           />
         </div>
@@ -914,17 +905,6 @@
             </div>
           </div>
         </div>
-
-      <div class="mt-4">
-        <button
-          type="button"
-          onclick={handleDiscoverBillings}
-          disabled={!cycleFormMeterGroup || !cycleFormEndDate}
-          class="rounded px-4 py-2 border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 font-medium disabled:opacity-50"
-        >
-          Discover Billings
-        </button>
-      </div>
 
       {#if cycleFormDiscoveredBillings.length > 0}
         <!-- Consumption Breakdown -->
@@ -1004,15 +984,52 @@
         </div>
       {:else if cycleFormMeterGroup && cycleFormEndDate}
         <p class="mt-4 text-sm text-gray-500">
-          Click "Discover Billings" to find billings matching this meter group and end month.
+          No billings found yet for this meter group and end month.
         </p>
+      {/if}
+
+      {#if cycleFormGapProperties.length > 0}
+        <!-- Gap-fill: properties with readings for the period but no billing yet -->
+        <div class="mt-6">
+          <h3 class="text-sm font-semibold text-gray-700 mb-1">Properties Without Billings</h3>
+          <p class="text-xs text-gray-500 mb-3">
+            These properties have readings for this period but no billing yet. Pick a previous and current reading to include them in this cycle.
+          </p>
+          <div class="space-y-3">
+            {#each cycleFormGapProperties as gap, gapIndex (gap.propertyId)}
+              <div class="rounded border border-gray-200 p-3">
+                <div class="mb-2 font-medium text-gray-900">{gap.propertyName}</div>
+                <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <select
+                    class="rounded border border-gray-300 px-3 py-2"
+                    bind:value={cycleFormGapProperties[gapIndex].selectedPrevReadingId}
+                  >
+                    <option value="">Select previous reading</option>
+                    {#each gap.availableReadings as reading (reading.id)}
+                      <option value={reading.id}>{formatReading(reading.reading_amount, cycleFormUtilityType)} - {formatDate(toDate(reading.reading_date))}</option>
+                    {/each}
+                  </select>
+                  <select
+                    class="rounded border border-gray-300 px-3 py-2"
+                    bind:value={cycleFormGapProperties[gapIndex].selectedCurrReadingId}
+                  >
+                    <option value="">Select current reading</option>
+                    {#each gap.availableReadings as reading (reading.id)}
+                      <option value={reading.id}>{formatReading(reading.reading_amount, cycleFormUtilityType)} - {formatDate(toDate(reading.reading_date))}</option>
+                    {/each}
+                  </select>
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
       {/if}
 
       <div class="mt-6 flex space-x-2">
         <button
           type="button"
           onclick={handleCreateCycle}
-          disabled={isCreatingCycle || cycleFormDiscoveredBillings.length === 0}
+          disabled={isCreatingCycle || (cycleFormDiscoveredBillings.length === 0 && !cycleFormGapProperties.some((g) => g.selectedPrevReadingId && g.selectedCurrReadingId))}
           class="rounded px-4 py-2 text-white font-medium disabled:opacity-50"
           style="background-color: var(--color-accent)"
         >
@@ -1030,103 +1047,6 @@
         </button>
       </div>
 
-      <!-- Manual Billing (Advanced) Tab -->
-      <details class="mt-6 rounded-lg border border-gray-200 bg-white">
-        <summary class="px-6 py-4 cursor-pointer font-medium text-sm text-gray-500">
-          Manual Billing (Advanced)
-        </summary>
-        <div class="px-6 pb-6">
-          <form onsubmit={handleCreate} class="space-y-4">
-            <div>
-              <label for="meter-group-filter" class="block text-sm font-medium text-gray-700">Meter Group</label>
-              <select
-                id="meter-group-filter"
-                bind:value={meterGroupFilter}
-                onchange={() => {
-                  createFormData.property_id = '';
-                  createFormData.previous_reading_id = '';
-                  createFormData.current_reading_id = '';
-                }}
-                class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
-              >
-                <option value="">Select a meter group</option>
-                {#each meterGroups as mg (mg.id)}
-                  <option value={mg.id}>{mg.meter_name} ({mg.utility_type})</option>
-                {/each}
-              </select>
-            </div>
-            <div>
-              <label for="property-id" class="block text-sm font-medium text-gray-700">Property</label>
-              <select
-                id="property-id"
-                bind:value={createFormData.property_id}
-                required
-                disabled={!meterGroupFilter}
-                class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
-              >
-                <option value="">Select a property</option>
-                {#each properties.filter((prop) =>
-                  !meterGroupFilter || Object.values(prop.meter_groups ?? {}).some((entry: any) => entry?.meter_group_id === meterGroupFilter)
-                ) as prop (prop.id)}
-                  <option value={prop.id}>{prop.room_name}</option>
-                {/each}
-              </select>
-            </div>
-            <div>
-              <label for="previous-reading" class="block text-sm font-medium text-gray-700">Previous Reading</label>
-              <select
-                id="previous-reading"
-                bind:value={createFormData.previous_reading_id}
-                required
-                disabled={!meterGroupFilter || !createFormData.property_id}
-                class="mt-1 block w-full rounded border border-gray-300 px-3 py-2 disabled:opacity-50"
-              >
-                <option value="">Select previous reading</option>
-                {#each manualBillingReadings as reading (reading.id)}
-                  <option value={reading.id}>
-                    {formatReading(reading.reading_amount, meterGroups.find(m => m.id === reading.meter_group_id)?.utility_type || 'electricity')} - {formatDate(toDate(reading.reading_date))}
-                  </option>
-                {/each}
-              </select>
-            </div>
-            <div>
-              <label for="current-reading" class="block text-sm font-medium text-gray-700">Current Reading</label>
-              <select
-                id="current-reading"
-                bind:value={createFormData.current_reading_id}
-                required
-                disabled={!meterGroupFilter || !createFormData.property_id}
-                class="mt-1 block w-full rounded border border-gray-300 px-3 py-2 disabled:opacity-50"
-              >
-                <option value="">Select current reading</option>
-                {#each manualBillingReadings as reading (reading.id)}
-                  <option value={reading.id}>
-                    {formatReading(reading.reading_amount, meterGroups.find(m => m.id === reading.meter_group_id)?.utility_type || 'electricity')} - {formatDate(toDate(reading.reading_date))}
-                  </option>
-                {/each}
-              </select>
-            </div>
-            <div class="flex space-x-2">
-              <button
-                type="submit"
-                disabled={isCreating}
-                class="rounded px-4 py-2 text-white font-medium disabled:opacity-50"
-                style="background-color: var(--color-accent)"
-              >
-                {isCreating ? 'Creating...' : 'Create'}
-              </button>
-              <button
-                type="button"
-                disabled={isCreating}
-                onclick={() => (createFormOpen = false)}
-                class="rounded px-4 py-2 border border-gray-300 bg-white text-gray-700 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </div>
-      </details>
     </div>
   {/if}
 
