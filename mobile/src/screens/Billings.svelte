@@ -1,20 +1,38 @@
 <script lang="ts">
+  import { listBillingCycles, type BillingCycle } from '../lib/api/billing-cycles';
   import { listBillings, updateBillingStatus, type Billing } from '../lib/api/billings';
+  import { listMeterGroups, type MeterGroup } from '../lib/api/meter-groups';
   import { listProperties } from '../lib/api/properties';
   import { formatDate } from '../lib/utils/timestamp';
+  import { getStatusSummary } from '../lib/utils/billing-cycle.util';
   import { sessionCache } from '../lib/stores/session';
   import BottomNav from '../components/BottomNav.svelte';
 
-  let billings: Billing[] = $state([]);
+  let cycles: BillingCycle[] = $state([]);
   let propertyNames: Record<string, string> = $state({});
+  let meterGroups: MeterGroup[] = $state([]);
   let isLoading = $state(true);
   let error: string | null = $state(null);
-  let expandedBillings: Set<string> = $state(new Set());
+  let expandedCycleId: string | null = $state(null);
+  let billingMap = $state<Map<string, Billing>>(new Map());
 
   $effect(async () => {
     try {
-      const res = await listBillings();
-      billings = res.data || [];
+      isLoading = true;
+      error = null;
+
+      const [cyclesRes, billingsRes, meterGroupsRes] = await Promise.all([
+        listBillingCycles({ limit: 50 }),
+        listBillings(),
+        listMeterGroups()
+      ]);
+
+      cycles = cyclesRes.data || [];
+      billingMap = new Map((billingsRes.data || []).map(b => [b.id, b]));
+
+      if (meterGroupsRes.data) {
+        meterGroups = meterGroupsRes.data;
+      }
 
       // Fetch property names from cache or API
       let properties = sessionCache.getProperties();
@@ -27,8 +45,17 @@
       const names: Record<string, string> = {};
       const propertyMap = new Map(properties.map(p => [p.id, p.room_name]));
 
-      const propertyIds = new Set(billings.map(b => b.property_id));
-      for (const propId of propertyIds) {
+      const allPropertyIds = new Set<string>();
+      cycles.forEach(cycle => {
+        Object.keys(cycle.billing_ids).forEach(billingId => {
+          const billing = billingMap.get(billingId);
+          if (billing) {
+            allPropertyIds.add(billing.property_id);
+          }
+        });
+      });
+
+      for (const propId of allPropertyIds) {
         names[propId] = propertyMap.get(propId) || `Property ${propId.slice(0, 6)}`;
       }
 
@@ -40,13 +67,26 @@
     }
   });
 
-  function toggleBilling(id: string) {
-    if (expandedBillings.has(id)) {
-      expandedBillings.delete(id);
-    } else {
-      expandedBillings.add(id);
+  function toggleCycleExpand(cycleId: string) {
+    expandedCycleId = expandedCycleId === cycleId ? null : cycleId;
+  }
+
+  function getMeterGroupName(meterGroupId: string): string {
+    return meterGroups.find(m => m.id === meterGroupId)?.meter_name || 'Unknown';
+  }
+
+  async function markAsPaid(billingId: string) {
+    try {
+      error = null;
+      await updateBillingStatus(billingId, 'paid');
+      const billing = billingMap.get(billingId);
+      if (billing) {
+        billing.payment_status = 'paid';
+        billingMap = billingMap;
+      }
+    } catch (e: any) {
+      error = e.message || 'Failed to update billing status';
     }
-    expandedBillings = expandedBillings;
   }
 
   function getStatusColor(status: string): string {
@@ -71,40 +111,29 @@
     }
   }
 
-  async function markAsPaid(billingId: string) {
-    try {
-      error = null;
-      await updateBillingStatus(billingId, 'paid');
-      // Update local state
-      const billing = billings.find(b => b.id === billingId);
-      if (billing) {
-        billing.payment_status = 'paid';
+  let groupedCycles = $derived.by(() => {
+    const grouped = new Map<string, BillingCycle[]>();
+    cycles.forEach(cycle => {
+      const key = cycle.meter_group_id;
+      if (!grouped.has(key)) {
+        grouped.set(key, []);
       }
-    } catch (e: any) {
-      error = e.message || 'Failed to update billing status';
-    }
-  }
-
-
-  let groupedBillings = $derived.by(() => {
-    const grouped = {
-      pending: [] as Billing[],
-      overdue: [] as Billing[],
-      paid: [] as Billing[]
-    };
-
-    billings.forEach(b => {
-      if (b.payment_status === 'paid') {
-        grouped.paid.push(b);
-      } else if (b.payment_status === 'overdue') {
-        grouped.overdue.push(b);
-      } else {
-        grouped.pending.push(b);
-      }
+      grouped.get(key)!.push(cycle);
     });
-
-    return grouped;
+    return Array.from(grouped.entries()).map(([mgId, cycleList]) => ({
+      meterGroupId: mgId,
+      meterGroupName: getMeterGroupName(mgId),
+      cycles: cycleList
+    }));
   });
+
+  function getCycleBillings(cycleId: string): Billing[] {
+    const cycle = cycles.find(c => c.id === cycleId);
+    if (!cycle) return [];
+    return Object.keys(cycle.billing_ids)
+      .map(billingId => billingMap.get(billingId))
+      .filter((b): b is Billing => !!b);
+  }
 </script>
 
 <div class="min-h-screen pb-20" style="background-color: var(--color-bg-primary)">
@@ -120,132 +149,97 @@
 
   {#if isLoading}
     <div class="p-4 text-center py-8" style="color: var(--color-text-secondary)">Loading...</div>
-  {:else if billings.length === 0}
-    <div class="p-4 text-center py-8" style="color: var(--color-text-secondary)">No billings found</div>
+  {:else if cycles.length === 0}
+    <div class="p-4 text-center py-8" style="color: var(--color-text-secondary)">No billing cycles found</div>
   {:else}
     <div class="p-4 space-y-4">
-      <!-- Overdue Section -->
-      {#if groupedBillings.overdue.length > 0}
+      {#each groupedCycles as group (group.meterGroupId)}
         <div>
-          <h3 class="text-sm font-semibold mb-2" style="color: var(--color-status-alert)">
-            ⚠ Overdue ({groupedBillings.overdue.length})
-          </h3>
+          <h2 class="text-sm font-semibold mb-2" style="color: var(--color-text-secondary)">
+            {group.meterGroupName}
+          </h2>
           <div class="space-y-2">
-            {#each groupedBillings.overdue as billing (billing.id)}
+            {#each group.cycles as cycle (cycle.id)}
+              {@const billings = getCycleBillings(cycle.id)}
+              {@const statusSummary = getStatusSummary(cycle, billingMap)}
               <div
                 role="button"
                 tabindex="0"
-                onclick={() => toggleBilling(billing.id)}
-                onkeydown={(e) => e.key === 'Enter' && toggleBilling(billing.id)}
+                onclick={() => toggleCycleExpand(cycle.id)}
+                onkeydown={(e) => e.key === 'Enter' && toggleCycleExpand(cycle.id)}
                 class="card-base w-full p-4 text-left transition cursor-pointer"
               >
                 <div class="flex justify-between items-start mb-2">
                   <h4 class="font-semibold" style="color: var(--color-text-primary)">
-                    {propertyNames[billing.property_id] || 'Loading...'}
+                    {new Date(cycle.billing_start_date).toLocaleDateString()} – {new Date(cycle.billing_end_date).toLocaleDateString()}
                   </h4>
-                  <span class="text-lg font-bold" style="color: var(--color-accent)">{billing.current_reading_amount}</span>
-                </div>
-                <div class="flex items-center justify-between">
-                  <p class="text-xs" style="color: var(--color-text-tertiary)">Created: {formatDate(billing.created_at)}</p>
-                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full border" style={getStatusColor('overdue')}>{getStatusLabel('overdue')}</span>
+                  <span class="text-xs font-semibold text-gray-600">{billings.length} billing(s)</span>
                 </div>
 
-                {#if expandedBillings.has(billing.id)}
+                <div class="space-y-1 mb-2">
+                  <div class="text-xs" style="color: var(--color-text-tertiary)">
+                    Rate: ₱{cycle.billing_rate.toFixed(2)} | Consumption: {cycle.billing_consumption.toLocaleString()}
+                  </div>
+                  {#if cycle.overdue_date}
+                    <div class="text-xs" style="color: var(--color-status-alert)">
+                      Due: {formatDate(cycle.overdue_date)}
+                    </div>
+                  {/if}
+                </div>
+
+                <!-- Status Summary Badges -->
+                <div class="flex gap-2 flex-wrap">
+                  {#if statusSummary.overdue > 0}
+                    <span class="text-xs font-semibold px-2 py-0.5 rounded-full border" style={getStatusColor('overdue')}>
+                      ⚠ {statusSummary.overdue} overdue
+                    </span>
+                  {/if}
+                  {#if statusSummary.pending > 0}
+                    <span class="text-xs font-semibold px-2 py-0.5 rounded-full border" style={getStatusColor('pending')}>
+                      ⏳ {statusSummary.pending} pending
+                    </span>
+                  {/if}
+                  {#if statusSummary.paid > 0}
+                    <span class="text-xs font-semibold px-2 py-0.5 rounded-full border" style={getStatusColor('paid')}>
+                      ✓ {statusSummary.paid} paid
+                    </span>
+                  {/if}
+                </div>
+
+                <!-- Expanded Billings List -->
+                {#if expandedCycleId === cycle.id}
                   <div class="mt-3 pt-3 border-t space-y-2" style="border-color: var(--color-border)">
-                    <button
-                      onclick={(e) => {
-                        e.stopPropagation();
-                        markAsPaid(billing.id);
-                      }}
-                      class="w-full px-3 py-2 rounded text-sm font-semibold"
-                      style="background-color: var(--color-status-good); color: white"
-                    >
-                      Mark as Paid
-                    </button>
+                    {#each billings as billing (billing.id)}
+                      <div class="flex justify-between items-center p-2 rounded" style="background-color: var(--color-bg-secondary)">
+                        <div>
+                          <div class="text-sm font-medium" style="color: var(--color-text-primary)">
+                            {propertyNames[billing.property_id] || 'Loading...'}
+                          </div>
+                          <div class="text-xs" style="color: var(--color-text-tertiary)">
+                            Status: {getStatusLabel(billing.payment_status)}
+                          </div>
+                        </div>
+                        {#if billing.payment_status === 'pending' || billing.payment_status === 'overdue'}
+                          <button
+                            onclick={(e) => {
+                              e.stopPropagation();
+                              markAsPaid(billing.id);
+                            }}
+                            class="px-2 py-1 rounded text-xs font-semibold"
+                            style="background-color: var(--color-status-good); color: white"
+                          >
+                            Mark Paid
+                          </button>
+                        {/if}
+                      </div>
+                    {/each}
                   </div>
                 {/if}
               </div>
             {/each}
           </div>
         </div>
-      {/if}
-
-      <!-- Pending Section -->
-      {#if groupedBillings.pending.length > 0}
-        <div>
-          <h3 class="text-sm font-semibold mb-2" style="color: var(--color-text-secondary)">
-            ⏳ Pending ({groupedBillings.pending.length})
-          </h3>
-          <div class="space-y-2">
-            {#each groupedBillings.pending as billing (billing.id)}
-              <div
-                role="button"
-                tabindex="0"
-                onclick={() => toggleBilling(billing.id)}
-                onkeydown={(e) => e.key === 'Enter' && toggleBilling(billing.id)}
-                class="card-base w-full p-4 text-left transition cursor-pointer"
-              >
-                <div class="flex justify-between items-start mb-2">
-                  <h4 class="font-semibold" style="color: var(--color-text-primary)">
-                    {propertyNames[billing.property_id] || 'Loading...'}
-                  </h4>
-                  <span class="text-lg font-bold" style="color: var(--color-accent)">{billing.current_reading_amount}</span>
-                </div>
-                <div class="flex items-center justify-between">
-                  <p class="text-xs" style="color: var(--color-text-tertiary)">Created: {formatDate(billing.created_at)}</p>
-                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full border" style={getStatusColor('pending')}>{getStatusLabel('pending')}</span>
-                </div>
-
-                {#if expandedBillings.has(billing.id)}
-                  <div class="mt-3 pt-3 border-t space-y-2" style="border-color: var(--color-border)">
-                    <button
-                      onclick={(e) => {
-                        e.stopPropagation();
-                        markAsPaid(billing.id);
-                      }}
-                      class="w-full px-3 py-2 rounded text-sm font-semibold"
-                      style="background-color: var(--color-status-good); color: white"
-                    >
-                      Mark as Paid
-                    </button>
-                  </div>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        </div>
-      {/if}
-
-      <!-- Paid Section -->
-      {#if groupedBillings.paid.length > 0}
-        <div>
-          <h3 class="text-sm font-semibold mb-2" style="color: var(--color-status-good)">
-            ✓ Paid ({groupedBillings.paid.length})
-          </h3>
-          <div class="space-y-2">
-            {#each groupedBillings.paid as billing (billing.id)}
-              <div
-                role="button"
-                tabindex="0"
-                onclick={() => toggleBilling(billing.id)}
-                onkeydown={(e) => e.key === 'Enter' && toggleBilling(billing.id)}
-                class="card-base w-full p-4 text-left transition opacity-75 cursor-pointer"
-              >
-                <div class="flex justify-between items-start">
-                  <h4 class="font-semibold" style="color: var(--color-text-primary)">
-                    {propertyNames[billing.property_id] || 'Loading...'}
-                  </h4>
-                  <span class="text-lg font-bold" style="color: var(--color-accent)">{billing.current_reading_amount}</span>
-                </div>
-                <div class="flex items-center justify-between mt-1">
-                  <p class="text-xs" style="color: var(--color-text-tertiary)">Paid: {formatDate(billing.updated_at)}</p>
-                  <span class="text-xs font-semibold px-2 py-0.5 rounded-full border" style={getStatusColor('paid')}>{getStatusLabel('paid')}</span>
-                </div>
-              </div>
-            {/each}
-          </div>
-        </div>
-      {/if}
+      {/each}
     </div>
   {/if}
 

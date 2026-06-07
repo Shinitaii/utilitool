@@ -4,10 +4,15 @@
   import { getTenants } from '$lib/api/tenants';
   import { getBillings } from '$lib/api/billings';
   import { getBillingCycles } from '$lib/api/billing-cycles';
-  import { formatCurrency } from '$lib/utils/format';
+  import { getMeterGroups } from '$lib/api/meter-groups';
+  import { formatCurrency, formatDate } from '$lib/utils/format';
+  import { toDate } from '$lib/utils/timestamp';
+  import { getCyclePaidAmount, getCycleOutstandingAmount } from '$lib/utils/billing-cycle.util';
+  import { getUtilityTypeBadgeClasses } from '$lib/utils/utility-colors';
   import TableSkeleton from '$lib/components/shared/TableSkeleton.svelte';
   import type { BillingCycle } from '$lib/types/billing-cycle.types';
   import type { Billing } from '$lib/types/billing.types';
+  import type { MeterGroup } from '$lib/types/meter-group.types';
 
   let isLoading = $state(true);
   let error = $state('');
@@ -18,59 +23,36 @@
   let totalCollected = $state(0);
   let totalOutstanding = $state(0);
   let recentCycles = $state<BillingCycle[]>([]);
+  let meterGroups = $state<MeterGroup[]>([]);
+  let billingMap = $state<Map<string, Billing>>(new Map());
 
   onMount(async () => {
     try {
-      const [propertiesResult, tenantsResult, billingCyclesResult, billingsResult] = await Promise.all([
+      const [propertiesResult, tenantsResult, billingCyclesResult, billingsResult, meterGroupsResult] = await Promise.all([
         getProperties({ limit: 100 }),
         getTenants({ limit: 100 }),
         getBillingCycles({ limit: 50 }),
         getBillings({ limit: 100 }),
+        getMeterGroups({ limit: 100 }),
       ]);
 
       propertyCount = propertiesResult.data.length;
       tenantCount = tenantsResult.data.length;
       recentCycles = billingCyclesResult.data;
+      meterGroups = meterGroupsResult.data;
 
-      // Aggregate billing totals from current page
+      // Build billing map for lookup
       const allBillings: Billing[] = billingsResult.data;
-      allBillings.forEach(b => {
-        // We don't have amounts on billings directly — sum via billing cycle rates
-        // For now we track paid vs pending counts
-      });
+      billingMap = new Map(allBillings.map(b => [b.id, b]));
 
-      // Calculate totals from billing cycles
+      // Calculate global totals and per-cycle amounts
       recentCycles.forEach(cycle => {
         const cycleTotal = Object.values(cycle.billing_ids).reduce((sum, consumption) => {
           return sum + consumption * cycle.billing_rate;
         }, 0);
         totalBilled += cycleTotal;
-      });
-
-      // Calculate collected from paid billings
-      const paidBillings = allBillings.filter(b => b.payment_status === 'paid');
-      const pendingBillings = allBillings.filter(b => b.payment_status === 'pending');
-
-      // For each paid billing, find its cycle to compute amount
-      const cycleMap = new Map(recentCycles.map(c => [c.id, c]));
-      paidBillings.forEach(b => {
-        // Find which cycle this billing belongs to
-        for (const cycle of recentCycles) {
-          const consumption = cycle.billing_ids[b.id];
-          if (consumption !== undefined) {
-            totalCollected += consumption * cycle.billing_rate;
-            break;
-          }
-        }
-      });
-      pendingBillings.forEach(b => {
-        for (const cycle of recentCycles) {
-          const consumption = cycle.billing_ids[b.id];
-          if (consumption !== undefined) {
-            totalOutstanding += consumption * cycle.billing_rate;
-            break;
-          }
-        }
+        totalCollected += getCyclePaidAmount(cycle, billingMap);
+        totalOutstanding += getCycleOutstandingAmount(cycle, billingMap);
       });
 
     } catch (err) {
@@ -139,19 +121,31 @@
         <caption class="sr-only">Recent billing cycles</caption>
         <thead>
           <tr class="text-left text-gray-500 border-b border-gray-100">
-            <th scope="col" class="pb-2 font-medium">Cycle ID</th>
-            <th scope="col" class="pb-2 font-medium">Rate</th>
+            <th scope="col" class="pb-2 font-medium">Period</th>
+            <th scope="col" class="pb-2 font-medium">Meter Group</th>
             <th scope="col" class="pb-2 font-medium">Consumption</th>
-            <th scope="col" class="pb-2 font-medium">Billings</th>
+            <th scope="col" class="pb-2 font-medium text-right">Paid</th>
+            <th scope="col" class="pb-2 font-medium text-right">Outstanding</th>
           </tr>
         </thead>
         <tbody>
           {#each recentCycles as cycle}
+            {@const meterGroup = meterGroups.find(m => m.id === cycle.meter_group_id)}
             <tr class="border-b border-gray-50">
-              <td class="py-2 font-mono text-xs text-gray-400">{cycle.id.slice(0, 8)}…</td>
-              <td class="py-2">₱{cycle.billing_rate.toFixed(2)}/kWh</td>
-              <td class="py-2">{cycle.billing_consumption.toLocaleString()} kWh</td>
-              <td class="py-2">{Object.keys(cycle.billing_ids).length}</td>
+              <td class="py-2 text-gray-700">
+                {formatDate(toDate(cycle.billing_start_date))} – {formatDate(toDate(cycle.billing_end_date))}
+              </td>
+              <td class="py-2">
+                <div class="flex items-center gap-2">
+                  <span>{meterGroup?.meter_name ?? 'Unknown'}</span>
+                  {#if meterGroup?.utility_type}
+                    <span class="rounded {getUtilityTypeBadgeClasses(meterGroup.utility_type)} px-2 py-0.5 text-xs font-medium capitalize">{meterGroup.utility_type}</span>
+                  {/if}
+                </div>
+              </td>
+              <td class="py-2">{cycle.billing_consumption.toLocaleString()}</td>
+              <td class="py-2 text-right font-semibold text-green-700">{formatCurrency(getCyclePaidAmount(cycle, billingMap))}</td>
+              <td class="py-2 text-right font-semibold text-amber-700">{formatCurrency(getCycleOutstandingAmount(cycle, billingMap))}</td>
             </tr>
           {/each}
         </tbody>

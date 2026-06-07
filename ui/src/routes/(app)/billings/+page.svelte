@@ -14,6 +14,7 @@
   import type { PaginatedResult } from '$lib/types/api.types';
   import { formatDate, formatCurrency, formatReading, getReadingUnit } from '$lib/utils/format';
   import { toDate } from '$lib/utils/timestamp';
+  import { getUtilityTypeBadgeClasses } from '$lib/utils/utility-colors';
   import EmptyState from '$lib/components/shared/EmptyState.svelte';
   import TableSkeleton from '$lib/components/shared/TableSkeleton.svelte';
   import EditModal from '$lib/components/shared/EditModal.svelte';
@@ -1152,10 +1153,11 @@
               billings = billings;
               printReceipts(cyclesToPrint);
             }}
-            class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium flex items-center gap-2"
+            aria-label="Print"
+            class="p-2 rounded hover:bg-blue-100 text-blue-600"
+            title="Print selected cycles"
           >
-            <Printer size={16} />
-            Print ({selectedCyclesForPrint.length})
+            <Printer size={20} />
           </button>
           <button
             onclick={() => {
@@ -1172,18 +1174,21 @@
                   });
               }
             }}
-            class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 font-medium flex items-center gap-2"
+            aria-label="Archive"
+            class="p-2 rounded hover:bg-red-100 text-red-600"
+            title="Archive selected cycles"
           >
-            <Archive size={16} />
-            Archive
+            <Archive size={20} />
           </button>
           <button
             onclick={() => {
               selectedCyclesForPrint = [];
             }}
-            class="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 font-medium"
+            aria-label="Clear selection"
+            class="p-2 rounded hover:bg-gray-200 text-gray-600"
+            title="Clear selection"
           >
-            Clear
+            <span class="text-sm font-medium">✕</span>
           </button>
         </div>
       </div>
@@ -1203,7 +1208,10 @@
           <h2 class="px-6 text-sm font-semibold text-gray-600">
             {group.meterGroupName}
             {#if group.meterGroupId}
-              <span class="text-gray-500 font-normal">({meterGroups.find(m => m.id === group.meterGroupId)?.utility_type})</span>
+              {@const utilityType = meterGroups.find(m => m.id === group.meterGroupId)?.utility_type}
+              {#if utilityType}
+                <span class="rounded {getUtilityTypeBadgeClasses(utilityType)} px-2 py-0.5 text-xs font-medium capitalize">{utilityType}</span>
+              {/if}
             {/if}
           </h2>
           {#each group.cycles as cycle (cycle.id)}
@@ -1281,7 +1289,23 @@
                     </div>
                   </button>
                 </div>
-                {#if expandedCycleId === cycle.id}
+                <div class="flex gap-1">
+                  <button
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      const cyclesToPrint = [cycle];
+                      if (!billings.has(cycle.id)) {
+                        const cycleBillings = allBillings.filter(b => b.id in cycle.billing_ids);
+                        billings.set(cycle.id, cycleBillings);
+                      }
+                      billings = billings;
+                      printReceipts(cyclesToPrint);
+                    }}
+                    class="p-2 rounded hover:bg-blue-100 text-blue-600"
+                    title="Print this cycle"
+                  >
+                    <Printer size={18} />
+                  </button>
                   <button
                     onclick={(e) => {
                       e.stopPropagation();
@@ -1293,12 +1317,12 @@
                           });
                       }
                     }}
-                    class="ml-4 p-2 rounded hover:bg-red-100 text-red-700"
+                    class="p-2 rounded hover:bg-red-100 text-red-700"
                     title="Archive billing cycle"
                   >
-                    <Archive size={20} />
+                    <Archive size={18} />
                   </button>
-                {/if}
+                </div>
               </div>
 
               <!-- Expanded Billings Table -->
