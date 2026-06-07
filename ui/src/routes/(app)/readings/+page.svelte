@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getReadings, createReadingsBatch, createReading, updateReading, softDeleteReading, ocrReadingImage } from '$lib/api/readings';
+  import { getReadings, createReadingsBatch, createReading, createSeedReading, updateReading, softDeleteReading, ocrReadingImage } from '$lib/api/readings';
   import { getMeterGroups } from '$lib/api/meter-groups';
   import { getProperties } from '$lib/api/properties';
   import type { Reading, UpdateReadingRequest } from '$lib/types/reading.types';
@@ -240,6 +240,20 @@
     };
   }
 
+  async function shouldSeedReading(meterGroupId: string, propertyId: string): Promise<boolean> {
+    const property = properties.find((p) => p.id === propertyId);
+    const meterEntry: any = Object.values(property?.meter_groups ?? {}).find(
+      (entry: any) => entry?.meter_group_id === meterGroupId
+    );
+    if (!meterEntry?.is_main_meter) return false;
+
+    const meterGroup = meterGroups.find((g) => g.id === meterGroupId);
+    const currentVersion = meterGroup?.current_version ?? 1;
+
+    const existing = await getReadings({ meterGroupId, propertyId, limit: 100 });
+    return !existing.data.some((r) => r.meter_version === currentVersion);
+  }
+
   async function handleCreateManualReading() {
     if (!manualReadingForm.meter_group_id || !manualReadingForm.property_id || manualReadingForm.reading_amount === null) {
       error = 'Please complete all required fields for the manual reading';
@@ -249,7 +263,7 @@
     manualReadingLoading = true;
     error = '';
     try {
-      await createReading({
+      const payload = {
         meter_group_id: manualReadingForm.meter_group_id,
         property_id: manualReadingForm.property_id,
         reading_amount: manualReadingForm.reading_amount,
@@ -258,11 +272,21 @@
           _nanoseconds: 0,
         },
         image_url: manualReadingForm.image_url || undefined,
-      } as any);
+      } as any;
+
+      const isSeed = await shouldSeedReading(manualReadingForm.meter_group_id, manualReadingForm.property_id);
+      if (isSeed) {
+        await createSeedReading(payload);
+      } else {
+        await createReading(payload);
+      }
+
       manualFormOpen = false;
       resetManualReadingForm();
       await loadData();
-      alert('Manual reading created successfully. If this property has a previous-month reading, the billing was auto-created.');
+      alert(isSeed
+        ? 'Seed reading created successfully — this establishes the baseline for this meter version.'
+        : 'Manual reading created successfully. If this property has a previous-month reading, the billing was auto-created.');
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to create manual reading';
     } finally {
