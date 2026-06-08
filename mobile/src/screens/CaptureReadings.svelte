@@ -26,20 +26,22 @@
   const readingUnit = $derived(selectedMeterGroup ? getReadingUnit(selectedMeterGroup.utility_type) : 'kWh');
 
   // Effects
-  $effect(async () => {
+  $effect(() => {
     if (!meterGroupsLoaded) {
-      try {
-        let cached = sessionCache.getMeterGroups();
-        if (!cached) {
-          const res = await listMeterGroups();
-          cached = res.data || [];
-          sessionCache.setMeterGroups(cached);
+      (async () => {
+        try {
+          let cached = sessionCache.getMeterGroups();
+          if (!cached) {
+            const res = await listMeterGroups();
+            cached = res.data || [];
+            sessionCache.setMeterGroups(cached);
+          }
+          meterGroups = cached ?? [];
+          meterGroupsLoaded = true;
+        } catch (e) {
+          error = 'Failed to load meter groups';
         }
-        meterGroups = cached;
-        meterGroupsLoaded = true;
-      } catch (e) {
-        error = 'Failed to load meter groups';
-      }
+      })();
     }
   });
 
@@ -63,7 +65,7 @@
         sessionCache.setProperties(allProperties);
       }
       // Filter properties that have the selected meter group, excluding main meters
-      properties = allProperties.filter((p: Property) => {
+      properties = (allProperties ?? []).filter((p: Property) => {
         const meterGroupEntry = Object.entries(p.meter_groups).find(
           ([_, entry]) => entry.meter_group_id === selectedMeterGroupId
         );
