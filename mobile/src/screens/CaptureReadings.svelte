@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Camera } from '@capacitor/camera';
+  import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
   import { listMeterGroups, type MeterGroup } from '../lib/api/meter-groups';
   import { listProperties, type Property } from '../lib/api/properties';
   import { createReadingsBatch, type CreateReadingRequest } from '../lib/api/readings';
@@ -90,8 +90,8 @@
       const image = await Camera.getPhoto({
         quality: 90,
         allowEditing: false,
-        resultType: 'base64',
-        promptLabelPicture: 'Select photo'
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Camera
       });
 
       // In production, upload to Cloud Storage and get URL
