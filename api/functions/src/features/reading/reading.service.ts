@@ -105,11 +105,9 @@ export const readingService = {
     }
 
     const meterGroupIds = [...new Set(data.map((r) => r.meter_group_id))];
+    const meterGroups = await meterGroupRepository.getByIds(meterGroupIds);
     const meterGroupMap = new Map<string, MeterGroup>();
-    for (const mgId of meterGroupIds) {
-      const mg = await meterGroupRepository.getById(mgId);
-      if (mg) meterGroupMap.set(mgId, mg);
-    }
+    meterGroups.forEach((mg) => mg && meterGroupMap.set(mg.id, mg));
 
     const readingsWithVersion: ReadingCreatePayload[] = data.map((r) => ({
       ...r,

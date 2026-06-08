@@ -1,4 +1,5 @@
 ﻿import {BaseModel, WithoutBaseModel} from "../utils/model.util";
+import {FieldPath} from "firebase-admin/firestore";
 import {
   createDocument,
   createDocuments,
@@ -112,6 +113,35 @@ export class Repository<T extends BaseModel> {
 
   async getById(id: string): Promise<T | null> {
     return getDocument<T>(this.collectionName, id);
+  }
+
+  async getByIds(ids: string[]): Promise<(T | null)[]> {
+    if (ids.length === 0) return [];
+    // Firestore's `in` operator has a 10-value limit; batch if needed
+    const batchSize = 10;
+    const batches: string[][] = [];
+    for (let i = 0; i < ids.length; i += batchSize) {
+      batches.push(ids.slice(i, i + batchSize));
+    }
+
+    const snapshots = await Promise.all(
+      batches.map((batch) =>
+        collectionRef(this.collectionName).where(FieldPath.documentId(), "in", batch).get()
+      )
+    );
+
+    const results: (T | null)[] = [];
+    snapshots.forEach((snapshot, i) => {
+      const batch = batches[i];
+      const docsMap = new Map(snapshot.docs.map((doc) => [doc.id, snapshotToModel<T>(doc)]));
+
+      // Return in original order, with nulls for missing IDs
+      for (const id of batch) {
+        results.push(docsMap.get(id) || null);
+      }
+    });
+
+    return results;
   }
 
   async softDelete(id: string): Promise<T> {

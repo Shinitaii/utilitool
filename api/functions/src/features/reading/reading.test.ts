@@ -43,6 +43,7 @@ jest.mock('../../utils/cascade-delete.util', () => ({
 jest.mock('../meter-group/meter-group.repository', () => ({
   meterGroupRepository: {
     getById: jest.fn().mockResolvedValue({ id: 'mg-1', meter_name: 'Main Electric', utility_type: 'electricity', current_version: 1, versions: {} }),
+    getByIds: jest.fn().mockResolvedValue([{ id: 'mg-1', meter_name: 'Main Electric', utility_type: 'electricity', current_version: 1, versions: {} }]),
   },
 }));
 jest.mock('../property/property.repository', () => ({

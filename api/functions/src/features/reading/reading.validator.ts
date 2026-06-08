@@ -31,11 +31,7 @@ export class ReadingValidator {
     }
   }
 
-  private async validateMeterGroupConstraints(
-    meterGroupId: string,
-    propertyId: string,
-    readingDate: Timestamp
-  ): Promise<void> {
+  private async fetchReadingsForConstraintCheck(meterGroupId: string) {
     const {data: readings} = await readingRepository.search({
       limit: MAX_READINGS_PER_METER_GROUP + 1,
       orderBy: "created_at",
@@ -49,6 +45,14 @@ export class ReadingValidator {
       );
     }
 
+    return readings;
+  }
+
+  private checkExistingInMonth(
+    readings: {property_id: string; reading_date: Timestamp}[],
+    propertyId: string,
+    readingDate: Timestamp
+  ): void {
     const d = readingDate.toDate();
     const month = d.getUTCMonth();
     const year = d.getUTCFullYear();
@@ -70,6 +74,15 @@ export class ReadingValidator {
     }
   }
 
+  private async validateMeterGroupConstraints(
+    meterGroupId: string,
+    propertyId: string,
+    readingDate: Timestamp
+  ): Promise<void> {
+    const readings = await this.fetchReadingsForConstraintCheck(meterGroupId);
+    this.checkExistingInMonth(readings, propertyId, readingDate);
+  }
+
   async validateCreate(data: CreateReadingDTO): Promise<void> {
     await this.validateMeterGroupExists(data.meter_group_id);
     this.validateReadingAmount(data.reading_amount);
@@ -78,19 +91,29 @@ export class ReadingValidator {
   }
 
   async validateBatch(data: CreateReadingDTO[]): Promise<void> {
-    const meterGroupIds = new Set(data.map((item) => item.meter_group_id));
+    const meterGroupIds = [...new Set(data.map((item) => item.meter_group_id))];
 
-    for (const meterGroupId of meterGroupIds) {
-      await this.validateMeterGroupExists(meterGroupId);
-    }
+    const meterGroups = await meterGroupRepository.getByIds(meterGroupIds);
+    meterGroups.forEach((mg, i) => {
+      if (!mg) {
+        throw new AppError(404, `Meter group ${meterGroupIds[i]} not found`);
+      }
+    });
 
     for (const item of data) {
       this.validateReadingAmount(item.reading_amount);
       this.validateReadingDate(item.reading_date);
     }
 
+    // Fetch readings once per unique meter group and reuse across items that share it
+    const readingsByMeterGroup = new Map<string, Awaited<ReturnType<typeof this.fetchReadingsForConstraintCheck>>>();
+    for (const meterGroupId of meterGroupIds) {
+      readingsByMeterGroup.set(meterGroupId, await this.fetchReadingsForConstraintCheck(meterGroupId));
+    }
+
     for (const item of data) {
-      await this.validateMeterGroupConstraints(item.meter_group_id, item.property_id, item.reading_date);
+      const readings = readingsByMeterGroup.get(item.meter_group_id) ?? [];
+      this.checkExistingInMonth(readings, item.property_id, item.reading_date);
     }
   }
 

@@ -123,7 +123,7 @@ export const createDocuments = async <T extends BaseModel>(
   });
 
   await batch.commit();
-  const snapshots = await Promise.all(refs.map((ref) => ref.get()));
+  const snapshots = await firestore.getAll(...refs);
   return snapshots.map((snap) => snapshotToModel<T>(snap));
 };
 
@@ -133,16 +133,14 @@ export const updateDocuments = async <T extends BaseModel>(
   updates: { id: string; data: Partial<WithoutBaseModel<T>> }[],
 ): Promise<T[]> => {
   const batch = firestore.batch();
+  const refs = updates.map(({id}) => documentRef(collectionName, id));
 
-  updates.forEach(({id, data}) => {
-    const ref = documentRef(collectionName, id);
-    batch.update(ref, withUpdateTimestamp(data));
+  updates.forEach(({data}, i) => {
+    batch.update(refs[i], withUpdateTimestamp(data));
   });
 
   await batch.commit();
-  const snapshots = await Promise.all(
-    updates.map(({id}) => documentRef(collectionName, id).get())
-  );
+  const snapshots = await firestore.getAll(...refs);
   return snapshots.map((snap) => snapshotToModel<T>(snap));
 };
 
@@ -151,14 +149,12 @@ export const softDeleteDocuments = async <T extends BaseModel>(
   documentIds: string[],
 ): Promise<T[]> => {
   const batch = firestore.batch();
-  documentIds.forEach((id) => {
-    const ref = documentRef(collectionName, id);
+  const refs = documentIds.map((id) => documentRef(collectionName, id));
+  refs.forEach((ref) => {
     batch.update(ref, withDeleteTimestamp({}));
   });
   await batch.commit();
-  const snapshots = await Promise.all(
-    documentIds.map((id) => documentRef(collectionName, id).get())
-  );
+  const snapshots = await firestore.getAll(...refs);
   return snapshots.map((snap) => snapshotToModel<T>(snap));
 };
 

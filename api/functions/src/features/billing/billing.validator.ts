@@ -3,41 +3,15 @@ import {AppError} from "../../utils/error.util";
 import {propertyRepository} from "../property/property.repository";
 import {readingRepository} from "../reading/reading.repository";
 import {billingRepository} from "./billing.repository";
+import type {Property} from "../property/property.model";
+import type {Reading} from "../reading/reading.model";
 
 export class BillingValidator {
-  private async validatePropertyExists(propertyId: string): Promise<void> {
-    const property = await propertyRepository.getById(propertyId);
-    if (!property) {
-      throw new AppError(404, "Property not found");
-    }
-  }
-
-  private async validateReadingExists(readingId: string): Promise<void> {
-    const reading = await readingRepository.getById(readingId);
-    if (!reading) {
-      throw new AppError(404, "Reading not found");
-    }
-  }
-
   private async validateReadingsBelongToProperty(
-    propertyId: string,
-    previousReadingId: string,
-    currentReadingId: string
+    property: Property,
+    previousReading: Reading,
+    currentReading: Reading
   ): Promise<void> {
-    const previousReading = await readingRepository.getById(
-      previousReadingId
-    );
-    const currentReading = await readingRepository.getById(currentReadingId);
-
-    if (!previousReading || !currentReading) {
-      throw new AppError(404, "Reading not found");
-    }
-
-    const property = await propertyRepository.getById(propertyId);
-    if (!property) {
-      throw new AppError(404, "Property not found");
-    }
-
     if (previousReading.meter_group_id !== currentReading.meter_group_id) {
       throw new AppError(
         400,
@@ -56,19 +30,17 @@ export class BillingValidator {
     }
   }
 
-  private async ensurePropertyIsNotMainMeter(
-    propertyId: string,
+  private validatePropertyIsNotMainMeter(
+    property: Property,
     meterGroupId: string
-  ): Promise<void> {
-    const property = await propertyRepository.getById(propertyId);
-    if (!property) return;
+  ): void {
     const entry = Object.values(property.meter_groups).find(
       (e) => e.meter_group_id === meterGroupId
     );
     if (entry?.is_main_meter) {
       throw new AppError(
         400,
-        `Property ${propertyId} is the main meter for meter group ${meterGroupId}. ` +
+        `Property ${property.id} is the main meter for meter group ${meterGroupId}. ` +
         "Its billings are generated automatically at billing cycle creation."
       );
     }
@@ -96,18 +68,21 @@ export class BillingValidator {
   }
 
   async validateCreate(data: CreateBillingDTO): Promise<void> {
-    await this.validatePropertyExists(data.property_id);
-    await this.validateReadingExists(data.previous_reading_id);
-    await this.validateReadingExists(data.current_reading_id);
-    await this.validateReadingsBelongToProperty(
-      data.property_id,
-      data.previous_reading_id,
-      data.current_reading_id
-    );
-    const currReading = await readingRepository.getById(data.current_reading_id);
-    if (currReading) {
-      await this.ensurePropertyIsNotMainMeter(data.property_id, currReading.meter_group_id);
+    const [property, previousReading, currentReading] = await Promise.all([
+      propertyRepository.getById(data.property_id),
+      readingRepository.getById(data.previous_reading_id),
+      readingRepository.getById(data.current_reading_id),
+    ]);
+
+    if (!property) {
+      throw new AppError(404, "Property not found");
     }
+    if (!previousReading || !currentReading) {
+      throw new AppError(404, "Reading not found");
+    }
+
+    await this.validateReadingsBelongToProperty(property, previousReading, currentReading);
+    this.validatePropertyIsNotMainMeter(property, currentReading.meter_group_id);
     await this.ensureNoDuplicateBilling(data.property_id, data.current_reading_id);
   }
 
@@ -120,41 +95,71 @@ export class BillingValidator {
       readingIds.add(item.current_reading_id);
     }
 
-    for (const propertyId of propertyIds) {
-      await this.validatePropertyExists(propertyId);
-    }
+    // Batch fetch all entities using true batch queries
+    const properties = await propertyRepository.getByIds(Array.from(propertyIds));
+    const readings = await readingRepository.getByIds(Array.from(readingIds));
 
-    for (const readingId of readingIds) {
-      await this.validateReadingExists(readingId);
-    }
-
-    for (const item of data) {
-      await this.validateReadingsBelongToProperty(
-        item.property_id,
-        item.previous_reading_id,
-        item.current_reading_id
-      );
-      const currReading = await readingRepository.getById(item.current_reading_id);
-      if (currReading) {
-        await this.ensurePropertyIsNotMainMeter(item.property_id, currReading.meter_group_id);
+    // Validate all entities exist and build maps
+    const propertyMap = new Map<string, Property>();
+    for (const p of properties) {
+      if (p) {
+        propertyMap.set(p.id, p);
       }
-      await this.ensureNoDuplicateBilling(item.property_id, item.current_reading_id);
+    }
+
+    const readingMap = new Map<string, Reading>();
+    for (const r of readings) {
+      if (r) {
+        readingMap.set(r.id, r);
+      }
+    }
+
+    for (const id of propertyIds) {
+      if (!propertyMap.has(id)) {
+        throw new AppError(404, "Property not found");
+      }
+    }
+    for (const id of readingIds) {
+      if (!readingMap.has(id)) {
+        throw new AppError(404, "Reading not found");
+      }
+    }
+
+    // Batch check for duplicate billings once instead of per-item
+    const duplicateCheck = await billingRepository.search({
+      limit: 1000,
+      orderBy: "created_at",
+      filters: {},
+    });
+    const existingBillings = new Map<string, boolean>();
+    for (const billing of duplicateCheck.data) {
+      const key = `${billing.property_id}:${billing.current_reading_id}`;
+      existingBillings.set(key, true);
+    }
+
+    // Validate each item using cached entities
+    for (const item of data) {
+      const property = propertyMap.get(item.property_id)!;
+      const previousReading = readingMap.get(item.previous_reading_id)!;
+      const currentReading = readingMap.get(item.current_reading_id)!;
+
+      await this.validateReadingsBelongToProperty(property, previousReading, currentReading);
+      this.validatePropertyIsNotMainMeter(property, currentReading.meter_group_id);
+
+      // Check against cached existing billings instead of querying
+      const duplicateKey = `${item.property_id}:${item.current_reading_id}`;
+      if (existingBillings.has(duplicateKey)) {
+        throw new AppError(
+          409,
+          "A billing for this property with this reading already exists"
+        );
+      }
     }
   }
 
   async validateUpdate(
     data: Partial<CreateBillingDTO>
   ): Promise<void> {
-    if (data.property_id) {
-      await this.validatePropertyExists(data.property_id);
-    }
-    if (data.previous_reading_id) {
-      await this.validateReadingExists(data.previous_reading_id);
-    }
-    if (data.current_reading_id) {
-      await this.validateReadingExists(data.current_reading_id);
-    }
-
     if (
       data.property_id ||
       data.previous_reading_id ||
@@ -165,11 +170,21 @@ export class BillingValidator {
       const currentReadingId = data.current_reading_id;
 
       if (propertyId && previousReadingId && currentReadingId) {
-        await this.validateReadingsBelongToProperty(
-          propertyId,
-          previousReadingId,
-          currentReadingId
-        );
+        const [property, previousReading, currentReading] = await Promise.all([
+          propertyRepository.getById(propertyId),
+          readingRepository.getById(previousReadingId),
+          readingRepository.getById(currentReadingId),
+        ]);
+
+        if (!property) {
+          throw new AppError(404, "Property not found");
+        }
+        if (!previousReading || !currentReading) {
+          throw new AppError(404, "Reading not found");
+        }
+
+        await this.validateReadingsBelongToProperty(property, previousReading, currentReading);
+        this.validatePropertyIsNotMainMeter(property, currentReading.meter_group_id);
       }
     }
   }

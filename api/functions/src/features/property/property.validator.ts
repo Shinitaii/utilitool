@@ -41,8 +41,9 @@ export class PropertyValidator {
   }
 
   private async ensureMeterGroupsExist(meterGroupIds: string[]): Promise<void> {
-    for (const meterGroupId of meterGroupIds) {
-      const meterGroup = await meterGroupRepository.getById(meterGroupId);
+    if (meterGroupIds.length === 0) return;
+    const meterGroups = await meterGroupRepository.getByIds(meterGroupIds);
+    for (const meterGroup of meterGroups) {
       if (!meterGroup) {
         throw new AppError(404, "Meter group not found");
       }
@@ -129,9 +130,41 @@ export class PropertyValidator {
       }
     }
 
+    // Batch fetch all existing properties once instead of per-item
+    const allProperties = await fetchAllPages((cursor) => propertyRepository.search({
+      limit: 1000,
+      orderBy: "created_at",
+      cursor,
+    }));
+
+    // Validate all items at once using cached property list
     for (const item of data) {
-      await this.ensureMainMeterUniqueness(item.meter_groups);
-      const duplicate = await this.findDuplicateProperty(item.room_name);
+      // Check main meter uniqueness against all properties
+      const mainMeterEntries = Object.values(item.meter_groups)
+        .filter((e): e is MeterGroupEntry => e !== undefined)
+        .filter((e) => e.is_main_meter);
+
+      for (const entry of mainMeterEntries) {
+        const conflict = allProperties.find((p) => {
+          return Object.values(p.meter_groups).some(
+            (pv) => pv.meter_group_id === entry.meter_group_id && pv.is_main_meter
+          );
+        });
+
+        if (conflict) {
+          throw new AppError(
+            409,
+            `Meter group ${entry.meter_group_id} already has a main meter property`
+          );
+        }
+      }
+
+      // Check room name uniqueness
+      const normalizedRoomName = normalizeRoomName(item.room_name);
+      const duplicate = allProperties.find((p) => {
+        return normalizeRoomName(p.room_name) === normalizedRoomName;
+      });
+
       if (duplicate) {
         logger.warn({room_name: item.room_name}, "Duplicate property batch creation attempt");
         throw new AppError(409, "Room name already exists");
@@ -167,12 +200,86 @@ export class PropertyValidator {
   async validateBatchUpdate(
     updates: {id: string; data: UpdatePropertyDTO}[]
   ): Promise<void> {
-    for (const update of updates) {
-      const property = await propertyRepository.getById(update.id);
-      if (!property) {
+    // Batch fetch all properties at once
+    const propertyIds = updates.map((u) => u.id);
+    const properties = await propertyRepository.getByIds(propertyIds);
+
+    // Verify all exist
+    for (let i = 0; i < properties.length; i++) {
+      if (!properties[i]) {
         throw new AppError(404, "Property not found");
       }
-      await this.validateUpdate(property, update.data);
+    }
+
+    // Collect all meter group IDs that need validation
+    const allMeterGroupIds = new Set<string>();
+    for (const update of updates) {
+      if (update.data.meter_groups) {
+        Object.values(update.data.meter_groups)
+          .filter((e): e is MeterGroupEntry => e !== undefined)
+          .forEach((e) => allMeterGroupIds.add(e.meter_group_id));
+      }
+    }
+
+    // Batch validate all meter groups at once
+    if (allMeterGroupIds.size > 0) {
+      await this.ensureMeterGroupsExist(Array.from(allMeterGroupIds));
+    }
+
+    // Batch fetch all existing properties for main meter uniqueness check
+    const allProperties = await fetchAllPages((cursor) => propertyRepository.search({
+      limit: 1000,
+      orderBy: "created_at",
+      cursor,
+    }));
+
+    // Validate each update using cached data
+    for (let i = 0; i < updates.length; i++) {
+      const property = properties[i]!;
+      const update = updates[i];
+
+      if (update.data.meter_groups) {
+        // Check main meter uniqueness using cached allProperties
+        const mainMeterEntries = Object.values(update.data.meter_groups)
+          .filter((e): e is MeterGroupEntry => e !== undefined)
+          .filter((e) => e.is_main_meter);
+
+        for (const entry of mainMeterEntries) {
+          const conflict = allProperties.find((p) => {
+            if (p.id === property.id) return false;
+            return Object.values(p.meter_groups).some(
+              (pv) => pv.meter_group_id === entry.meter_group_id && pv.is_main_meter
+            );
+          });
+
+          if (conflict) {
+            throw new AppError(
+              409,
+              `Meter group ${entry.meter_group_id} already has a main meter property`
+            );
+          }
+        }
+      }
+
+      if (update.data.room_name) {
+        const normalizedRoomName = normalizeRoomName(update.data.room_name);
+        const duplicate = allProperties.find((p) => {
+          if (p.id === property.id) return false;
+          return normalizeRoomName(p.room_name) === normalizedRoomName;
+        });
+
+        if (duplicate) {
+          logger.warn({room_name: update.data.room_name}, "Duplicate property update attempt");
+          throw new AppError(409, "Room name already exists");
+        }
+      }
+
+      if (update.data.tenant_amount !== undefined) {
+        const tenantCount = await this.countTenantsForProperty(property.id);
+        if (update.data.tenant_amount < tenantCount) {
+          throw new AppError(409, "Tenant amount cannot be less than current tenant count");
+        }
+      }
     }
   }
 }
