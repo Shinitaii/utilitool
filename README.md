@@ -76,12 +76,12 @@ Starts both services in watch mode. Requires `api/functions/secrets/.env.staging
 | Feature | Status |
 |---------|--------|
 | Auth (Firebase Auth) | ✅ Complete |
-| Meter Groups | ✅ Complete — CRUD, batch, reset, dynamic sorting |
+| Meter Groups | ✅ Complete — CRUD, batch, dynamic sorting (`current_version`/`versions`/`POST /:id/reset` are @deprecated — version tracking moved per-property) |
 | Properties | ✅ Complete — CRUD, batch, cascade delete/restore |
 | Tenants | ✅ Complete — CRUD, batch |
 | Readings | ✅ Complete — auto-billing on create, anomaly guard, meter rollback prevention |
 | Billings | ✅ Complete — normally auto-created; manual escape hatch available |
-| Billing Cycles | ✅ Complete — validation, OCR autofill via Gemini |
+| Billing Cycles | ✅ Complete — validation (version-aware, handles N meter resets), OCR autofill via Gemini, editable for rate/consumption/date corrections |
 | Image Extraction | ✅ Complete — `POST /image-extraction/readings` + `/billings` (Gemini Vision) |
 | Reports | ✅ Complete — summary, consumption, billing trends, collection status |
 | Bills | ⚠️ Partial stub — `POST /bills/ocr` exists; no full service layer |
@@ -94,11 +94,11 @@ All DELETE endpoints use soft-delete (no hard removal). `PATCH /:id/restore` rev
 |------|--------|
 | Login | ✅ |
 | Dashboard | ✅ Stat cards + properties summary |
-| Meter Groups | ✅ Full CRUD, reset, archive/restore |
+| Meter Groups | ✅ Full CRUD, archive/restore (Reset Meter button removed — superseded by per-property version tracking) |
 | Properties | ✅ List + detail tabs, archive/restore |
 | Tenants | ✅ Searchable list, archive/restore |
 | Readings | ✅ Batch form + OCR suggest, archive/restore |
-| Billings | ✅ Cycle-centric, OCR autofill, archive/restore |
+| Billings | ✅ Cycle-centric, OCR autofill, cycle edit modal (rate/consumption/dates), archive/restore |
 | Reports | 🚧 Stub — API ready, UI not built |
 | Bills / OCR | 🚧 Stub — API ready, UI not built |
 | Settings | 🚧 Partial — payment + user management tabs scaffolded |
@@ -110,7 +110,7 @@ All DELETE endpoints use soft-delete (no hard removal). `PATCH /:id/restore` rev
 | Home | ✅ Dashboard + "New Reading Session" CTA |
 | CaptureReadings | ✅ 3-step wizard (select meter group → enter readings + camera → review + submit) |
 | ReadingHistory | ✅ Filterable by utility type + property |
-| Billings | ✅ Grouped overdue/pending/paid; mark-as-paid action |
+| Billings | ✅ Cycle-centric: expandable cycles with per-property consumption/amount breakdown; mark-as-paid action |
 | Settings | ✅ Account info + sign out |
 
 ---
@@ -184,3 +184,9 @@ npx cap open android   # Open in Android Studio
 | Understand a business rule | `CLAUDE.md` → Business Overview |
 | Interactive API reference | http://localhost:5002/docs |
 | Contribute to this project | `CONTRIBUTING.md` |
+
+---
+
+## License
+
+MIT — see [`LICENSE`](./LICENSE).

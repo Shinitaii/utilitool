@@ -196,12 +196,11 @@ ui/src/
 - **API calls**:
   - `GET /meter-groups?limit=20` ← `getMeterGroups()`
   - `POST /meter-groups` ← `createMeterGroup()` (inline form)
-  - `POST /meter-groups/:id/reset` ← `recordMeterGroupReset()` (Reset Meter button)
   - `DELETE /meter-groups/:id` ← `deleteMeterGroup()`
 - **Displays**:
-  - Table: meter_name, utility_type, version (`v{current_version}`), created_at, actions
-  - "Reset Meter" button (orange): confirmation dialog → records reset, bumps version
+  - Table: meter_name, utility_type, created_at, actions
   - Inline form for creating new meter group
+- **Note**: The Version column and "Reset Meter" button were removed — meter-group-level version tracking (`current_version`/`versions`, `POST /:id/reset`) is **@deprecated**; resets and version history now live per-property on `Property.meter_groups[entry]` (handles submeters + main meters)
 - **Status**: ✅ Complete
 
 #### Properties (`/properties`)
@@ -239,7 +238,7 @@ ui/src/
 - **Displays**:
   - Meter group filter + paginated table: reading_amount, **True Total** (version-aware cumulative), photo, date, created_at
   - Batch create form: per-property rows with reading_amount input + "True total: X" hint; combined "Photo / Suggest" column (upload image → click Suggest to run OCR separately)
-- **Note**: `meter_version` is server-set from the meter group's `current_version`. To handle a physical meter replacement, record a reset on the Meter Groups page first. `image_url` is optional; silently falls back to local data URL when Firebase Storage is not configured.
+- **Note**: `meter_version` is server-set from the property entry's `current_version` (per-property version tracking — see the Meter Groups note above on the deprecated MeterGroup-level fields). `image_url` is optional; silently falls back to local data URL when Firebase Storage is not configured.
 - **Status**: ✅ Complete
 
 #### Billings (`/billings`) — Cycle-Centric
@@ -250,12 +249,14 @@ ui/src/
   - `GET /meter-groups?limit=100` ← `getMeterGroups()` — for cycle creation form dropdown
   - `POST /billing-cycles` ← `createBillingCycle()` — create cycle from discovered billings
   - `POST /billing-cycles/ocr` ← `ocrBillingCycle()` — extract billing data from a utility bill photo
+  - `PATCH /billing-cycles/:id` ← `updateBillingCycle()` — edit cycle fields (rate, consumption, date range, due date)
 - **Displays**:
   - Expandable cycle rows (period, consumption, rate, total amount, billing count)
   - On expand: nested billing table (property, reading pair, consumption, amount, status, actions)
   - "New Billing Cycle" form: optional bill photo upload (autofills rate + dates + consumption via OCR) → select meter group + date range → discover billings → create
   - "Manual Billing (Advanced)" collapsed section for corrections
-- **Note**: Billings are auto-created when readings are posted — the cycle form just groups them. OCR autofill is optional; all autofilled fields remain editable.
+  - Pencil "Edit" button on each cycle row → opens an `EditModal` for correcting `billing_consumption`, `billing_rate`, `billing_start_date`, `billing_end_date`, `overdue_date` (covers company errors in rate/consumption without needing to delete and recreate the cycle)
+- **Note**: Billings are auto-created when readings are posted — the cycle form just groups them. OCR autofill is optional; all autofilled fields remain editable. Per-reading consumption previews (discovery, override, gap-fill) use the shared version-aware `readingConsumption()`/`trueReading()` helpers so they stay correct across meter resets.
 - **Status**: ✅ Complete (cycle-centric design; auto-billing integration; bill photo OCR)
 
 #### Archive Pages (`/<feature>/archive`)

@@ -209,12 +209,12 @@ Each page/component is organized by:
 ## Feature Status
 
 ### API Features (Complete + Audited May 2026)
-- ✅ Meter Groups (CRUD, batch; `POST /:id/reset` records reset + bumps version; dynamic sorting)
+- ✅ Meter Groups (CRUD, batch; dynamic sorting; `POST /:id/reset` and its `current_version`/`versions` fields are **@deprecated** — version tracking now lives per-property on `Property.meter_groups[entry]`, see `decisions/`)
 - ✅ Properties (CRUD, batch; dynamic sorting; optimized duplicate detection)
 - ✅ Tenants (CRUD, batch; dynamic sorting)
 - ✅ Readings (CRUD, batch; auto-billing on single create; anomaly guard; meter rollback prevention; utility extraction)
 - ✅ Billings (CRUD, batch; normally auto-created; meter rollback prevention)
-- ✅ Billing Cycles (CRUD, batch, validation; version-aware consumption; `POST /ocr` bill photo extraction; dynamic sorting)
+- ✅ Billing Cycles (CRUD, batch, validation; editable via `PATCH /:id` for rate/consumption/date corrections; version-aware consumption (handles N meter resets cumulatively via `calculateTrueReading`/`resolveVersionsSource` in `reading.util.ts`); `POST /ocr` bill photo extraction; dynamic sorting)
 - ✅ Auth (Firebase Auth: sign up, login, logout)
 - ✅ Image Extraction (`POST /image-extraction/readings` + `POST /image-extraction/billings` — Gemini Vision OCR)
 - ✅ Reports (`GET /reports/summary`, `/consumption`, `/billing-trends`, `/collection-status`)
@@ -234,11 +234,11 @@ Each page/component is organized by:
 ### UI Pages (Complete + Audited May 2026)
 - ✅ Login
 - ✅ Dashboard (stat cards + properties table)
-- ✅ Meter Groups (full CRUD table; Version column; Reset Meter button; archive page)
+- ✅ Meter Groups (full CRUD table; archive page — Version column and Reset Meter button removed, version tracking moved to per-property)
 - ✅ Properties (list + detail with tabs: Tenants | Readings | Billings | History; archive page)
 - ✅ Tenants (searchable list; archive page)
 - ✅ Readings (filterable list; True Total column; batch form with decoupled OCR suggest; archive page)
-- ✅ Billings (cycle-centric: expandable cycles with nested billings; bill photo OCR autofill; archive page)
+- ✅ Billings (cycle-centric: expandable cycles with nested billings; bill photo OCR autofill; cycle edit modal for rate/consumption/date corrections; archive page)
 - 🚧 Bills / OCR upload (stub — API module ready, UI not built)
 - 🚧 Reports (stub — API module ready, UI not built)
 - 🚧 Settings (partial — payment + user management tabs scaffolded)

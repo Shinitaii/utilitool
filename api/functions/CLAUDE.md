@@ -162,7 +162,7 @@ Represents utility type containers (electricity, water).
 | GET | `/meter-groups/:id` | Get single meter group |
 | PATCH | `/meter-groups/:id` | Update meter group |
 | PATCH | `/meter-groups/batch` | Batch update (1–10 items) |
-| POST | `/meter-groups/:id/reset` | Record a physical meter reset (bumps version, snapshots last reading) |
+| POST | `/meter-groups/:id/reset` | **@deprecated** Record a physical meter reset (bumps version, snapshots last reading) — superseded by per-property version tracking; logs a warning on every call |
 | DELETE | `/meter-groups/:id` | Soft delete (set is_deleted flag) |
 | PATCH | `/meter-groups/:id/restore` | Restore deleted meter group (clear is_deleted flag) |
 
@@ -170,7 +170,7 @@ Represents utility type containers (electricity, water).
 - Unique meter_name per utility_type
 - utility_type must be "electricity" or "water"
 - Soft delete sets `deleted_at` timestamp
-- `current_version` starts at 1 and increments on each reset; `versions` Record stores `{ reset_at, last_reading }` per version
+- **@deprecated**: `current_version`/`versions` and `POST /:id/reset` — version tracking has moved to `Property.meter_groups[entry].current_version`/`.versions` (per-property, supports submeters). These MeterGroup-level fields/endpoint are kept only for backward compatibility and emit `logger.warn` on use. A backfill migration (`src/migrations/backfill-property-meter-versions.ts`) copies existing MeterGroup version data onto property entries; once run in prod, the deprecated fields/endpoint can be removed entirely
 - Reset requires at least one existing reading; uses the latest non-deleted reading as the closing value
 - Requires `admin` or `landlord` role
 - **Cascade delete**: `DELETE /:id` soft-deletes the meter group + all readings for this meter group + all billings referencing those readings (atomic transaction)
@@ -313,7 +313,7 @@ Represents billing periods with validation and rate calculation.
 | POST | `/billing-cycles/ocr` | Extract billing data from utility bill photo (Gemini vision) |
 | GET | `/billing-cycles` | List with filters (billingStartDate, billingEndDate) + sorting (sortBy=[created_at,billing_start_date], sortOrder=[asc,desc]) + pagination |
 | GET | `/billing-cycles/:id` | Get single cycle |
-| PATCH | `/billing-cycles/:id` | Update cycle |
+| PATCH | `/billing-cycles/:id` | Update cycle — also the correction path for company errors in rate/consumption/dates (UI exposes this via an edit modal on the Billings page) |
 | PATCH | `/billing-cycles/batch` | Batch update |
 | DELETE | `/billing-cycles/:id` | Soft delete (set is_deleted flag) |
 | PATCH | `/billing-cycles/:id/restore` | Restore cycle (clear is_deleted flag) |
@@ -326,10 +326,10 @@ Represents billing periods with validation and rate calculation.
 
 **Validation flow**:
 1. Validate all billing IDs exist
-2. For each billing, fetch its readings and calculate expected consumption using version-aware true readings:
+2. For each billing, fetch its readings and calculate expected consumption using version-aware true readings via the shared `calculateTrueReading`/`resolveVersionsSource`/`getCumulativeOffset` helpers in `src/features/reading/reading.util.ts` (also reused by `reports.service.ts` for the Consumption Breakdown report):
    - `true_reading = cumulative_offset(meter_version) + reading_amount`
-   - `cumulative_offset(v)` = sum of `last_reading` from versions 1..(v-1) on the meter group
-   - `expectedConsumption = true_reading(curr) − true_reading(prev)` — handles N meter resets correctly
+   - `cumulative_offset(v)` = sum of `last_reading` from versions 1..(v-1), resolved from the property entry's own `versions` for submeters or the MeterGroup's `versions` for main meters
+   - `expectedConsumption = true_reading(curr) − true_reading(prev)` — handles N cumulative meter resets correctly (previously a naive `curr.reading_amount - prev.reading_amount` subtraction broke across resets)
 3. Reject if any billing's provided consumption deviates >5% from expected (per-billing tolerance)
 4. Sum all provided consumptions and compare to `billing_consumption` (3% cycle-level tolerance)
 5. Reject if cycle-level total is outside ±3% of `billing_consumption`

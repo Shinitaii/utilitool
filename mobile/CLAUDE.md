@@ -114,10 +114,12 @@ Two cascading filters:
 1. Utility type tabs (All / Electricity / Water) — filters against `meterGroupMap`
 2. Property dropdown — restricted to properties that appear in the utility-filtered set
 
-### Billings — Grouped by Status
+### Billings — Cycle-Centric
 `src/screens/Billings.svelte`
 
-Groups billings into Overdue → Pending → Paid sections. Expanding a card reveals "Mark as Paid" which calls `PATCH /billings/:id`.
+Groups billing cycles by meter group; expanding a cycle card reveals its nested billings (mirrors the desktop UI's expanded cycle view) — each shows the property name, its per-property consumption/amount breakdown (`{consumption} {unit} · {currency amount}`, derived from the cycle's `billing_ids` map and `billing_rate`), payment status, and a "Mark as Paid" action that calls `PATCH /billings/:id`.
+
+**Note**: Always render `billing_start_date`/`billing_end_date`/`overdue_date` via `formatDate()`/`toDate()` from `lib/utils/timestamp.ts` — the API may return these as Firestore `{_seconds, _nanoseconds}` objects despite the `BillingCycle` type's `string` annotation, and `new Date(timestampObject)` silently produces "Invalid Date".
 
 ---
 
