@@ -4,6 +4,7 @@
   import { listMeterGroups, type MeterGroup } from '../lib/api/meter-groups';
   import { listProperties } from '../lib/api/properties';
   import { formatDate } from '../lib/utils/timestamp';
+  import { getReadingUnit } from '../lib/utils/format';
   import { getStatusSummary } from '../lib/utils/billing-cycle.util';
   import { sessionCache } from '../lib/stores/session';
   import BottomNav from '../components/BottomNav.svelte';
@@ -73,6 +74,24 @@
 
   function getMeterGroupName(meterGroupId: string): string {
     return meterGroups.find(m => m.id === meterGroupId)?.meter_name || 'Unknown';
+  }
+
+  function getCycleUtilityType(cycle: BillingCycle): string {
+    return meterGroups.find(m => m.id === cycle.meter_group_id)?.utility_type || 'electricity';
+  }
+
+  // Per-property breakdown — mirrors the desktop UI's expanded cycle view
+  // (consumption comes from the cycle's confirmed billing_ids map; amount = consumption × rate).
+  function getBillingConsumption(cycle: BillingCycle, billingId: string): number {
+    return cycle.billing_ids[billingId] ?? 0;
+  }
+
+  function getBillingAmount(cycle: BillingCycle, billingId: string): number {
+    return getBillingConsumption(cycle, billingId) * cycle.billing_rate;
+  }
+
+  function formatCurrency(amount: number): string {
+    return `₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
 
   async function markAsPaid(billingId: string) {
@@ -214,6 +233,9 @@
                         <div>
                           <div class="text-sm font-medium" style="color: var(--color-text-primary)">
                             {propertyNames[billing.property_id] || 'Loading...'}
+                          </div>
+                          <div class="text-xs" style="color: var(--color-text-tertiary)">
+                            {getBillingConsumption(cycle, billing.id).toLocaleString()} {getReadingUnit(getCycleUtilityType(cycle))} · {formatCurrency(getBillingAmount(cycle, billing.id))}
                           </div>
                           <div class="text-xs" style="color: var(--color-text-tertiary)">
                             Status: {getStatusLabel(billing.payment_status)}
