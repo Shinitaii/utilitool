@@ -1,9 +1,13 @@
 /**
- * One-time migration: initializes per-submeter version tracking on Property.meter_groups.
+ * One-time migration: moves ALL per-meter version tracking onto Property.meter_groups,
+ * completing the transition away from MeterGroup-level version fields.
  *
- * For every MeterGroupEntry where is_main_meter === false and current_version is not yet
- * set, stamps { current_version: 1, versions: {} }. Main-meter entries are left untouched —
- * they continue to resolve their version from the MeterGroup document.
+ * - Submeter entries (is_main_meter === false) with no current_version: stamped fresh,
+ *   { current_version: 1, versions: {} } (they never had meter-group-level history to inherit).
+ * - Main-meter entries (is_main_meter === true) with no current_version: backfilled by
+ *   COPYING current_version/versions from their referenced MeterGroup document, so the
+ *   property entry becomes the new source of truth and MeterGroup.current_version/versions
+ *   can eventually be removed without data loss.
  *
  * Usage (run from api/functions):
  *   # 1) DRY RUN (default) — counts only, writes nothing:
@@ -29,12 +33,37 @@ initializeApp({
 
 const db = getFirestore();
 const PROPERTIES_COLLECTION = "properties";
+const METER_GROUPS_COLLECTION = "meter_groups";
 
 export async function backfillPropertyMeterVersions(): Promise<{migrated: number; skipped: number}> {
   const EXECUTE = process.env.EXECUTE === "true";
   const snapshot = await db.collection(PROPERTIES_COLLECTION).get();
   let migrated = 0;
   let skipped = 0;
+
+  // Pre-fetch every meter group referenced by a main-meter entry so we can copy its
+  // current_version/versions onto the property entry (one read instead of N per property).
+  const referencedMeterGroupIds = new Set<string>();
+  for (const doc of snapshot.docs) {
+    const meterGroups = doc.data().meter_groups as Record<string, any> | undefined;
+    if (!meterGroups) continue;
+    for (const entry of Object.values(meterGroups)) {
+      if (entry && typeof entry === "object" && entry.is_main_meter === true && entry.current_version === undefined) {
+        referencedMeterGroupIds.add(entry.meter_group_id);
+      }
+    }
+  }
+
+  const meterGroupMap = new Map<string, {current_version?: number; versions?: Record<string, unknown>}>();
+  await Promise.all(
+    Array.from(referencedMeterGroupIds).map(async (id) => {
+      const mgDoc = await db.collection(METER_GROUPS_COLLECTION).doc(id).get();
+      if (mgDoc.exists) {
+        const mgData = mgDoc.data()!;
+        meterGroupMap.set(id, {current_version: mgData.current_version, versions: mgData.versions});
+      }
+    })
+  );
 
   let batch = db.batch();
   let opsInBatch = 0;
@@ -52,14 +81,21 @@ export async function backfillPropertyMeterVersions(): Promise<{migrated: number
     const updated: Record<string, any> = {};
 
     for (const [utilityType, entry] of Object.entries(meterGroups)) {
-      if (
-        entry &&
-        typeof entry === "object" &&
-        entry.is_main_meter === false &&
-        entry.current_version === undefined
-      ) {
-        updated[utilityType] = {...entry, current_version: 1, versions: {}};
-        needsMigration = true;
+      if (entry && typeof entry === "object" && entry.current_version === undefined) {
+        if (entry.is_main_meter === false) {
+          updated[utilityType] = {...entry, current_version: 1, versions: {}};
+          needsMigration = true;
+        } else if (entry.is_main_meter === true) {
+          const source = meterGroupMap.get(entry.meter_group_id);
+          updated[utilityType] = {
+            ...entry,
+            current_version: source?.current_version ?? 1,
+            versions: source?.versions ?? {},
+          };
+          needsMigration = true;
+        } else {
+          updated[utilityType] = entry;
+        }
       } else {
         updated[utilityType] = entry;
       }

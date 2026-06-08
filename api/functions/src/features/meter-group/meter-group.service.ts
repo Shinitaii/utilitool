@@ -12,6 +12,7 @@ import {listRemove} from "../../utils/list-cache.util";
 import {cacheDel, cacheSet} from "../../utils/cache.util";
 import {cascadeDeleteMeterGroup, cascadeRestoreMeterGroup} from "../../utils/cascade-delete.util";
 import {CachedRepository} from "../../lib/cached-repository.lib";
+import {logger} from "../../utils/logger.util";
 
 const validator = new MeterGroupValidator();
 const CACHE_TTL = 30 * 60; // 30 minutes
@@ -166,7 +167,18 @@ export const meterGroupService = {
     return restored!;
   },
 
+  /**
+   * @deprecated Meter-group-level version tracking is being replaced by per-property version
+   * tracking on `Property.meter_groups[entry]` (submeters already migrated; main meters pending
+   * backfill). This endpoint remains functional for main meters in the interim, but new
+   * integrations should not depend on `MeterGroup.current_version`/`versions`.
+   */
   async recordReset(userId: string, id: string): Promise<MeterGroup> {
+    logger.warn(
+      {userId, meterGroupId: id},
+      "[Deprecated] meterGroupService.recordReset: meter-group-level version tracking is being replaced by per-property tracking on Property.meter_groups[entry]"
+    );
+
     const meterGroup = await meterGroupRepository.getById(id);
     if (!meterGroup) {
       throw new AppError(404, "Meter group not found");

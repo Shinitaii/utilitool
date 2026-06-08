@@ -4,7 +4,15 @@ const mockUpdate = jest.fn();
 const mockCommit = jest.fn().mockResolvedValue(undefined);
 const mockBatch = jest.fn(() => ({update: mockUpdate, commit: mockCommit}));
 const mockGet = jest.fn();
-const mockCollection = jest.fn(() => ({get: mockGet}));
+const mockMeterGroupDocGet = jest.fn();
+const mockMeterGroupDoc = jest.fn(() => ({get: mockMeterGroupDocGet}));
+
+const mockCollection = jest.fn((name: string) => {
+  if (name === "meter_groups") {
+    return {doc: mockMeterGroupDoc};
+  }
+  return {get: mockGet};
+});
 
 jest.mock("firebase-admin/app", () => ({
   initializeApp: jest.fn(),
@@ -25,14 +33,19 @@ function docSnapshot(id: string, meterGroups: Record<string, any> | undefined) {
   };
 }
 
+function meterGroupDocSnapshot(exists: boolean, data?: Record<string, any>) {
+  return {exists, data: () => data};
+}
+
 describe("backfillPropertyMeterVersions", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.resetModules();
     delete process.env.EXECUTE;
+    mockMeterGroupDocGet.mockResolvedValue(meterGroupDocSnapshot(false));
   });
 
-  it("counts submeter entries needing backfill and writes nothing in dry-run mode", async () => {
+  it("counts submeter AND main-meter entries needing backfill and writes nothing in dry-run mode", async () => {
     mockGet.mockResolvedValue({
       docs: [
         docSnapshot("p1", {
@@ -45,6 +58,7 @@ describe("backfillPropertyMeterVersions", () => {
         docSnapshot("p3", undefined),
       ],
     });
+    mockMeterGroupDocGet.mockResolvedValue(meterGroupDocSnapshot(true, {current_version: 2, versions: {"1": {reset_at: "ts", last_reading: 100}}}));
 
     const {backfillPropertyMeterVersions} = require("./backfill-property-meter-versions");
     const result = await backfillPropertyMeterVersions();
@@ -54,13 +68,13 @@ describe("backfillPropertyMeterVersions", () => {
     expect(mockCommit).not.toHaveBeenCalled();
   });
 
-  it("stamps current_version and versions only on submeter entries lacking them when EXECUTE=true", async () => {
+  it("stamps fresh version tracking on submeter entries lacking it when EXECUTE=true", async () => {
     process.env.EXECUTE = "true";
     mockGet.mockResolvedValue({
       docs: [
         docSnapshot("p1", {
           electricity: {meter_group_id: "mg1", is_main_meter: false},
-          water: {meter_group_id: "mg2", is_main_meter: true},
+          water: {meter_group_id: "mg2", is_main_meter: true, current_version: 3, versions: {}},
         }),
       ],
     });
@@ -77,15 +91,66 @@ describe("backfillPropertyMeterVersions", () => {
       current_version: 1,
       versions: {},
     });
-    expect(updatePayload.meter_groups.water).toEqual({meter_group_id: "mg2", is_main_meter: true});
+    expect(updatePayload.meter_groups.water).toEqual({meter_group_id: "mg2", is_main_meter: true, current_version: 3, versions: {}});
     expect(mockCommit).toHaveBeenCalledTimes(1);
   });
 
-  it("skips properties that have no submeter entries needing migration", async () => {
+  it("backfills main-meter entries by copying current_version/versions from their MeterGroup document when EXECUTE=true", async () => {
+    process.env.EXECUTE = "true";
     mockGet.mockResolvedValue({
       docs: [
         docSnapshot("p1", {
           water: {meter_group_id: "mg2", is_main_meter: true},
+        }),
+      ],
+    });
+    mockMeterGroupDocGet.mockResolvedValue(
+      meterGroupDocSnapshot(true, {current_version: 2, versions: {"1": {reset_at: "ts", last_reading: 634}}})
+    );
+
+    const {backfillPropertyMeterVersions} = require("./backfill-property-meter-versions");
+    const result = await backfillPropertyMeterVersions();
+
+    expect(result).toEqual({migrated: 1, skipped: 0});
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    const [, updatePayload] = mockUpdate.mock.calls[0];
+    expect(updatePayload.meter_groups.water).toEqual({
+      meter_group_id: "mg2",
+      is_main_meter: true,
+      current_version: 2,
+      versions: {"1": {reset_at: "ts", last_reading: 634}},
+    });
+  });
+
+  it("falls back to current_version 1 and empty versions for main-meter entries whose MeterGroup is missing", async () => {
+    process.env.EXECUTE = "true";
+    mockGet.mockResolvedValue({
+      docs: [
+        docSnapshot("p1", {
+          water: {meter_group_id: "missing-mg", is_main_meter: true},
+        }),
+      ],
+    });
+    mockMeterGroupDocGet.mockResolvedValue(meterGroupDocSnapshot(false));
+
+    const {backfillPropertyMeterVersions} = require("./backfill-property-meter-versions");
+    const result = await backfillPropertyMeterVersions();
+
+    expect(result).toEqual({migrated: 1, skipped: 0});
+    const [, updatePayload] = mockUpdate.mock.calls[0];
+    expect(updatePayload.meter_groups.water).toEqual({
+      meter_group_id: "missing-mg",
+      is_main_meter: true,
+      current_version: 1,
+      versions: {},
+    });
+  });
+
+  it("skips properties whose entries already have current_version set", async () => {
+    mockGet.mockResolvedValue({
+      docs: [
+        docSnapshot("p1", {
+          water: {meter_group_id: "mg2", is_main_meter: true, current_version: 1, versions: {}},
         }),
       ],
     });

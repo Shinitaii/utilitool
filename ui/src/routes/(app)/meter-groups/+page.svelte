@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getMeterGroups, createMeterGroup, updateMeterGroup, softDeleteMeterGroup, recordMeterGroupReset } from '$lib/api/meter-groups';
+  import { getMeterGroups, createMeterGroup, updateMeterGroup, softDeleteMeterGroup } from '$lib/api/meter-groups';
   import type { MeterGroup, CreateMeterGroupRequest, UpdateMeterGroupRequest } from '$lib/types/meter-group.types';
   import type { PaginatedResult } from '$lib/types/api.types';
   import { formatDate } from '$lib/utils/format';
@@ -11,7 +11,7 @@
   import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
   import SelectionToolbar from '$lib/components/shared/SelectionToolbar.svelte';
   import { createCrudStore } from '$lib/stores/crud.svelte';
-  import { Archive, Plus, RotateCcw } from 'lucide-svelte';
+  import { Archive, Plus } from 'lucide-svelte';
 
   const crud = createCrudStore<MeterGroup>();
 
@@ -23,7 +23,6 @@
   let isLoading = $state(false);
   let error = $state('');
   let createFormOpen = $state(false);
-  let resettingId = $state<string | null>(null);
   let isUpdating = $state(false);
   let isCreating = $state(false);
 
@@ -74,20 +73,6 @@
       error = err instanceof Error ? err.message : 'Failed to update meter group';
     } finally {
       isUpdating = false;
-    }
-  }
-
-  async function handleRecordReset(item: MeterGroup) {
-    const version = (item.current_version ?? 1) + 1;
-    if (!confirm(`Record a meter reset for "${item.meter_name}"?\n\nThis will start version ${version}. The server will use the latest recorded reading as the previous meter total.\n\nContinue?`)) return;
-    resettingId = item.id;
-    try {
-      await recordMeterGroupReset(item.id);
-      await loadData();
-    } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to record meter reset';
-    } finally {
-      resettingId = null;
     }
   }
 
@@ -204,7 +189,6 @@
             <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Meter Name</th>
             <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Utility Type</th>
             <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Created</th>
-            <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Version</th>
             <th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Actions</th>
           </tr>
         </thead>
@@ -226,18 +210,8 @@
                 </span>
               </td>
               <td class="px-6 py-4 text-gray-600">{formatDate(toDate(item.created_at))}</td>
-              <td class="px-6 py-4 text-gray-600">v{item.current_version ?? 1}</td>
               <td class="px-6 py-4">
                 <div class="flex items-center gap-1">
-                  <button
-                    onclick={() => handleRecordReset(item)}
-                    disabled={resettingId === item.id}
-                    class="p-1.5 rounded hover:bg-orange-100 text-orange-700 disabled:opacity-50"
-                    title="Reset meter"
-                    aria-label="Reset meter"
-                  >
-                    <RotateCcw size={16} />
-                  </button>
                   <ActionButtons
                     onEdit={() => crud.openEditModal(item, { meter_name: item.meter_name, utility_type: item.utility_type })}
                     onSoftDelete={() => crud.handleSoftDelete(item.id, softDeleteMeterGroup, loadData, () => confirm('Archive this meter group? It can be restored from the archive.'))}
