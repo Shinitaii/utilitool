@@ -190,7 +190,7 @@
               >
                 <div class="flex justify-between items-start mb-2">
                   <h4 class="font-semibold" style="color: var(--color-text-primary)">
-                    {new Date(cycle.billing_start_date).toLocaleDateString()} – {new Date(cycle.billing_end_date).toLocaleDateString()}
+                    {formatDate(cycle.billing_start_date)} – {formatDate(cycle.billing_end_date)}
                   </h4>
                   <span class="text-xs font-semibold text-gray-600">{billings.length} billing(s)</span>
                 </div>
