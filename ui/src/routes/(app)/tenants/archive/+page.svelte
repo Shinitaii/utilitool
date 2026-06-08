@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getTenants, restoreTenant, deleteTenant, clearCache } from '$lib/api/tenants';
+  import { getTenants, restoreTenant, clearCache } from '$lib/api/tenants';
   import { getProperties } from '$lib/api/properties';
   import type { Tenant } from '$lib/types/tenant.types';
   import type { Property } from '$lib/types/property.types';
@@ -19,7 +19,6 @@
   let isLoading = $state(false);
   let error = $state('');
   let restoringId = $state<string | null>(null);
-  let deletingId = $state<string | null>(null);
   let isClearing = $state(false);
 
   const columns = [
@@ -69,20 +68,6 @@
     }
   }
 
-  async function handleHardDelete(id: string) {
-    if (confirm('Permanently delete this tenant? This cannot be undone.')) {
-      deletingId = id;
-      try {
-        await deleteTenant(id);
-        await loadData();
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'Failed to delete tenant';
-      } finally {
-        deletingId = null;
-      }
-    }
-  }
-
   async function handleClearCache() {
     isClearing = true;
     try {
@@ -116,8 +101,6 @@
     items={data.data}
     columns={columns}
     onRestore={handleRestore}
-    onHardDelete={handleHardDelete}
     restoringId={restoringId}
-    deletingId={deletingId}
   />
 </div>

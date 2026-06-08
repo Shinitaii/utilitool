@@ -42,10 +42,6 @@ export async function updatePropertiesBatch(
   return apiPatch<Property[]>('/properties/batch', data);
 }
 
-export async function deleteProperty(id: string): Promise<void> {
-  return apiDelete<void>(`/properties/${id}`);
-}
-
 export async function softDeleteProperty(id: string): Promise<Property> {
   return apiDelete<Property>(`/properties/${id}`);
 }

@@ -44,10 +44,6 @@ export async function updateMeterGroupsBatch(
   return apiPatch<MeterGroup[]>('/meter-groups/batch', data);
 }
 
-export async function deleteMeterGroup(id: string): Promise<void> {
-  return apiDelete<void>(`/meter-groups/${id}`);
-}
-
 export async function softDeleteMeterGroup(id: string): Promise<MeterGroup> {
   return apiDelete<MeterGroup>(`/meter-groups/${id}`);
 }

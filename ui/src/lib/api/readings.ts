@@ -56,10 +56,6 @@ export async function updateReadingsBatch(
   return apiPatch<Reading[]>('/readings/batch', data);
 }
 
-export async function deleteReading(id: string): Promise<void> {
-  return apiDelete<void>(`/readings/${id}`);
-}
-
 export async function softDeleteReading(id: string): Promise<Reading> {
   return apiDelete<Reading>(`/readings/${id}`);
 }

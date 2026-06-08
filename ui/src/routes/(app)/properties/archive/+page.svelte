@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getProperties, restoreProperty, deleteProperty, clearCache } from '$lib/api/properties';
+  import { getProperties, restoreProperty, clearCache } from '$lib/api/properties';
   import type { Property } from '$lib/types/property.types';
   import type { PaginatedResult } from '$lib/types/api.types';
   import { formatDate } from '$lib/utils/format';
@@ -16,7 +16,6 @@
   let isLoading = $state(false);
   let error = $state('');
   let restoringId = $state<string | null>(null);
-  let deletingId = $state<string | null>(null);
   let isClearing = $state(false);
 
   const columns = [
@@ -58,20 +57,6 @@
     }
   }
 
-  async function handleHardDelete(id: string) {
-    if (confirm('Permanently delete this property? This cannot be undone.')) {
-      deletingId = id;
-      try {
-        await deleteProperty(id);
-        await loadData();
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'Failed to delete property';
-      } finally {
-        deletingId = null;
-      }
-    }
-  }
-
   async function handleClearCache() {
     isClearing = true;
     try {
@@ -105,8 +90,6 @@
     items={data.data}
     columns={columns}
     onRestore={handleRestore}
-    onHardDelete={handleHardDelete}
     restoringId={restoringId}
-    deletingId={deletingId}
   />
 </div>

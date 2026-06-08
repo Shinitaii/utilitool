@@ -40,10 +40,6 @@ export async function updateBillingsBatch(
   return apiPatch<Billing[]>('/billings/batch', data);
 }
 
-export async function deleteBilling(id: string): Promise<void> {
-  return apiDelete<void>(`/billings/${id}`);
-}
-
 export async function softDeleteBilling(id: string): Promise<Billing> {
   return apiDelete<Billing>(`/billings/${id}`);
 }

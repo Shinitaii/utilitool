@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getMeterGroups, restoreMeterGroup, deleteMeterGroup, clearCache } from '$lib/api/meter-groups';
+  import { getMeterGroups, restoreMeterGroup, clearCache } from '$lib/api/meter-groups';
   import type { MeterGroup } from '$lib/types/meter-group.types';
   import type { PaginatedResult } from '$lib/types/api.types';
   import { formatDate } from '$lib/utils/format';
@@ -16,7 +16,6 @@
   let isLoading = $state(false);
   let error = $state('');
   let restoringId = $state<string | null>(null);
-  let deletingId = $state<string | null>(null);
   let isClearing = $state(false);
 
   const columns = [
@@ -58,20 +57,6 @@
     }
   }
 
-  async function handleHardDelete(id: string) {
-    if (confirm('Permanently delete this meter group? This cannot be undone.')) {
-      deletingId = id;
-      try {
-        await deleteMeterGroup(id);
-        await loadData();
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'Failed to delete meter group';
-      } finally {
-        deletingId = null;
-      }
-    }
-  }
-
   async function handleClearCache() {
     isClearing = true;
     try {
@@ -105,8 +90,6 @@
     items={data.data}
     columns={columns}
     onRestore={handleRestore}
-    onHardDelete={handleHardDelete}
     restoringId={restoringId}
-    deletingId={deletingId}
   />
 </div>

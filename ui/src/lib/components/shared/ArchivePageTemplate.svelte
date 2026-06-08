@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { RotateCcw, Trash2 } from 'lucide-svelte';
+  import { RotateCcw } from 'lucide-svelte';
   import EmptyState from './EmptyState.svelte';
 
   interface Props {
@@ -10,9 +10,7 @@
     items: any[];
     columns: { key: string; label: string; format?: (value: any) => string }[];
     onRestore: (id: string) => void;
-    onHardDelete: (id: string) => void;
     restoringId?: string;
-    deletingId?: string;
   }
 
   const {
@@ -23,9 +21,7 @@
     items,
     columns,
     onRestore,
-    onHardDelete,
-    restoringId,
-    deletingId
+    restoringId
   } = $props();
 </script>
 
@@ -73,14 +69,6 @@
                     title="Restore item"
                   >
                     <RotateCcw size={16} />
-                  </button>
-                  <button
-                    onclick={() => onHardDelete(item.id)}
-                    disabled={isLoading || deletingId === item.id}
-                    class="p-1.5 rounded hover:bg-red-100 text-red-700 disabled:opacity-50"
-                    title="Permanently delete"
-                  >
-                    <Trash2 size={16} />
                   </button>
                 </div>
               </td>

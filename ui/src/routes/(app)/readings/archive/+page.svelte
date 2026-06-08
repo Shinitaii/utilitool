@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getReadings, restoreReading, deleteReading, clearCache } from '$lib/api/readings';
+  import { getReadings, restoreReading, clearCache } from '$lib/api/readings';
   import { getMeterGroups } from '$lib/api/meter-groups';
   import type { Reading } from '$lib/types/reading.types';
   import type { MeterGroup } from '$lib/types/meter-group.types';
@@ -19,7 +19,6 @@
   let isLoading = $state(false);
   let error = $state('');
   let restoringId = $state<string | null>(null);
-  let deletingId = $state<string | null>(null);
   let isClearing = $state(false);
 
   const columns = [
@@ -78,20 +77,6 @@
     }
   }
 
-  async function handleHardDelete(id: string) {
-    if (confirm('Permanently delete this reading? This cannot be undone.')) {
-      deletingId = id;
-      try {
-        await deleteReading(id);
-        await loadData();
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'Failed to delete reading';
-      } finally {
-        deletingId = null;
-      }
-    }
-  }
-
   async function handleClearCache() {
     isClearing = true;
     try {
@@ -125,8 +110,6 @@
     items={data.data}
     columns={columns}
     onRestore={handleRestore}
-    onHardDelete={handleHardDelete}
     restoringId={restoringId}
-    deletingId={deletingId}
   />
 </div>

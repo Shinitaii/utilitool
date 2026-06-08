@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getBillings, restoreBilling, deleteBilling, clearCache } from '$lib/api/billings';
+  import { getBillings, restoreBilling, clearCache } from '$lib/api/billings';
   import type { Billing } from '$lib/types/billing.types';
   import type { PaginatedResult } from '$lib/types/api.types';
   import { formatDate, formatCurrency } from '$lib/utils/format';
@@ -16,7 +16,6 @@
   let isLoading = $state(false);
   let error = $state('');
   let restoringId = $state<string | null>(null);
-  let deletingId = $state<string | null>(null);
   let isClearing = $state(false);
 
   const columns = [
@@ -59,20 +58,6 @@
     }
   }
 
-  async function handleHardDelete(id: string) {
-    if (confirm('Permanently delete this billing? This cannot be undone.')) {
-      deletingId = id;
-      try {
-        await deleteBilling(id);
-        await loadData();
-      } catch (err) {
-        error = err instanceof Error ? err.message : 'Failed to delete billing';
-      } finally {
-        deletingId = null;
-      }
-    }
-  }
-
   async function handleClearCache() {
     isClearing = true;
     try {
@@ -106,8 +91,6 @@
     items={data.data}
     columns={columns}
     onRestore={handleRestore}
-    onHardDelete={handleHardDelete}
     restoringId={restoringId}
-    deletingId={deletingId}
   />
 </div>

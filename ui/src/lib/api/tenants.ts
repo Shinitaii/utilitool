@@ -42,10 +42,6 @@ export async function updateTenantsBatch(
   return apiPatch<Tenant[]>('/tenants/batch', data);
 }
 
-export async function deleteTenant(id: string): Promise<void> {
-  return apiDelete<void>(`/tenants/${id}`);
-}
-
 export async function softDeleteTenant(id: string): Promise<Tenant> {
   return apiDelete<Tenant>(`/tenants/${id}`);
 }
