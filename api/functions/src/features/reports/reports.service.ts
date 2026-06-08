@@ -3,6 +3,7 @@ import {billingRepository} from "../billing/billing.repository";
 import {meterGroupRepository} from "../meter-group/meter-group.repository";
 import {propertyRepository} from "../property/property.repository";
 import {readingRepository} from "../reading/reading.repository";
+import {calculateTrueReading, resolveVersionsSource} from "../reading/reading.util";
 import type {
   ReportSummary,
   ConsumptionReport,
@@ -60,10 +61,8 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
     return [];
   }
 
-  // 4. Fetch all billings in parallel
-  const billings = await Promise.all(
-    Array.from(allBillingIds).map((id) => billingRepository.getById(id))
-  );
+  // 4. Fetch all billings
+  const billings = await billingRepository.getByIds(Array.from(allBillingIds));
 
   const validBillings = billings.filter((b): b is NonNullable<typeof b> => b !== null);
 
@@ -75,9 +74,7 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
 
   // 6. Collect all unique property IDs and fetch properties (filter out empty)
   const propertyIds = new Set(filteredBillings.map((b) => b.property_id).filter((id) => id && id.trim()));
-  const properties = await Promise.all(
-    Array.from(propertyIds).map((id) => propertyRepository.getById(id))
-  );
+  const properties = await propertyRepository.getByIds(Array.from(propertyIds));
 
   const propertyMap = new Map(properties.filter((p): p is NonNullable<typeof p> => p !== null).map((p) => [p.id, p]));
 
@@ -94,9 +91,7 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
   });
 
   // 8. Fetch all meter groups for utility_type
-  const meterGroups = await Promise.all(
-    Array.from(meterGroupIds).map((id) => meterGroupRepository.getById(id))
-  );
+  const meterGroups = await meterGroupRepository.getByIds(Array.from(meterGroupIds));
 
   const meterGroupMap = new Map(
     meterGroups.filter((mg): mg is NonNullable<typeof mg> => mg !== null).map((mg) => [mg.id, mg])
@@ -113,9 +108,7 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
     }
   });
 
-  const readings = await Promise.all(
-    Array.from(readingIds).map((id) => readingRepository.getById(id))
-  );
+  const readings = await readingRepository.getByIds(Array.from(readingIds));
 
   const readingMap = new Map(readings.filter((r): r is NonNullable<typeof r> => r !== null).map((r) => [r.id, r]));
 
@@ -156,7 +149,8 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
       continue;
     }
 
-    const consumption = currentReading.reading_amount - previousReading.reading_amount;
+    const versionsSource = resolveVersionsSource(meterGroup, property, meterGroupId);
+    const consumption = calculateTrueReading(currentReading, versionsSource) - calculateTrueReading(previousReading, versionsSource);
 
     // Find the cycle that contains this billing
     const cycle = cycles.find((c) => c.billing_ids.hasOwnProperty(billing.id));
@@ -236,9 +230,7 @@ export async function getConsumption(userId: string, query: ReportQueryDTO): Pro
     });
   });
 
-  const billings = await Promise.all(
-    Array.from(allBillingIds).map((id) => billingRepository.getById(id))
-  );
+  const billings = await billingRepository.getByIds(Array.from(allBillingIds));
 
   const validBillings = billings.filter((b): b is NonNullable<typeof b> => b !== null);
 
@@ -249,9 +241,7 @@ export async function getConsumption(userId: string, query: ReportQueryDTO): Pro
 
   // Collect properties (filter out empty)
   const propertyIds = new Set(filteredBillings.map((b) => b.property_id).filter((id) => id && id.trim()));
-  const properties = await Promise.all(
-    Array.from(propertyIds).map((id) => propertyRepository.getById(id))
-  );
+  const properties = await propertyRepository.getByIds(Array.from(propertyIds));
 
   const propertyMap = new Map(properties.filter((p): p is NonNullable<typeof p> => p !== null).map((p) => [p.id, p]));
 
@@ -267,9 +257,7 @@ export async function getConsumption(userId: string, query: ReportQueryDTO): Pro
     });
   });
 
-  const meterGroups = await Promise.all(
-    Array.from(meterGroupIds).map((id) => meterGroupRepository.getById(id))
-  );
+  const meterGroups = await meterGroupRepository.getByIds(Array.from(meterGroupIds));
 
   const meterGroupMap = new Map(
     meterGroups.filter((mg): mg is NonNullable<typeof mg> => mg !== null).map((mg) => [mg.id, mg])
@@ -283,9 +271,7 @@ export async function getConsumption(userId: string, query: ReportQueryDTO): Pro
     }
   });
 
-  const readings = await Promise.all(
-    Array.from(readingIds).map((id) => readingRepository.getById(id))
-  );
+  const readings = await readingRepository.getByIds(Array.from(readingIds));
 
   const readingMap = new Map(readings.filter((r): r is NonNullable<typeof r> => r !== null).map((r) => [r.id, r]));
 

@@ -5,44 +5,16 @@ import {billingRepository} from "../billing/billing.repository";
 import {readingRepository} from "../reading/reading.repository";
 import {meterGroupRepository} from "../meter-group/meter-group.repository";
 import {billingCycleRepository} from "./billing-cycle.repository";
-import {MeterGroup, MeterGroupVersionEntry} from "../meter-group/meter-group.model";
+import {MeterGroup} from "../meter-group/meter-group.model";
 import {propertyRepository} from "../property/property.repository";
+import {Property} from "../property/property.model";
+import {Reading} from "../reading/reading.model";
 import {Timestamp} from "firebase-admin/firestore";
+import {calculateTrueReading, resolveVersionsSource} from "../reading/reading.util";
 
 const CONSUMPTION_TOLERANCE = 0.03;
 
 export class BillingCycleValidator {
-  /**
-   * Resolve the versions map that scopes a reading's true-reading calculation.
-   * Main-meter properties resolve from the meter group (authoritative there);
-   * submeter properties track their own reset history on their MeterGroupEntry.
-   */
-  private async getVersionsSource(
-    propertyId: string,
-    meterGroupId: string,
-    meterGroup: MeterGroup | null
-  ): Promise<Record<string, MeterGroupVersionEntry> | undefined> {
-    const property = await propertyRepository.getById(propertyId);
-    const entry = property ?
-      Object.values(property.meter_groups).find((e) => e.meter_group_id === meterGroupId) :
-      undefined;
-
-    if (entry && !entry.is_main_meter) {
-      return entry.versions;
-    }
-
-    return meterGroup?.versions;
-  }
-
-  private getCumulativeOffset(versions: Record<string, MeterGroupVersionEntry> | undefined, version: number): number {
-    if (!versions) return 0;
-    let offset = 0;
-    for (let v = 1; v < version; v++) {
-      const versionData = versions[String(v)];
-      if (versionData) offset += versionData.last_reading;
-    }
-    return offset;
-  }
 
   private async validateBillingIdsExist(billingIds: string[]): Promise<void> {
     const billings = await Promise.all(
@@ -59,30 +31,59 @@ export class BillingCycleValidator {
     billingIds: Record<string, number>
   ): Promise<void> {
     const PER_BILLING_TOLERANCE = 0.05;
-    const meterGroupCache = new Map<string, MeterGroup | null>();
+    const billingIdList = Object.keys(billingIds);
 
-    for (const [billingId, providedConsumption] of Object.entries(billingIds)) {
-      const billing = await billingRepository.getById(billingId);
-      if (!billing) continue; // Already caught by validateBillingIdsExist
+    // Batch fetch all billings
+    const billings = await billingRepository.getByIds(billingIdList);
 
-      const [prevReading, currReading] = await Promise.all([
-        readingRepository.getById(billing.previous_reading_id),
-        readingRepository.getById(billing.current_reading_id),
-      ]);
+    const readingIds = new Set<string>();
+    const propertyIds = new Set<string>();
 
-      if (!prevReading || !currReading) continue; // Shouldn't happen if billings are valid
+    for (let i = 0; i < billings.length; i++) {
+      const billing = billings[i];
+      if (!billing) continue;
+      readingIds.add(billing.previous_reading_id);
+      readingIds.add(billing.current_reading_id);
+      propertyIds.add(billing.property_id);
+    }
 
-      if (!meterGroupCache.has(currReading.meter_group_id)) {
-        meterGroupCache.set(currReading.meter_group_id, await meterGroupRepository.getById(currReading.meter_group_id));
-      }
-      const meterGroup = meterGroupCache.get(currReading.meter_group_id)!;
+    // Batch fetch all readings and properties upfront
+    const readings = await readingRepository.getByIds(Array.from(readingIds));
+    const properties = await propertyRepository.getByIds(Array.from(propertyIds));
 
-      const prevVersion = prevReading.meter_version ?? 1;
-      const currVersion = currReading.meter_version ?? 1;
-      const versionsSource = await this.getVersionsSource(billing.property_id, currReading.meter_group_id, meterGroup);
-      const prevOffset = this.getCumulativeOffset(versionsSource, prevVersion);
-      const currOffset = this.getCumulativeOffset(versionsSource, currVersion);
-      const expectedConsumption = (currOffset + currReading.reading_amount) - (prevOffset + prevReading.reading_amount);
+    const readingMap = new Map<string, Reading>();
+    readings.forEach((r) => r && readingMap.set(r.id, r));
+
+    const propertyMap = new Map<string, Property>();
+    properties.forEach((p) => p && propertyMap.set(p.id, p));
+
+    // Meter groups are only known once readings are resolved (meter_group_id lives on Reading)
+    const uniqueMeterGroupIds = Array.from(readingMap.values())
+      .map((r) => r.meter_group_id)
+      .filter((id, idx, arr) => arr.indexOf(id) === idx);
+
+    const meterGroupMap = new Map<string, MeterGroup | null>();
+    const uniqueMeterGroups = await meterGroupRepository.getByIds(uniqueMeterGroupIds);
+    uniqueMeterGroups.forEach((mg) => mg && meterGroupMap.set(mg.id, mg));
+
+    // Now validate each billing using cached entities
+    for (let i = 0; i < billingIdList.length; i++) {
+      const billingId = billingIdList[i];
+      const providedConsumption = billingIds[billingId];
+      const billing = billings[i];
+
+      if (!billing) continue;
+
+      const prevReading = readingMap.get(billing.previous_reading_id);
+      const currReading = readingMap.get(billing.current_reading_id);
+
+      if (!prevReading || !currReading) continue;
+
+      const meterGroup = meterGroupMap.get(currReading.meter_group_id);
+      const property = propertyMap.get(billing.property_id);
+
+      const versionsSource = resolveVersionsSource(meterGroup, property, currReading.meter_group_id);
+      const expectedConsumption = calculateTrueReading(currReading, versionsSource) - calculateTrueReading(prevReading, versionsSource);
 
       const tolerance = Math.abs(expectedConsumption) * PER_BILLING_TOLERANCE;
       if (Math.abs(providedConsumption - expectedConsumption) > tolerance) {
@@ -152,7 +153,7 @@ export class BillingCycleValidator {
       orderBy: "created_at",
       filters: {
         meter_group_id: meterGroupId,
-        billing_start_date: billingStartDate.toDate() as any,
+        billing_start_date: billingStartDate.toDate(),
       },
     });
 

@@ -11,7 +11,7 @@ import {readingRepository} from "./reading.repository";
 import {CachedRepository} from "../../lib/cached-repository.lib";
 import type {CreateReadingDTO} from "./reading.dto";
 import type {Reading} from "./reading.model";
-import type {MeterGroup} from "../meter-group/meter-group.model";
+import type {MeterGroup, MeterGroupVersionEntry} from "../meter-group/meter-group.model";
 import type {Property} from "../property/property.model";
 
 const CACHE_TTL = 10 * 60; // 10 minutes
@@ -58,6 +58,55 @@ export function getCurrentMonthWindow(readingDate: Timestamp): { start: Timestam
     start: Timestamp.fromMillis(startManilaMs),
     end: Timestamp.fromMillis(endManilaMs),
   };
+}
+
+/**
+ * Sum the closing (`last_reading`) values of every meter version prior to the
+ * supplied version, so readings from different physical-meter cycles can be
+ * compared on one continuous scale.
+ */
+export function getCumulativeOffset(
+  versions: Record<string, MeterGroupVersionEntry> | undefined,
+  version: number
+): number {
+  if (!versions) return 0;
+  let offset = 0;
+  for (let v = 1; v < version; v++) {
+    const versionData = versions[String(v)];
+    if (versionData) offset += versionData.last_reading;
+  }
+  return offset;
+}
+
+/**
+ * Resolve the version-history map that governs a reading's meter_version.
+ * Submeter entries on a property track their own versions independently;
+ * main meters defer to the meter group's version history.
+ */
+export function resolveVersionsSource(
+  meterGroup: MeterGroup | null | undefined,
+  property: Property | null | undefined,
+  meterGroupId: string
+): Record<string, MeterGroupVersionEntry> | undefined {
+  let versionsSource = meterGroup?.versions;
+  if (property) {
+    const entry = Object.values(property.meter_groups).find((e) => e?.meter_group_id === meterGroupId);
+    if (entry && !entry.is_main_meter) {
+      versionsSource = entry.versions;
+    }
+  }
+  return versionsSource;
+}
+
+/**
+ * The reading's value on the continuous, cross-reset scale:
+ * cumulative offset of prior versions + the raw reading amount.
+ */
+export function calculateTrueReading(
+  reading: Reading,
+  versions: Record<string, MeterGroupVersionEntry> | undefined
+): number {
+  return getCumulativeOffset(versions, reading.meter_version ?? 1) + reading.reading_amount;
 }
 
 /**
