@@ -1,16 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getBillingCycles, createBillingCycle, ocrBillingCycle, softDeleteBillingCycle } from '$lib/api/billing-cycles';
+  import { getBillingCycles, createBillingCycle, updateBillingCycle, ocrBillingCycle, softDeleteBillingCycle } from '$lib/api/billing-cycles';
   import { getBillings, createBilling, updateBilling, softDeleteBilling } from '$lib/api/billings';
   import { getReadings } from '$lib/api/readings';
   import { getProperties } from '$lib/api/properties';
   import { getMeterGroups } from '$lib/api/meter-groups';
   import { authStore, type AuthState } from '$lib/stores/auth.svelte';
-  import type { BillingCycle } from '$lib/types/billing-cycle.types';
+  import type { BillingCycle, UpdateBillingCycleRequest } from '$lib/types/billing-cycle.types';
   import type { Billing, UpdateBillingRequest } from '$lib/types/billing.types';
   import type { Reading } from '$lib/types/reading.types';
-  import type { Property } from '$lib/types/property.types';
-  import type { MeterGroup } from '$lib/types/meter-group.types';
+  import type { Property, MeterGroupEntry } from '$lib/types/property.types';
+  import type { MeterGroup, MeterGroupVersionEntry } from '$lib/types/meter-group.types';
   import type { PaginatedResult } from '$lib/types/api.types';
   import { formatDate, formatCurrency, formatReading, getReadingUnit } from '$lib/utils/format';
   import { toDate } from '$lib/utils/timestamp';
@@ -54,6 +54,17 @@
   let cycleFormOverrideSelections = $state<Map<string, { prev_reading_id: string; curr_reading_id: string }>>(new Map());
   let isCreatingCycle = $state(false);
 
+  // Billing cycle edit modal state — lets corrections to rate/consumption/dates be made
+  // when company error or OCR misreads slip into a cycle after creation.
+  let cycleEditModalOpen = $state(false);
+  let editingCycle = $state<BillingCycle | null>(null);
+  let cycleEditConsumption = $state(0);
+  let cycleEditRate = $state(0);
+  let cycleEditStartDate = $state('');
+  let cycleEditEndDate = $state('');
+  let cycleEditDueDate = $state('');
+  let isUpdatingCycle = $state(false);
+
   // OCR state
   let billPhotoUrl = $state<string | null>(null);
   let isBillOcrLoading = $state(false);
@@ -85,6 +96,43 @@
 
   // Round to 2 decimal places to avoid floating-point precision errors
   const round = (value: number, decimals = 2) => Math.round(value * Math.pow(10, decimals)) / Math.pow(10, decimals);
+
+  // Version-aware "true reading" — mirrors the API's billing-cycle validator so consumption
+  // previews stay correct across meter resets (cumulative offset of prior versions + raw amount).
+  function getCumulativeOffset(versions: Record<string, MeterGroupVersionEntry> | undefined, version: number): number {
+    if (!versions) return 0;
+    let offset = 0;
+    for (let v = 1; v < version; v++) {
+      const versionData = versions[String(v)];
+      if (versionData) offset += versionData.last_reading;
+    }
+    return offset;
+  }
+
+  function getVersionsSource(meterGroup: MeterGroup | undefined, property: Property | undefined, meterGroupId: string): Record<string, MeterGroupVersionEntry> | undefined {
+    let versionsSource = meterGroup?.versions;
+    if (property) {
+      const entry = Object.values(property.meter_groups).find(
+        (e): e is MeterGroupEntry => typeof e === 'object' && e?.meter_group_id === meterGroupId
+      );
+      if (entry && !entry.is_main_meter) {
+        versionsSource = entry.versions;
+      }
+    }
+    return versionsSource;
+  }
+
+  function trueReading(reading: Reading, meterGroup: MeterGroup | undefined, property: Property | undefined): number {
+    const versionsSource = getVersionsSource(meterGroup, property, reading.meter_group_id);
+    return getCumulativeOffset(versionsSource, reading.meter_version ?? 1) + reading.reading_amount;
+  }
+
+  function readingConsumption(currReading: Reading, prevReading: Reading | undefined, property: Property | undefined): number {
+    const meterGroup = meterGroups.find((g) => g.id === currReading.meter_group_id);
+    const currTrue = trueReading(currReading, meterGroup, property);
+    const prevTrue = prevReading ? trueReading(prevReading, meterGroup, property) : 0;
+    return round(currTrue - prevTrue);
+  }
 
   const billingCycleReadings = $derived.by(() => {
     if (!readings || !cycleFormMeterGroup || !cycleFormEndDate) return [];
@@ -268,13 +316,9 @@
         const prevReading = readings.find(r => r.id === billing.previous_reading_id);
         const property = properties.find(p => p.id === billing.property_id);
 
-        const prevAmount = prevReading?.reading_amount ?? 0;
-        const currAmount = currReading.reading_amount;
-        // Cross-version pairs cannot be reduced to a simple diff in the UI (meter was reset between
-        // versions). The billing cycle server validation handles the true value; here we fall back
-        // to the naive diff so the preview is at least a reasonable estimate. The confirmed
-        // consumption value stored in cycle.billing_ids is always authoritative after cycle creation.
-        const consumption = round(currAmount - prevAmount);
+        // Version-aware true-reading diff — matches the API's billing-cycle validator so the
+        // preview stays correct across meter resets (cumulative offset of prior versions + raw amount).
+        const consumption = readingConsumption(currReading, prevReading, property);
 
         return {
           billingId: billing.id,
@@ -293,7 +337,8 @@
       const prevReading = readings.find((r) => r.id === override.prev_reading_id);
       const currReading = readings.find((r) => r.id === override.curr_reading_id);
       if (!prevReading || !currReading) return entry;
-      const consumption = round(currReading.reading_amount - prevReading.reading_amount);
+      const property = properties.find((p) => p.id === entry.propertyId);
+      const consumption = readingConsumption(currReading, prevReading, property);
       return { ...entry, consumption, amount: round(consumption * cycleFormRate) };
     });
   }
@@ -467,7 +512,8 @@
           previous_reading_id: gap.selectedPrevReadingId,
           current_reading_id: gap.selectedCurrReadingId,
         });
-        billing_ids[newBilling.id] = round(currReading.reading_amount - prevReading.reading_amount);
+        const gapProperty = properties.find((p) => p.id === gap.propertyId);
+        billing_ids[newBilling.id] = readingConsumption(currReading, prevReading, gapProperty);
       }
 
       const totalConsumption = cycleFormTotalConsumption;
@@ -507,6 +553,54 @@
       error = err instanceof Error ? err.message : 'Failed to create billing cycle';
     } finally {
       isCreatingCycle = false;
+    }
+  }
+
+  function openCycleEditModal(cycle: BillingCycle) {
+    editingCycle = cycle;
+    cycleEditConsumption = cycle.billing_consumption;
+    cycleEditRate = cycle.billing_rate;
+    cycleEditStartDate = toDate(cycle.billing_start_date).toISOString().split('T')[0];
+    cycleEditEndDate = toDate(cycle.billing_end_date).toISOString().split('T')[0];
+    cycleEditDueDate = cycle.overdue_date ? toDate(cycle.overdue_date).toISOString().split('T')[0] : '';
+    cycleEditModalOpen = true;
+  }
+
+  function closeCycleEditModal() {
+    cycleEditModalOpen = false;
+    editingCycle = null;
+  }
+
+  async function handleUpdateCycle() {
+    if (!editingCycle) return;
+    isUpdatingCycle = true;
+    try {
+      const payload: UpdateBillingCycleRequest = {
+        billing_consumption: cycleEditConsumption,
+        billing_rate: cycleEditRate,
+        billing_start_date: {
+          _seconds: Math.floor(new Date(cycleEditStartDate).getTime() / 1000),
+          _nanoseconds: 0,
+        },
+        billing_end_date: {
+          _seconds: Math.floor(new Date(cycleEditEndDate).getTime() / 1000),
+          _nanoseconds: 0,
+        },
+      };
+      if (cycleEditDueDate) {
+        payload.overdue_date = {
+          _seconds: Math.floor(new Date(cycleEditDueDate).getTime() / 1000),
+          _nanoseconds: 0,
+        };
+      }
+
+      await updateBillingCycle(editingCycle.id, payload);
+      closeCycleEditModal();
+      await loadData();
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to update billing cycle';
+    } finally {
+      isUpdatingCycle = false;
     }
   }
 
@@ -1229,6 +1323,16 @@
                   <button
                     onclick={(e) => {
                       e.stopPropagation();
+                      openCycleEditModal(cycle);
+                    }}
+                    class="p-2 rounded hover:bg-gray-100 text-gray-600"
+                    title="Edit cycle (correct rate, consumption, or dates)"
+                  >
+                    <Pencil size={18} />
+                  </button>
+                  <button
+                    onclick={(e) => {
+                      e.stopPropagation();
                       if (confirm('Archive this billing cycle and all its billings? They can be restored from the archive.')) {
                         softDeleteBillingCycle(cycle.id)
                           .then(() => loadData())
@@ -1425,6 +1529,71 @@
           </option>
         {/each}
       </select>
+    </div>
+  </div>
+</EditModal>
+
+<EditModal
+  bind:isOpen={cycleEditModalOpen}
+  title="Edit Billing Cycle"
+  isLoading={isUpdatingCycle}
+  onClose={closeCycleEditModal}
+  onSubmit={handleUpdateCycle}
+>
+  <div class="space-y-4">
+    <p class="text-sm text-gray-500">
+      Use this to correct company errors or OCR misreads in the cycle's totals or dates. This does not change individual billing amounts.
+    </p>
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label for="cycle-edit-consumption" class="block text-sm font-medium text-gray-700">Total Consumption</label>
+        <input
+          id="cycle-edit-consumption"
+          type="number"
+          step="0.01"
+          bind:value={cycleEditConsumption}
+          class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+        />
+      </div>
+      <div>
+        <label for="cycle-edit-rate" class="block text-sm font-medium text-gray-700">Rate</label>
+        <input
+          id="cycle-edit-rate"
+          type="number"
+          step="0.01"
+          bind:value={cycleEditRate}
+          class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+        />
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label for="cycle-edit-start" class="block text-sm font-medium text-gray-700">Start Date</label>
+        <input
+          id="cycle-edit-start"
+          type="date"
+          bind:value={cycleEditStartDate}
+          class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+        />
+      </div>
+      <div>
+        <label for="cycle-edit-end" class="block text-sm font-medium text-gray-700">End Date</label>
+        <input
+          id="cycle-edit-end"
+          type="date"
+          bind:value={cycleEditEndDate}
+          class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+        />
+      </div>
+    </div>
+    <div>
+      <label for="cycle-edit-due" class="block text-sm font-medium text-gray-700">Due Date (optional)</label>
+      <input
+        id="cycle-edit-due"
+        type="date"
+        bind:value={cycleEditDueDate}
+        class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+      />
     </div>
   </div>
 </EditModal>
