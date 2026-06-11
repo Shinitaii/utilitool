@@ -54,15 +54,14 @@ Response + update local store
 ```
 Login form
   ↓
-POST /auth/login via client.ts
+Firebase SDK signInWithEmailAndPassword (firebase/auth)
   ↓
-Receive access_token + refresh_token
+onAuthStateChanged updates authStore + fetches profile via getMe()
   ↓
-Store in localStorage + authStore
+client.ts calls firebaseUser.getIdToken() and attaches it as
+  Authorization: Bearer <token> on every request
   ↓
-Attach access_token to all subsequent requests
-  ↓
-On 401: auto-refresh token (interceptor in client.ts)
+On 401: force-refresh the ID token (getIdToken(true)) and retry once
 ```
 
 ---
@@ -97,7 +96,7 @@ ui/src/
 │       ├── billings/
 │       │   ├── +page.svelte
 │       │   └── archive/+page.svelte   (Archived billings recovery)
-│       ├── bills/+page.svelte      (OCR bill upload — stub)
+│       ├── bills/+page.svelte      (OCR bill upload — functional)
 │       ├── reports/+page.svelte    (Analytics dashboard — stub)
 │       └── settings/
 │           ├── +page.svelte        (Account settings root)
@@ -170,9 +169,10 @@ ui/src/
 
 #### Login (`/login`)
 - **Component**: `src/routes/(auth)/login/+page.svelte`
-- **API calls**:
-  - `POST /auth/login` ← `login()` from `src/lib/api/auth.ts`
-  - Stores tokens in localStorage + authStore
+- **Flow**:
+  - Firebase SDK `signInWithEmailAndPassword(auth, email, password)`
+  - `onAuthStateChanged` fires → `getMe()` from `src/lib/api/auth.ts` fetches the user profile and
+    populates `authStore`
 - **On success**: Redirect to `/dashboard`
 - **On error**: Display error message, enable retry
 
@@ -281,9 +281,14 @@ All archive pages: `GET /<feature>?archived=true` to list soft-deleted items, th
 
 #### Bills / OCR Upload (`/bills`)
 - **Component**: `src/routes/(app)/bills/+page.svelte`
-- **API calls**: `POST /bills/ocr` ← `ocrBill()` from `src/lib/api/bills.ts` (partially wired)
-- **Displays**: "Coming Soon" placeholder with build hammer icon
-- **Status**: 🚧 Stub — UI not yet built out, API endpoint exists
+- **API calls**:
+  - `POST /bills/ocr` ← `ocrBill()` from `src/lib/api/bills.ts`
+  - `GET /meter-groups?limit=100` ← `getMeterGroups()`
+  - `GET /billings?limit=100` ← `getBillings()`
+  - `POST /billing-cycles` ← `createBillingCycle()`
+- **Displays**: 3-step wizard — (1) upload bill image, (2) review OCR results & map to billings,
+  (3) review & submit, creating a billing cycle from the extracted data
+- **Status**: ✅ Functional — overlaps with the billings-page "New Billing Cycle from photo" flow
 
 #### Reports (`/reports`)
 - **Component**: `src/routes/(app)/reports/+page.svelte`
@@ -359,8 +364,9 @@ Located: `src/lib/api/client.ts`
 
 **Features**:
 - **Base URL**: http://localhost:5002 (configurable)
-- **Token management**: getAccessToken(), setTokens(), clearTokens()
-- **Refresh interceptor**: On 401, auto-call `POST /auth/refresh` and retry request once
+- **Token management**: gets the Firebase ID token via `firebaseUser.getIdToken()`
+- **Refresh interceptor**: On 401, force-refreshes the ID token (`getIdToken(true)`) and retries
+  the request once
 - **Headers**: Automatically adds `Authorization: Bearer <token>` to all requests
 - **Error handling**: Custom ApiError thrown with status + message + details
 

@@ -218,7 +218,7 @@ Each page/component is organized by:
 - ✅ Auth (Firebase Auth: sign up, login, logout)
 - ✅ Image Extraction (`POST /image-extraction/readings` + `POST /image-extraction/billings` — Gemini Vision OCR)
 - ✅ Reports (`GET /reports/summary`, `/consumption`, `/billing-trends`, `/collection-status`)
-- ⚠️ Bills (`POST /bills/ocr` — partial stub; overlaps with image-extraction)
+- ✅ Bills (`POST /bills/ocr` — functional 3-step UI wizard; overlaps with image-extraction)
 - ⚠️ Users (`POST /users` — partial stub for user role management)
 
 **Audit Highlights (25 fixes)**:
@@ -239,7 +239,7 @@ Each page/component is organized by:
 - ✅ Tenants (searchable list; archive page)
 - ✅ Readings (filterable list; True Total column; batch form with decoupled OCR suggest; archive page)
 - ✅ Billings (cycle-centric: expandable cycles with nested billings; bill photo OCR autofill; cycle edit modal for rate/consumption/date corrections; archive page)
-- 🚧 Bills / OCR upload (stub — API module ready, UI not built)
+- ✅ Bills / OCR upload (3-step wizard: upload → review/map → submit, creates a billing cycle)
 - 🚧 Reports (stub — API module ready, UI not built)
 - 🚧 Settings (partial — payment + user management tabs scaffolded)
 

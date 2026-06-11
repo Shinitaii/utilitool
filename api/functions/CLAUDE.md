@@ -749,15 +749,21 @@ export type UtilityType = typeof UTILITY_TYPES[keyof typeof UTILITY_TYPES];
 Generic class that handles all CRUD for any model. Located in `src/lib/repository.lib.ts`.
 
 Methods:
-- `create(item: T)` → T
-- `createBatch(items: T[])` → T[]
-- `getAll(options?: PaginationOptions)` → PaginatedResult<T>
+- `create(item: WithoutBaseModel<T>)` → T
+- `createBatch(items: WithoutBaseModel<T>[])` → T[]
 - `getById(id: string)` → T | null
-- `search(filters: Partial<T>, options?: PaginationOptions)` → PaginatedResult<T>
-- `update(id: string, data: Partial<T>)` → T
-- `updateBatch(items: { id: string; data: Partial<T> }[])` → T[]
-- `softDelete(id: string)` → T (sets deleted_at)
-- `delete(id: string)` → void (hard delete)
+- `getByIds(ids: string[])` → (T | null)[] (batches Firestore `in` queries by 10)
+- `search(options: SearchOptions<T>)` → PaginatedResult<T> (filters, range filters, `is_deleted`,
+  ordering, cursor pagination — the public list method; there is no `getAll()`)
+- `update(id: string, data: Partial<WithoutBaseModel<T>>)` → T
+- `updateBatch(updates: { id: string; data: Partial<WithoutBaseModel<T>> }[])` → T[]
+- `softDelete(id: string)` / `softDeleteBatch(ids: string[])` → T / T[] (sets `is_deleted`; the
+  only delete path exposed by feature services/routes)
+- `restore(id: string)` → T (clears `is_deleted`)
+- `delete(id: string)` / `deleteBatch(ids: string[])` → hard delete. **Internal/cascade-only** —
+  not exposed via any route; used only for cleaning up dependent records when a parent is
+  hard-deleted in a transaction. Public `DELETE /:id` endpoints map to `softDelete`, per the
+  soft-delete-only decision (D1).
 
 ### AppError
 Custom error class with HTTP status. Located in `src/utils/error.util.ts`.
@@ -842,8 +848,8 @@ A: In the service layer. Use `throw new AppError(statusCode, message)`.
 **Q: How do I add a new endpoint?**  
 A: Add the handler to the controller, the route to the route file, and update `.swagger.ts`.
 
-**Q: Can I use `getAll()` without filters?**  
-A: Avoid it for large collections — use `search()` with filters to avoid full-collection scans. Use `getAll()` only if you're sure the collection is small.
+**Q: Can I use `search()` without filters?**  
+A: Avoid it for large collections — pass `filters` to narrow the query and avoid full-collection scans. An unfiltered `search()` (still paginated via `limit`/`cursor`) is fine only if you're sure the collection is small.
 
 **Q: How do I handle pagination in the UI?**  
 A: Pass `cursor` from the previous response to the next request. UI should increment a page number internally while managing cursor state.
