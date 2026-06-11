@@ -1,7 +1,7 @@
 import { browser } from '$app/environment';
 import { initializeApp, type FirebaseApp } from 'firebase/app';
-import { getStorage, type FirebaseStorage } from 'firebase/storage';
-import { getAuth, type Auth } from 'firebase/auth';
+import { getStorage, connectStorageEmulator, type FirebaseStorage } from 'firebase/storage';
+import { getAuth, connectAuthEmulator, type Auth } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -21,6 +21,13 @@ if (browser) {
   app = initializeApp(firebaseConfig);
   storage = getStorage(app);
   auth = getAuth(app);
+
+  // E2E tests only (decisions/20260611_emulator-for-e2e-testing.md): point the SDK at the
+  // local Firebase emulators instead of the real project.
+  if (import.meta.env.VITE_USE_FIREBASE_EMULATOR === 'true') {
+    connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+    connectStorageEmulator(storage, '127.0.0.1', 9199);
+  }
 }
 
 export { app, storage, auth };

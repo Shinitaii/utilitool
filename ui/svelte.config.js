@@ -1,5 +1,14 @@
 ﻿import { mdsvex } from 'mdsvex';
 import adapter from '@sveltejs/adapter-vercel';
+import { loadEnv } from 'vite';
+
+// E2E tests only (decisions/20260611_emulator-for-e2e-testing.md): `vite build --mode test`
+// loads ui/.env.test for `import.meta.env`, but this config file runs in plain Node and reads
+// `process.env` directly — load the same file here so the CSP can react to it.
+const mode = process.argv.includes('--mode')
+	? process.argv[process.argv.indexOf('--mode') + 1]
+	: 'production';
+Object.assign(process.env, loadEnv(mode, process.cwd(), 'VITE_'));
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -21,7 +30,12 @@ const config = {
 					'https://*.googleapis.com',
 					'https://*.firebaseio.com',
 					'https://identitytoolkit.googleapis.com',
-					'https://securetoken.googleapis.com'
+					'https://securetoken.googleapis.com',
+					// E2E tests only (decisions/20260611_emulator-for-e2e-testing.md): allow the
+					// SDK to reach the local Firebase Auth/Storage emulators.
+					...(process.env.VITE_USE_FIREBASE_EMULATOR === 'true'
+						? ['http://127.0.0.1:9099', 'http://127.0.0.1:9199']
+						: [])
 				],
 				'font-src': ["'self'"],
 				'object-src': ["'none'"],
