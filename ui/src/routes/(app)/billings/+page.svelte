@@ -13,6 +13,7 @@
   import type { MeterGroup, MeterGroupVersionEntry } from '$lib/types/meter-group.types';
   import type { PaginatedResult } from '$lib/types/api.types';
   import { formatDate, formatCurrency, formatReading, getReadingUnit } from '$lib/utils/format';
+  import { billAmount, sumMoney } from '$lib/utils/money';
   import { toDate } from '$lib/utils/timestamp';
   import { getUtilityTypeBadgeClasses } from '$lib/utils/utility-colors';
   import EmptyState from '$lib/components/shared/EmptyState.svelte';
@@ -325,7 +326,7 @@
           propertyId: property?.id ?? billing.property_id,
           propertyName: property?.room_name ?? billing.property_id.slice(0, 8),
           consumption,
-          amount: round(consumption * cycleFormRate),
+          amount: billAmount(consumption, cycleFormRate),
         };
       });
 
@@ -339,7 +340,7 @@
       if (!prevReading || !currReading) return entry;
       const property = properties.find((p) => p.id === entry.propertyId);
       const consumption = readingConsumption(currReading, prevReading, property);
-      return { ...entry, consumption, amount: round(consumption * cycleFormRate) };
+      return { ...entry, consumption, amount: billAmount(consumption, cycleFormRate) };
     });
   }
 
@@ -466,7 +467,7 @@
       cycleFormEndDate = result.billing_end_date;
       cycleFormRate = result.billing_rate;
       cycleFormTotalConsumption = result.billing_consumption;
-      cycleFormTotalAmount = round(result.billing_consumption * result.billing_rate);
+      cycleFormTotalAmount = billAmount(result.billing_consumption, result.billing_rate);
       cycleFormLastChanged = null;
       billOcrRawAmount = result.raw_amount;
     } catch (err) {
@@ -653,14 +654,14 @@
   }
 
   function getCyclePaidAmount(cycle: BillingCycle): number {
-    let total = 0;
+    const amounts: number[] = [];
     for (const [billingId, consumption] of Object.entries(cycle.billing_ids)) {
       const billing = billingMap.get(billingId);
       if (billing?.payment_status === 'paid') {
-        total += consumption * cycle.billing_rate;
+        amounts.push(billAmount(consumption, cycle.billing_rate));
       }
     }
-    return total;
+    return sumMoney(amounts);
   }
 
   const groupedCycles = $derived.by(() => {
@@ -717,7 +718,7 @@
 
         const consumption = cycle.billing_ids[billing.id] ?? 0;
         const billRate = cycle.billing_rate;
-        const amount = consumption * billRate;
+        const amount = billAmount(consumption, billRate);
 
         const roomName = escHtml(property?.room_name || 'N/A');
         const currReadingAmount = currReading?.reading_amount ?? 0;
@@ -918,7 +919,7 @@
             bind:value={cycleFormRate}
             oninput={() => {
               cycleFormLastChanged = 'rate';
-              cycleFormTotalAmount = round(cycleFormTotalConsumption * cycleFormRate);
+              cycleFormTotalAmount = billAmount(cycleFormTotalConsumption, cycleFormRate);
             }}
             class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
           />
@@ -970,7 +971,7 @@
                 bind:value={cycleFormTotalConsumption}
                 oninput={() => {
                   cycleFormLastChanged = 'consumption';
-                  cycleFormTotalAmount = round(cycleFormTotalConsumption * cycleFormRate);
+                  cycleFormTotalAmount = billAmount(cycleFormTotalConsumption, cycleFormRate);
                 }}
                 class="mt-2 block w-full rounded border border-blue-300 px-3 py-2 font-mono bg-white"
               />
@@ -1290,7 +1291,7 @@
                         <div>
                           <div class="text-xs font-medium text-gray-600">Total Amount</div>
                           <div class="font-mono font-semibold text-gray-900">
-                            {formatCurrency(cycle.billing_consumption * cycle.billing_rate)}
+                            {formatCurrency(billAmount(cycle.billing_consumption, cycle.billing_rate))}
                           </div>
                         </div>
                         <div>

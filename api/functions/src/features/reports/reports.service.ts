@@ -4,6 +4,7 @@ import {meterGroupRepository} from "../meter-group/meter-group.repository";
 import {propertyRepository} from "../property/property.repository";
 import {readingRepository} from "../reading/reading.repository";
 import {calculateTrueReading, resolveVersionsSource} from "../reading/reading.util";
+import {billAmount, sumMoney} from "../../utils/money.util";
 import type {
   ReportSummary,
   ConsumptionReport,
@@ -157,7 +158,7 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
     if (!cycle) continue;
 
     // Calculate amount as consumption × rate
-    const amount = consumption * cycle.billing_rate;
+    const amount = billAmount(consumption, cycle.billing_rate);
 
     // Determine overdue status based on overdue_date if available, otherwise use billing_end_date
     const overdueDate = cycle.overdue_date ? cycle.overdue_date.toDate() : cycle.billing_end_date.toDate();
@@ -183,11 +184,11 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
 export async function getSummary(userId: string, query: ReportQueryDTO): Promise<ReportSummary> {
   const joinedData = await buildJoinedData(userId, query);
 
-  const totalRevenue = joinedData
-    .filter((j) => j.paymentStatus === "paid")
-    .reduce((sum, j) => sum + j.amount, 0);
+  const totalRevenue = sumMoney(
+    joinedData.filter((j) => j.paymentStatus === "paid").map((j) => j.amount)
+  );
 
-  const totalBilled = joinedData.reduce((sum, j) => sum + j.amount, 0);
+  const totalBilled = sumMoney(joinedData.map((j) => j.amount));
   const collectionRate = totalBilled > 0 ? totalRevenue / totalBilled : 0;
 
   const paid = joinedData.filter((j) => j.paymentStatus === "paid");
@@ -195,14 +196,14 @@ export async function getSummary(userId: string, query: ReportQueryDTO): Promise
   const overdue = joinedData.filter((j) => j.isOverdue);
 
   return {
-    total_revenue: Math.round(totalRevenue * 100) / 100,
-    total_billed: Math.round(totalBilled * 100) / 100,
+    total_revenue: totalRevenue,
+    total_billed: totalBilled,
     collection_rate: Math.round(collectionRate * 10000) / 10000,
     paid_count: paid.length,
     pending_count: pending.length,
     overdue_count: overdue.length,
-    pending_amount: Math.round(pending.reduce((sum, j) => sum + j.amount, 0) * 100) / 100,
-    overdue_amount: Math.round(overdue.reduce((sum, j) => sum + j.amount, 0) * 100) / 100,
+    pending_amount: sumMoney(pending.map((j) => j.amount)),
+    overdue_amount: sumMoney(overdue.map((j) => j.amount)),
   };
 }
 
@@ -428,15 +429,15 @@ export async function getCollectionStatus(
   return {
     paid: {
       count: paid.length,
-      amount: Math.round(paid.reduce((sum, j) => sum + j.amount, 0) * 100) / 100,
+      amount: sumMoney(paid.map((j) => j.amount)),
     },
     pending: {
       count: pending.length,
-      amount: Math.round(pending.reduce((sum, j) => sum + j.amount, 0) * 100) / 100,
+      amount: sumMoney(pending.map((j) => j.amount)),
     },
     overdue: {
       count: overdue.length,
-      amount: Math.round(overdue.reduce((sum, j) => sum + j.amount, 0) * 100) / 100,
+      amount: sumMoney(overdue.map((j) => j.amount)),
     },
   };
 }

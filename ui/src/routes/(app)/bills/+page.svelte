@@ -7,6 +7,7 @@
   import { createBillingCycle } from '$lib/api/billing-cycles';
   import { uploadToStorage } from '$lib/utils/firebase-storage';
   import { formatCurrency, formatDate } from '$lib/utils/format';
+  import { billAmount } from '$lib/utils/money';
   import { toDate } from '$lib/utils/timestamp';
   import type { OcrBillResponse } from '$lib/types/bill.types';
   import type { MeterGroup } from '$lib/types/meter-group.types';
@@ -391,7 +392,7 @@
           <div>
             <p class="text-xs text-gray-600">Calculated Total</p>
             <p class="font-semibold">
-              {formatCurrency(reviewForm.billing_consumption * reviewForm.billing_rate)}
+              {formatCurrency(billAmount(reviewForm.billing_consumption, reviewForm.billing_rate))}
             </p>
           </div>
         </div>
