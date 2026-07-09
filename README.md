@@ -21,6 +21,9 @@ npm run dev:watch
 
 # Terminal 2 — UI (port 5173)
 cd ui && npm ci && npm run dev
+
+# Terminal 3 — Mobile web preview (port 5174, optional)
+cd mobile && npm ci && npm run dev
 ```
 
 ### 2. Open in browser
@@ -33,7 +36,7 @@ Sign up with any email/password → You're in the dashboard.
 ```bash
 docker-compose up
 ```
-Starts both services in watch mode. Requires `api/functions/secrets/.env.staging` — see `API_SETUP.md`.
+Starts API, UI, and the mobile web preview in watch mode, each in its own container with source bind-mounted from your host (no local Node install needed). File watching uses polling so edits made on Windows are picked up reliably — costs more memory (`vmmem`) than the manual setup but skips the 3-terminal juggling. Requires `api/functions/secrets/.env.staging` — see `API_SETUP.md`. Note: the mobile container is web-preview only; Capacitor/Android builds still require the manual workflow in `mobile/CLAUDE.md`.
 
 ---
 

@@ -107,6 +107,11 @@ npm run dev:watch
 cd ui
 npm ci
 npm run dev
+
+# Terminal 3 — Mobile web preview (port 5174, optional)
+cd mobile
+npm ci
+npm run dev
 ```
 
 ### Docker alternative
@@ -114,7 +119,7 @@ npm run dev
 docker-compose up
 ```
 
-Starts the API (port 5002) and UI (port 5173) in watch mode. Requires `api/functions/secrets/.env.staging` to exist — see `API_SETUP.md`.
+Starts API (port 5002), UI (port 5173), and the mobile web preview (port 5174) in watch mode, each in its own container with the source bind-mounted from your host. File watching runs in polling mode (`CHOKIDAR_USEPOLLING=true` / `ts-node-dev --poll`) so edits made on a Windows host are picked up reliably through the WSL2/VirtioFS bind mount — without it, native `fs.watch` can silently miss host-side changes and hot reload stalls. Trade-off vs. the manual 3-terminal setup: no local Node install needed and one `docker-compose up` instead of juggling terminals, at the cost of higher memory usage (`vmmem`) and slightly less snappy reload due to polling. Requires `api/functions/secrets/.env.staging` to exist — see `API_SETUP.md`. The mobile container only serves the Vite web preview; the Capacitor/Android native build is not containerized and still requires the manual `mobile/CLAUDE.md` workflow.
 
 ---
 

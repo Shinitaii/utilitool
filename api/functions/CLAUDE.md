@@ -834,7 +834,7 @@ npm run dev:watch
 ```
 Connects to `utilitool-staging` Firebase project. Loads additional env vars (GCLOUD_PROJECT, GEMINI_API_KEY) from `secrets/.env.staging` — see `API_SETUP.md`.
 
-**Docker alternative**: `docker-compose up` from the repo root starts both API and UI. See `docker-compose.yml`.
+**Docker alternative**: `docker-compose up` from the repo root starts API, UI, and the mobile web preview, each with source bind-mounted and file watching in polling mode (needed for reliable hot reload from a Windows host). See `docker-compose.yml`.
 
 **Manual emulator use**: `npm run serve` works if you need to run integration tests against a local Firebase emulator.
 

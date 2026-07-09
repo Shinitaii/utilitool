@@ -24,13 +24,17 @@ npm run dev:watch
 
 # Terminal 2 — UI (port 5173)
 cd ui && npm ci && npm run dev
+
+# Terminal 3 — Mobile web preview (port 5174, optional)
+cd mobile && npm ci && npm run dev
 ```
 
 - API: http://localhost:5002
 - UI: http://localhost:5173
+- Mobile (web preview): http://localhost:5174
 - Swagger: http://localhost:5002/docs
 
-Both run in watch mode — file changes hot-reload automatically.
+All three run in watch mode — file changes hot-reload automatically.
 
 See `API_SETUP.md` for full environment variable requirements and Firebase credential setup.
 
@@ -38,7 +42,7 @@ See `API_SETUP.md` for full environment variable requirements and Firebase crede
 ```bash
 docker-compose up
 ```
-Requires `api/functions/secrets/.env.staging`. See `API_SETUP.md`.
+Starts API, UI, and mobile (web preview) each in its own container, source bind-mounted from the host — no local Node install required. Watchers run in polling mode so Windows-host file changes are picked up reliably. Requires `api/functions/secrets/.env.staging`. See `API_SETUP.md`. Mobile's Capacitor/Android build is not containerized — see `mobile/CLAUDE.md` for that workflow.
 
 ---
 
