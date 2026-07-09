@@ -225,6 +225,8 @@ Each page/component is organized by:
 - ✅ Reports (`GET /reports/summary`, `/consumption`, `/billing-trends`, `/collection-status`)
 - ✅ Bills (`POST /bills/ocr` — functional 3-step UI wizard; overlaps with image-extraction)
 - ⚠️ Users (`POST /users` — partial stub for user role management)
+- ✅ LLM Config (`GET`/`PATCH /llm-config` — provider/model/API key for the insight chatbot; API key AES-256-GCM encrypted at rest via `lib/crypto.lib.ts`)
+- ✅ Chatbot (`POST /chatbot` — insight assistant scoped to the authenticated user's data, tool-calling via `lib/llm.lib.ts` against Groq/Ollama Cloud; regex jailbreak guard in `chatbot.guard.ts`)
 
 **Audit Highlights (25 fixes)**:
 - **D1**: Soft-delete pattern — all DELETE endpoints soft-delete (set `is_deleted` flag), no hard delete
@@ -246,7 +248,8 @@ Each page/component is organized by:
 - ✅ Billings (cycle-centric: expandable cycles with nested billings; bill photo OCR autofill; cycle edit modal for rate/consumption/date corrections; archive page)
 - ✅ Bills / OCR upload (3-step wizard: upload → review/map → submit, creates a billing cycle)
 - 🚧 Reports (stub — API module ready, UI not built)
-- 🚧 Settings (partial — payment + user management tabs scaffolded)
+- 🚧 Settings (partial — payment + user management tabs scaffolded; LLM Provider tab added)
+- ✅ Insight Chatbot (`ChatWidget` floating widget, mounted globally on all protected routes)
 
 ### Mobile Screens (May 2026)
 - ✅ Login (Firebase Auth)

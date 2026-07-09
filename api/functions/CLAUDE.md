@@ -381,6 +381,27 @@ Read-only analytics endpoints for billing summaries and trends. Accepts optional
 
 ---
 
+### LLM Config (`/llm-config` — protected)
+
+Located: `src/features/llm-config/`
+
+Stores the tenant's chosen LLM provider + model + API key for the insight chatbot. The API key is AES-256-GCM encrypted at rest via `src/lib/crypto.lib.ts` (`LLM_CONFIG_MASTER_KEY`) — never stored or returned in plaintext.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/llm-config` | Fetch the current provider/model config (no API key in response) |
+| PATCH | `/llm-config` | Upsert provider (`groq` \| `ollama_cloud`), model, and API key |
+
+### Chatbot (`/chatbot` — protected)
+
+Located: `src/features/chatbot/`
+
+Conversational insight assistant scoped to the authenticated user's own utility/billing data. Uses `src/lib/llm.lib.ts` (`LlmClient`) — a thin OpenAI-compatible chat-completions client shared by both supported providers — with tool-calling into `chatbot.tools.ts`, which reads properties/readings/billings/billing-cycles by name (never raw Firestore IDs) via existing repositories. `chatbot.guard.ts` regex-filters the final assistant response for jailbreak/off-topic patterns as defense-in-depth behind the system prompt.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/chatbot` | Send a message (+ optional up-to-20-message history); returns `{ reply }` |
+
 ### Stub & Incomplete Features
 
 The following feature folders exist but are **not fully implemented**:
@@ -522,6 +543,30 @@ api/functions/src/features/reports/
 └── reports.swagger.ts
 ```
 
+### LLM Config
+```
+api/functions/src/features/llm-config/
+├── llm-config.model.ts        → LlmConfig (provider, model, encrypted_api_key, iv, auth_tag)
+├── llm-config.dto.ts
+├── llm-config.repository.ts
+├── llm-config.service.ts      → Encrypts/decrypts API key via lib/crypto.lib.ts
+├── llm-config.controller.ts
+├── llm-config.route.ts
+└── llm-config.swagger.ts
+```
+
+### Chatbot
+```
+api/functions/src/features/chatbot/
+├── chatbot.dto.ts
+├── chatbot.guard.ts           → Regex jailbreak/off-topic filter over final reply
+├── chatbot.tools.ts           → Tool-calling functions over property/reading/billing repos
+├── chatbot.service.ts         → Orchestrates LlmClient + tool loop, scoped to req user
+├── chatbot.controller.ts
+├── chatbot.route.ts
+└── chatbot.swagger.ts
+```
+
 ### Authentication (special case — public routes)
 ```
 api/functions/src/features/auth/
@@ -549,6 +594,8 @@ api/functions/src/
 │   ├── repository.lib.ts        → Generic Repository<T> class (all CRUD)
 │   ├── firestore.lib.ts         → Low-level Firestore ops (timestamps, batch)
 │   ├── auth.lib.ts              → JWT generation (jsonwebtoken)
+│   ├── llm.lib.ts               → LlmClient — OpenAI-compatible chat-completions client (Groq, Ollama Cloud)
+│   ├── crypto.lib.ts            → AES-256-GCM encrypt/decryptSecret() for LLM API keys
 │   └── ... (Realtime DB, storage stubs)
 └── utils/
     ├── model.util.ts            → BaseModel, WithoutBaseModel<T>
@@ -805,6 +852,7 @@ GCLOUD_PROJECT=utilitool-staging
 GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/utilitool-staging-firebase-adminsdk-fbsvc-1fe128504a.json
 GEMINI_API_KEY=<optional — OCR returns mock data if absent>
 REDIS_URL=<optional — rate limiting falls back to in-memory store if absent>
+LLM_CONFIG_MASTER_KEY=<base64, 32 bytes — required to encrypt/decrypt stored LLM API keys>
 ```
 
 See `secrets/.env.staging` for all dev variables. Production deployments use `APP_ENV=production` and `secrets/.env.production`.

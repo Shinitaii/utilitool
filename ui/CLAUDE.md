@@ -101,7 +101,8 @@ ui/src/
 │       └── settings/
 │           ├── +page.svelte        (Account settings root)
 │           ├── payment/+page.svelte (Payment settings)
-│           └── users/+page.svelte  (User management — create users, assign roles)
+│           ├── users/+page.svelte  (User management — create users, assign roles)
+│           └── llm-provider/+page.svelte (LLM provider/model/API key config for the insight chatbot)
 │
 ├── lib/
 │   ├── api/                         (API client modules — one per feature)
@@ -116,6 +117,8 @@ ui/src/
 │   │   ├── bills.ts                (ocrBill — POST /bills/ocr)
 │   │   ├── users.ts                (createUser — POST /users)
 │   │   ├── reports.ts              (getSummaryReport, getConsumptionReport, getBillingTrendsReport, getCollectionStatusReport)
+│   │   ├── llm-config.ts           (getLlmConfig, upsertLlmConfig — GET/PATCH /llm-config)
+│   │   ├── chat.ts                 (sendChatMessage — POST /chatbot)
 │   │   └── cache.ts                (clearAllCaches — clears all feature caches in parallel)
 │   │
 │   ├── types/                       (TypeScript types — mirror API models)
@@ -128,7 +131,8 @@ ui/src/
 │   │   ├── reading.types.ts
 │   │   ├── billing.types.ts
 │   │   ├── billing-cycle.types.ts
-│   │   └── reports.types.ts        (ReportSummary, ConsumptionReport, BillingTrendsReport, CollectionStatusReport, ReportQueryParams)
+│   │   ├── reports.types.ts        (ReportSummary, ConsumptionReport, BillingTrendsReport, CollectionStatusReport, ReportQueryParams)
+│   │   └── llm-config.types.ts     (LlmConfigResponse, UpsertLlmConfigRequest)
 │   │
 │   ├── stores/                      (Svelte 5 runes-based stores)
 │   │   ├── auth.svelte.ts          (isAuthenticated, user, isLoading, error)
@@ -154,6 +158,7 @@ ui/src/
 │           ├── EmptyState.svelte        (No data placeholder)
 │           ├── ImagePreview.svelte      (Inline image preview widget)
 │           ├── SelectionToolbar.svelte  (Multi-select batch action toolbar)
+│           ├── ChatWidget.svelte        (Floating insight chatbot — mounted globally in (app)/+layout.svelte)
 │           ├── StatCard.svelte          (Metric card with value + sub)
 │           ├── StatusPill.svelte        (Colored status badges)
 │           └── ToBeFinished.svelte      (Stub placeholder with build hammer icon)
@@ -277,6 +282,8 @@ All archive pages: `GET /<feature>?archived=true` to list soft-deleted items, th
 - **Sub-routes**:
   - `/settings/payment` — payment config
   - `/settings/users` — user management: `POST /users` ← `createUser()` to create accounts with role (`admin`, `landlord`, `assistant`)
+  - `/settings/llm-provider` — configure the insight chatbot's LLM provider (`groq` | `ollama_cloud`), model, and API key
+    - **API calls**: `GET /llm-config` ← `getLlmConfig()`, `PATCH /llm-config` ← `upsertLlmConfig()` from `src/lib/api/llm-config.ts`
 - **Status**: Partial
 
 #### Bills / OCR Upload (`/bills`)
@@ -347,6 +354,19 @@ export async function getConsumptionReport(params?: ReportQueryParams): Promise<
 export async function getBillingTrendsReport(params?: ReportQueryParams): Promise<BillingTrendsReport>
 export async function getCollectionStatusReport(params?: ReportQueryParams): Promise<CollectionStatusReport>
 // ReportQueryParams: { startDate?, endDate?, meterGroupId?, propertyId? }
+```
+
+### llm-config.ts
+```ts
+export async function getLlmConfig(): Promise<LlmConfigResponse>
+export async function upsertLlmConfig(data: UpsertLlmConfigRequest): Promise<LlmConfigResponse>
+// Types in src/lib/types/llm-config.types.ts
+```
+
+### chat.ts
+```ts
+export async function sendChatMessage(message: string, history?: ChatHistoryMessage[]): Promise<ChatResponse>
+// POST /chatbot — used by ChatWidget.svelte
 ```
 
 ### cache.ts
@@ -502,6 +522,9 @@ Inline image preview widget used in readings and billings forms. Shows a thumbna
 Multi-select batch action toolbar. Slides in when `selectedIds.size > 0`. Shows count + "Archive selected" button.
 
 **Props**: `count: number`, `onBatchDelete: () => void`, `isDeleting: boolean`
+
+### ChatWidget
+Floating insight-chatbot widget mounted globally in `(app)/+layout.svelte` (available on every protected route, not a route-scoped component). Sends messages + rolling history via `sendChatMessage()` from `src/lib/api/chat.ts` to `POST /chatbot`.
 
 ---
 
