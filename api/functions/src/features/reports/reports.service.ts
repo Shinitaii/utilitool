@@ -5,6 +5,9 @@ import {propertyRepository} from "../property/property.repository";
 import {readingRepository} from "../reading/reading.repository";
 import {calculateTrueReading, resolveVersionsSource} from "../reading/reading.util";
 import {billAmount, sumMoney} from "../../utils/money.util";
+import type {SearchFilter, RangeFilter} from "../../lib/repository.lib";
+import type {BillingCycle} from "../billing-cycle/billing-cycle.model";
+import type {WithoutBaseModel} from "../../utils/model.util";
 import type {
   ReportSummary,
   ConsumptionReport,
@@ -18,10 +21,10 @@ import type {ReportQueryDTO} from "./reports.dto";
  * Build date range filters for query-time filtering (H1 optimization).
  * Filters on billing_start_date for efficient range queries.
  */
-function buildDateRangeFilters(query: ReportQueryDTO): any {
-  const filters: any = {};
+function buildDateRangeFilters(query: ReportQueryDTO): SearchFilter<WithoutBaseModel<BillingCycle>> {
+  const filters: SearchFilter<WithoutBaseModel<BillingCycle>> = {};
   if (query.startDate || query.endDate) {
-    const rangeFilter: any = {};
+    const rangeFilter: RangeFilter = {};
     if (query.startDate) {
       rangeFilter.$gte = new Date(query.startDate);
     }
@@ -33,7 +36,14 @@ function buildDateRangeFilters(query: ReportQueryDTO): any {
   return filters;
 }
 
-async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<JoinedBilling[]> {
+/**
+ * Shared fetch/map-building pipeline for the report endpoints: cycles → billings →
+ * properties → meter groups. Both buildJoinedData and getConsumption fetch these
+ * identically; they diverge only in which readings they fetch afterward (current-only
+ * vs current+previous, and against filteredBillings vs validBillings), so that step
+ * stays in each caller.
+ */
+async function fetchReportContext(query: ReportQueryDTO) {
   // 1. Fetch billing cycles with date range filtering at query time (H1 optimization)
   const filters = buildDateRangeFilters(query);
   const cyclesResult = await billingCycleRepository.search({
@@ -58,12 +68,8 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
     });
   });
 
-  if (allBillingIds.size === 0) {
-    return [];
-  }
-
   // 4. Fetch all billings
-  const billings = await billingRepository.getByIds(Array.from(allBillingIds));
+  const billings = allBillingIds.size > 0 ? await billingRepository.getByIds(Array.from(allBillingIds)) : [];
 
   const validBillings = billings.filter((b): b is NonNullable<typeof b> => b !== null);
 
@@ -82,10 +88,8 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
   // 7. Collect all unique meter group IDs
   const meterGroupIds = new Set<string>();
   propertyMap.forEach((prop) => {
-    Object.values(prop.meter_groups).forEach((entry: any) => {
-      if (typeof entry === "string") {
-        if (entry.trim()) meterGroupIds.add(entry);
-      } else if (entry?.meter_group_id && entry.meter_group_id.trim()) {
+    Object.values(prop.meter_groups).forEach((entry) => {
+      if (entry?.meter_group_id && entry.meter_group_id.trim()) {
         meterGroupIds.add(entry.meter_group_id);
       }
     });
@@ -97,6 +101,16 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
   const meterGroupMap = new Map(
     meterGroups.filter((mg): mg is NonNullable<typeof mg> => mg !== null).map((mg) => [mg.id, mg])
   );
+
+  return {cycles, validBillings, filteredBillings, propertyMap, meterGroupMap};
+}
+
+async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<JoinedBilling[]> {
+  const {cycles, filteredBillings, propertyMap, meterGroupMap} = await fetchReportContext(query);
+
+  if (filteredBillings.length === 0) {
+    return [];
+  }
 
   // Fetch all readings (current and previous) for consumption calculation
   const readingIds = new Set<string>();
@@ -117,19 +131,22 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
   const now = new Date();
   const joinedData: JoinedBilling[] = [];
 
-  console.log(`[Reports] Starting join: ${filteredBillings.length} filtered billings, ${readingMap.size} readings in map`);
+  const cycleByBillingId = new Map<string, (typeof cycles)[number]>();
+  cycles.forEach((c) => {
+    Object.keys(c.billing_ids).forEach((billingId) => {
+      cycleByBillingId.set(billingId, c);
+    });
+  });
 
   for (const billing of filteredBillings) {
     const property = propertyMap.get(billing.property_id);
     if (!property) {
-      console.log(`[Reports] Property ${billing.property_id} not found in map for billing ${billing.id}`);
       continue;
     }
 
     // Get meter group and utility type from the reading (not from property)
     const reading = readingMap.get(billing.current_reading_id);
     if (!reading) {
-      console.log(`[Reports] Current reading ${billing.current_reading_id} not found for billing ${billing.id}`);
       continue;
     }
 
@@ -146,7 +163,6 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
     const currentReading = readingMap.get(billing.current_reading_id);
     const previousReading = readingMap.get(billing.previous_reading_id);
     if (!currentReading || !previousReading) {
-      console.log(`[Reports] Missing readings for billing ${billing.id}: current=${!!currentReading}, previous=${!!previousReading}`);
       continue;
     }
 
@@ -154,7 +170,7 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
     const consumption = calculateTrueReading(currentReading, versionsSource) - calculateTrueReading(previousReading, versionsSource);
 
     // Find the cycle that contains this billing
-    const cycle = cycles.find((c) => c.billing_ids.hasOwnProperty(billing.id));
+    const cycle = cycleByBillingId.get(billing.id);
     if (!cycle) continue;
 
     // Calculate amount as consumption × rate
@@ -177,7 +193,6 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
     });
   }
 
-  console.log(`[Reports] Built ${joinedData.length} joined billings from ${filteredBillings.length} filtered billings`);
   return joinedData;
 }
 
@@ -208,61 +223,7 @@ export async function getSummary(userId: string, query: ReportQueryDTO): Promise
 }
 
 export async function getConsumption(userId: string, query: ReportQueryDTO): Promise<ConsumptionReport> {
-  const filters = buildDateRangeFilters(query);
-  const cyclesResult = await billingCycleRepository.search({
-    limit: 1000,
-    orderBy: "created_at",
-    filters,
-  });
-
-  let cycles = cyclesResult.data;
-
-  // Additional in-memory filter for endDate range to ensure both bounds are respected
-  if (query.startDate && query.endDate) {
-    const endDate = new Date(query.endDate);
-    cycles = cycles.filter((c) => c.billing_end_date.toDate() <= endDate);
-  }
-
-  // Collect all billing IDs (filter out empty)
-  const allBillingIds = new Set<string>();
-  cycles.forEach((c) => {
-    Object.keys(c.billing_ids).forEach((id) => {
-      if (id && id.trim()) allBillingIds.add(id);
-    });
-  });
-
-  const billings = await billingRepository.getByIds(Array.from(allBillingIds));
-
-  const validBillings = billings.filter((b): b is NonNullable<typeof b> => b !== null);
-
-  let filteredBillings = validBillings;
-  if (query.propertyId) {
-    filteredBillings = validBillings.filter((b) => b.property_id === query.propertyId);
-  }
-
-  // Collect properties (filter out empty)
-  const propertyIds = new Set(filteredBillings.map((b) => b.property_id).filter((id) => id && id.trim()));
-  const properties = await propertyRepository.getByIds(Array.from(propertyIds));
-
-  const propertyMap = new Map(properties.filter((p): p is NonNullable<typeof p> => p !== null).map((p) => [p.id, p]));
-
-  // Collect meter groups
-  const meterGroupIds = new Set<string>();
-  propertyMap.forEach((prop) => {
-    Object.values(prop.meter_groups).forEach((entry: any) => {
-      if (typeof entry === "string") {
-        if (entry.trim()) meterGroupIds.add(entry);
-      } else if (entry?.meter_group_id && entry.meter_group_id.trim()) {
-        meterGroupIds.add(entry.meter_group_id);
-      }
-    });
-  });
-
-  const meterGroups = await meterGroupRepository.getByIds(Array.from(meterGroupIds));
-
-  const meterGroupMap = new Map(
-    meterGroups.filter((mg): mg is NonNullable<typeof mg> => mg !== null).map((mg) => [mg.id, mg])
-  );
+  const {cycles, validBillings, propertyMap, meterGroupMap} = await fetchReportContext(query);
 
   // Fetch all current readings to determine meter group for each billing
   const readingIds = new Set<string>();
@@ -278,12 +239,13 @@ export async function getConsumption(userId: string, query: ReportQueryDTO): Pro
 
   // Group by month
   const monthMap = new Map<string, Record<string, number>>();
+  const billingById = new Map(validBillings.map((b) => [b.id, b]));
 
   for (const cycle of cycles) {
     const month = cycle.billing_start_date.toDate().toISOString().slice(0, 7);
 
     for (const [billingId, consumption] of Object.entries(cycle.billing_ids)) {
-      const billing = validBillings.find((b) => b.id === billingId);
+      const billing = billingById.get(billingId);
       if (!billing) continue;
 
       const property = propertyMap.get(billing.property_id);
@@ -330,7 +292,7 @@ export async function getConsumption(userId: string, query: ReportQueryDTO): Pro
 
   for (const cycle of cycles) {
     for (const [billingId, consumption] of Object.entries(cycle.billing_ids)) {
-      const billing = validBillings.find((b) => b.id === billingId);
+      const billing = billingById.get(billingId);
       if (!billing) continue;
 
       const property = propertyMap.get(billing.property_id);
