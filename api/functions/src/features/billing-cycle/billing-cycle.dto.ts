@@ -1,5 +1,6 @@
 import {z} from "zod";
 import {parseTimestamp} from "../../utils/firestore.util";
+import {ImageUrlSchema} from "../../utils/image-url.util";
 
 // Create DTOS
 const BillingCycleBaseSchema = z.object({
@@ -103,7 +104,7 @@ export type GetBillingCyclesQueryDTO = z.infer<typeof GetBillingCyclesQueryDTOSc
 
 // OCR DTOs
 export const OcrBillingCycleDTOSchema = z.object({
-  image_url: z.string().url(),
+  image_url: ImageUrlSchema,
 });
 export type OcrBillingCycleDTO = z.infer<typeof OcrBillingCycleDTOSchema>;
 

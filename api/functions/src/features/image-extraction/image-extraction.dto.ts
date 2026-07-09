@@ -1,11 +1,12 @@
 import {z} from "zod";
+import {ImageUrlSchema} from "../../utils/image-url.util";
 
 export const ExtractReadingFromImageSchema = z.object({
-  image_url: z.string().url("Invalid image URL"),
+  image_url: ImageUrlSchema,
 });
 
 export const ExtractBillingFromImageSchema = z.object({
-  image_url: z.string().url("Invalid image URL"),
+  image_url: ImageUrlSchema,
 });
 
 export type ExtractReadingRequest = z.infer<typeof ExtractReadingFromImageSchema>;
