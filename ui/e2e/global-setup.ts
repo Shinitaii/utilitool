@@ -1,6 +1,13 @@
-// Runs once before the E2E suite. Seeds a Firebase Auth Emulator test user and clears any
-// leftover Firestore emulator data so the happy-path spec starts from a clean slate.
-// See decisions/20260611_emulator-for-e2e-testing.md.
+// Runs once before the E2E suite. Seeds a Firebase Auth Emulator test user and, by default,
+// clears any leftover Firestore emulator data so the happy-path spec starts from a clean
+// slate. See decisions/20260611_emulator-for-e2e-testing.md.
+//
+// Set SEED_FROM_STAGING=true to instead import a real-shaped snapshot of staging data (via
+// api/functions/src/migrations/copy-staging-to-emulator.ts) before the suite runs, instead of
+// clearing to an empty DB — lets the suite exercise real data shapes/scale rather than only
+// the synthetic fixtures the happy-path spec creates. Run the copy script yourself first
+// (dry run, then EXECUTE=true) against the SAME emulator this suite will boot; this flag only
+// skips the destructive clear step so that data survives into the test run.
 
 const PROJECT_ID = 'utilitool-test';
 export const E2E_EMAIL = 'e2e@utilitool.test';
@@ -50,6 +57,15 @@ export async function ensureTestUser(): Promise<void> {
 
 export async function setupEmulatorState(): Promise<void> {
 	await waitForEmulators();
-	await clearFirestore();
+
+	if (process.env.SEED_FROM_STAGING === 'true') {
+		// Caller is responsible for having already run
+		// api/functions/src/migrations/copy-staging-to-emulator.ts (EXECUTE=true) against this
+		// same emulator instance — skip the destructive clear so that data survives.
+		console.log('SEED_FROM_STAGING=true: skipping Firestore clear, keeping imported staging snapshot.');
+	} else {
+		await clearFirestore();
+	}
+
 	await ensureTestUser();
 }
