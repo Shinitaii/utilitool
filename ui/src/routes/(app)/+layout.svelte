@@ -3,6 +3,7 @@
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
   import TopBar from '$lib/components/layout/TopBar.svelte';
   import RightPanel from '$lib/components/layout/RightPanel.svelte';
+  import ChatWidget from '$lib/components/shared/ChatWidget.svelte';
   import { authStore, initAuthListener, type AuthState } from '$lib/stores/auth.svelte';
 
   let { children } = $props();
@@ -43,4 +44,6 @@
       </RightPanel>
     </div>
   </main>
+
+  <ChatWidget />
 </div>

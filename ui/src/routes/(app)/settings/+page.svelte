@@ -120,6 +120,20 @@
           Go to settings →
         </div>
       </a>
+
+      <!-- LLM Provider Card -->
+      <a
+        href="/settings/llm-provider"
+        class="rounded-lg border border-gray-200 bg-white p-6 transition-colors hover:border-gray-300 hover:bg-gray-50"
+      >
+        <h3 class="text-lg font-semibold text-gray-900">LLM Provider</h3>
+        <p class="mt-2 text-sm text-gray-600">
+          Configure the AI provider and API key for the insight chatbot
+        </p>
+        <div class="mt-4 text-sm font-medium" style="color: var(--color-accent)">
+          Go to settings →
+        </div>
+      </a>
     </div>
   </section>
 </div>
