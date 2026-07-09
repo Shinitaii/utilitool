@@ -2,19 +2,29 @@ import { auth } from '../../firebase';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5002';
 
+if (import.meta.env.PROD && !API_BASE.startsWith('https://')) {
+  throw new Error(
+    `VITE_API_BASE_URL must be an https:// URL in production builds (got: ${API_BASE})`
+  );
+}
+
 export async function getAccessToken(): Promise<string> {
   const user = auth.currentUser;
   if (!user) throw new Error('Not authenticated');
   return user.getIdToken();
 }
 
-async function request(endpoint: string, options: RequestInit = {}) {
-  const token = await getAccessToken();
-  const headers = {
+function buildHeaders(token: string, extraHeaders?: HeadersInit) {
+  return {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${token}`,
-    ...options.headers
+    ...extraHeaders
   };
+}
+
+async function request(endpoint: string, options: RequestInit = {}) {
+  const token = await getAccessToken();
+  const headers = buildHeaders(token, options.headers);
 
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
@@ -25,7 +35,7 @@ async function request(endpoint: string, options: RequestInit = {}) {
     const retryToken = await auth.currentUser!.getIdToken(true);
     return fetch(`${API_BASE}${endpoint}`, {
       ...options,
-      headers: { ...headers, 'Authorization': `Bearer ${retryToken}` }
+      headers: buildHeaders(retryToken, options.headers)
     });
   }
 
