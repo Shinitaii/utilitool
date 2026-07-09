@@ -11,6 +11,8 @@ import {billingCyclePaths} from "../features/billing-cycle/billing-cycle.swagger
 import {billsPaths} from "../features/bills/bills.swagger";
 import {paths as imageExtractionPaths} from "../features/image-extraction/image-extraction.swagger";
 import {reportsPaths} from "../features/reports/reports.swagger";
+import {llmConfigPaths} from "../features/llm-config/llm-config.swagger";
+import {chatbotPaths} from "../features/chatbot/chatbot.swagger";
 
 const swaggerSpec = {
   openapi: "3.0.3",
@@ -871,6 +873,84 @@ const swaggerSpec = {
           },
         },
       },
+      LlmConfigResponse: {
+        type: "object",
+        properties: {
+          provider: {
+            type: ["string", "null"],
+            enum: ["groq", "ollama_cloud", null],
+          },
+          model: {
+            type: ["string", "null"],
+          },
+          hasKey: {
+            type: "boolean",
+          },
+        },
+        required: ["provider", "model", "hasKey"],
+      },
+      UpsertLlmConfigRequest: {
+        type: "object",
+        properties: {
+          provider: {
+            type: "string",
+            enum: ["groq", "ollama_cloud"],
+          },
+          model: {
+            type: "string",
+            minLength: 1,
+            maxLength: 255,
+          },
+          apiKey: {
+            type: "string",
+            minLength: 1,
+            maxLength: 500,
+            description: "Plaintext API key — encrypted server-side before storage, never returned",
+          },
+        },
+        required: ["provider", "model", "apiKey"],
+      },
+      ChatHistoryMessage: {
+        type: "object",
+        properties: {
+          role: {
+            type: "string",
+            enum: ["user", "assistant"],
+          },
+          content: {
+            type: "string",
+            minLength: 1,
+            maxLength: 2000,
+          },
+        },
+        required: ["role", "content"],
+      },
+      ChatRequest: {
+        type: "object",
+        properties: {
+          message: {
+            type: "string",
+            minLength: 1,
+            maxLength: 2000,
+          },
+          history: {
+            type: "array",
+            maxItems: 20,
+            description: "Prior turns from the client's own message list — not persisted server-side.",
+            items: {$ref: "#/components/schemas/ChatHistoryMessage"},
+          },
+        },
+        required: ["message"],
+      },
+      ChatResponse: {
+        type: "object",
+        properties: {
+          reply: {
+            type: "string",
+          },
+        },
+        required: ["reply"],
+      },
       OcrBillResponse: {
         type: "object",
         properties: {
@@ -924,6 +1004,8 @@ const swaggerSpec = {
     ...billsPaths,
     ...imageExtractionPaths,
     ...reportsPaths,
+    ...llmConfigPaths,
+    ...chatbotPaths,
   },
 };
 
