@@ -88,10 +88,14 @@
       : properties.data
   );
 
+  function findMeterGroupById(meterGroupId: string | undefined) {
+    return electricityMeters.find(m => m.id === meterGroupId) || waterMeters.find(m => m.id === meterGroupId);
+  }
+
   const filteredReadings = $derived.by(() => {
     if (readingsUtilityFilter === 'all') return readings.data;
     return readings.data.filter(r => {
-      const meterGroup = electricityMeters.find(m => m.id === r.meter_group_id) || waterMeters.find(m => m.id === r.meter_group_id);
+      const meterGroup = findMeterGroupById(r.meter_group_id);
       return meterGroup?.utility_type === readingsUtilityFilter;
     });
   });
@@ -101,13 +105,13 @@
     return billings.data.filter(b => {
       const prevReading = readings.data.find(r => r.id === b.previous_reading_id);
       if (!prevReading) return false;
-      const meterGroup = electricityMeters.find(m => m.id === prevReading.meter_group_id) || waterMeters.find(m => m.id === prevReading.meter_group_id);
+      const meterGroup = findMeterGroupById(prevReading.meter_group_id);
       return meterGroup?.utility_type === billingsUtilityFilter;
     });
   });
 
   function getMeterGroupName(meterGroupId: string): string {
-    const found = electricityMeters.find(m => m.id === meterGroupId) || waterMeters.find(m => m.id === meterGroupId);
+    const found = findMeterGroupById(meterGroupId);
     return found?.meter_name || meterGroupId;
   }
 
@@ -501,18 +505,20 @@
               </select>
             </div>
             {#if newPropertyForm.meter_groups.electricity || newPropertyForm.meter_groups.water}
+              {@const electricityMainMeterProperty = newPropertyForm.meter_groups.electricity !== '' ? getMainMeterPropertyForMeterGroup(newPropertyForm.meter_groups.electricity) : null}
+              {@const waterMainMeterProperty = newPropertyForm.meter_groups.water !== '' ? getMainMeterPropertyForMeterGroup(newPropertyForm.meter_groups.water) : null}
               <div class="space-y-2">
                 {#if newPropertyForm.meter_groups.electricity}
                   <label class="flex items-center gap-2 text-xs font-medium text-gray-700">
                     <input
                       type="checkbox"
                       bind:checked={newPropertyForm.is_main_meter.electricity}
-                      disabled={newPropertyForm.meter_groups.electricity !== '' && getMainMeterPropertyForMeterGroup(newPropertyForm.meter_groups.electricity) !== null && !newPropertyForm.is_main_meter.electricity}
+                      disabled={electricityMainMeterProperty !== null && !newPropertyForm.is_main_meter.electricity}
                       class="rounded disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span>Main Meter (Electricity)</span>
                   </label>
-                  {#if newPropertyForm.meter_groups.electricity !== '' && getMainMeterPropertyForMeterGroup(newPropertyForm.meter_groups.electricity) !== null && !newPropertyForm.is_main_meter.electricity}
+                  {#if electricityMainMeterProperty !== null && !newPropertyForm.is_main_meter.electricity}
                     <p class="text-xs text-amber-700 ml-6">
                       {getMainMeterPropertyName(newPropertyForm.meter_groups.electricity)} is already the main meter
                     </p>
@@ -523,12 +529,12 @@
                     <input
                       type="checkbox"
                       bind:checked={newPropertyForm.is_main_meter.water}
-                      disabled={newPropertyForm.meter_groups.water !== '' && getMainMeterPropertyForMeterGroup(newPropertyForm.meter_groups.water) !== null && !newPropertyForm.is_main_meter.water}
+                      disabled={waterMainMeterProperty !== null && !newPropertyForm.is_main_meter.water}
                       class="rounded disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <span>Main Meter (Water)</span>
                   </label>
-                  {#if newPropertyForm.meter_groups.water !== '' && getMainMeterPropertyForMeterGroup(newPropertyForm.meter_groups.water) !== null && !newPropertyForm.is_main_meter.water}
+                  {#if waterMainMeterProperty !== null && !newPropertyForm.is_main_meter.water}
                     <p class="text-xs text-amber-700 ml-6">
                       {getMainMeterPropertyName(newPropertyForm.meter_groups.water)} is already the main meter
                     </p>
@@ -757,7 +763,7 @@
                       </thead>
                       <tbody>
                         {#each filteredReadings as reading (reading.id)}
-                          {@const meterGroup = electricityMeters.find(m => m.id === reading.meter_group_id) || waterMeters.find(m => m.id === reading.meter_group_id)}
+                          {@const meterGroup = findMeterGroupById(reading.meter_group_id)}
                           <tr class="border-b border-gray-200 hover:bg-gray-50">
                             <td class="px-6 py-4 text-gray-700">
                               {meterGroup?.meter_name || 'Unknown'}
@@ -813,7 +819,7 @@
                         {#each filteredBillings as billing (billing.id)}
                           {@const prevReading = readings.data.find(r => r.id === billing.previous_reading_id)}
                           {@const currReading = readings.data.find(r => r.id === billing.current_reading_id)}
-                          {@const meterGroup = prevReading ? (electricityMeters.find(m => m.id === prevReading.meter_group_id) || waterMeters.find(m => m.id === prevReading.meter_group_id)) : null}
+                          {@const meterGroup = prevReading ? findMeterGroupById(prevReading.meter_group_id) : null}
                           <tr class="border-b border-gray-200 hover:bg-gray-50">
                             <td class="px-6 py-4 text-gray-700">
                               {meterGroup?.meter_name || 'Unknown'}
@@ -846,7 +852,7 @@
                 {:else}
                   <div class="space-y-6 p-6">
                     {#each submeterEntries as [utilityType, entry] (entry.meter_group_id)}
-                      {@const meterGroup = electricityMeters.find(m => m.id === entry.meter_group_id) || waterMeters.find(m => m.id === entry.meter_group_id)}
+                      {@const meterGroup = findMeterGroupById(entry.meter_group_id)}
                       {@const versions = Object.entries(entry.versions ?? {}).sort(([a], [b]) => Number(a) - Number(b))}
                       <div class="rounded border border-gray-200">
                         <div class="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-4 py-3">
@@ -983,18 +989,20 @@
       </select>
     </div>
     {#if editPropertyForm.meter_groups.electricity || editPropertyForm.meter_groups.water}
+      {@const editElectricityMainMeterProperty = editPropertyForm.meter_groups.electricity !== '' ? getMainMeterPropertyForMeterGroup(editPropertyForm.meter_groups.electricity) : null}
+      {@const editWaterMainMeterProperty = editPropertyForm.meter_groups.water !== '' ? getMainMeterPropertyForMeterGroup(editPropertyForm.meter_groups.water) : null}
       <div class="space-y-2">
         {#if editPropertyForm.meter_groups.electricity}
           <label class="flex items-center gap-2 text-sm font-medium text-gray-700">
             <input
               type="checkbox"
               bind:checked={editPropertyForm.is_main_meter.electricity}
-              disabled={editPropertyForm.meter_groups.electricity !== '' && getMainMeterPropertyForMeterGroup(editPropertyForm.meter_groups.electricity) !== null && getMainMeterPropertyForMeterGroup(editPropertyForm.meter_groups.electricity) !== crud.editingItem?.id && !editPropertyForm.is_main_meter.electricity}
+              disabled={editElectricityMainMeterProperty !== null && editElectricityMainMeterProperty !== crud.editingItem?.id && !editPropertyForm.is_main_meter.electricity}
               class="rounded disabled:opacity-50 disabled:cursor-not-allowed"
             />
             <span>Main Meter (Electricity)</span>
           </label>
-          {#if editPropertyForm.meter_groups.electricity !== '' && getMainMeterPropertyForMeterGroup(editPropertyForm.meter_groups.electricity) !== null && getMainMeterPropertyForMeterGroup(editPropertyForm.meter_groups.electricity) !== crud.editingItem?.id && !editPropertyForm.is_main_meter.electricity}
+          {#if editElectricityMainMeterProperty !== null && editElectricityMainMeterProperty !== crud.editingItem?.id && !editPropertyForm.is_main_meter.electricity}
             <p class="text-xs text-amber-700 ml-6">
               {getMainMeterPropertyName(editPropertyForm.meter_groups.electricity)} is already the main meter
             </p>
@@ -1005,12 +1013,12 @@
             <input
               type="checkbox"
               bind:checked={editPropertyForm.is_main_meter.water}
-              disabled={editPropertyForm.meter_groups.water !== '' && getMainMeterPropertyForMeterGroup(editPropertyForm.meter_groups.water) !== null && getMainMeterPropertyForMeterGroup(editPropertyForm.meter_groups.water) !== crud.editingItem?.id && !editPropertyForm.is_main_meter.water}
+              disabled={editWaterMainMeterProperty !== null && editWaterMainMeterProperty !== crud.editingItem?.id && !editPropertyForm.is_main_meter.water}
               class="rounded disabled:opacity-50 disabled:cursor-not-allowed"
             />
             <span>Main Meter (Water)</span>
           </label>
-          {#if editPropertyForm.meter_groups.water !== '' && getMainMeterPropertyForMeterGroup(editPropertyForm.meter_groups.water) !== null && getMainMeterPropertyForMeterGroup(editPropertyForm.meter_groups.water) !== crud.editingItem?.id && !editPropertyForm.is_main_meter.water}
+          {#if editWaterMainMeterProperty !== null && editWaterMainMeterProperty !== crud.editingItem?.id && !editPropertyForm.is_main_meter.water}
             <p class="text-xs text-amber-700 ml-6">
               {getMainMeterPropertyName(editPropertyForm.meter_groups.water)} is already the main meter
             </p>
