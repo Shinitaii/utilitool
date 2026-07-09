@@ -29,27 +29,18 @@ export class TenantValidator {
       .find((t) => t.id !== excludeId && normalizeTenantName(t.tenant_name) === normalizedTenantName);
   }
 
-  private async countTenantsForProperty(propertyId: string): Promise<number> {
-    // Indexed count query — no full collection scan
-    const snap = await collectionRef(COLLECTIONS.TENANTS)
-      .where("property_id", "==", propertyId)
-      .where("is_deleted", "==", false)
-      .get();
-
-    return snap.size;
-  }
-
-
-  async validateCreate(data: CreateTenantDTO): Promise<void> {
+  /**
+   * Existence + duplicate-name checks only. The tenant-count cap check is NOT
+   * performed here — it must be re-checked inside the same Firestore
+   * transaction that creates the tenant doc (see tenant.service.ts::create),
+   * otherwise concurrent requests can race past a plain read of a stale count.
+   * Returns the property so the caller doesn't need to re-fetch it.
+   */
+  async validateCreate(data: CreateTenantDTO): Promise<Property> {
     const property = await propertyRepository.getById(data.property_id);
 
     if (!property) {
       throw new AppError(404, "Property not found");
-    }
-
-    const tenantCount = await this.countTenantsForProperty(data.property_id);
-    if (tenantCount >= property.tenant_amount) {
-      throw new AppError(409, "Property has reached the maximum number of tenants allowed");
     }
 
     const duplicate = await this.findDuplicateTenant(data.property_id, data.tenant_name);
@@ -57,59 +48,59 @@ export class TenantValidator {
       logger.warn({property_id: data.property_id, tenant_name: data.tenant_name}, "Duplicate tenant creation attempt");
       throw new AppError(409, "Tenant name already exists for the selected property");
     }
+
+    return property;
   }
 
-  async validateBatchCreate(data: CreateTenantDTO[]): Promise<void> {
+  /**
+   * Existence + duplicate-name checks only, for the whole batch. The tenant-count
+   * cap check is NOT performed here — like validateCreate, it must be re-checked
+   * inside a Firestore transaction per item (see tenant.service.ts::createBatch),
+   * otherwise concurrent batch/single-create requests can race past a plain read
+   * of a stale count. Returns propertyId -> Property so the caller doesn't need
+   * to re-fetch properties for the transactional cap check.
+   */
+  async validateBatchCreate(data: CreateTenantDTO[]): Promise<Map<string, Property>> {
     const propertyIds = new Set(data.map((item) => item.property_id));
-    const properties = new Map<string, { tenantAmount: number; existingCount: number; seenCount: number }>();
     const seenNamesByProperty = new Map<string, Set<string>>();
 
-    // Batch fetch all properties and their tenant counts upfront
+    // Batch fetch all properties upfront
     const fetchedProperties = await Promise.all(
       Array.from(propertyIds).map((id) => propertyRepository.getById(id))
     );
 
-    const tenantCountsByProperty = await Promise.all(
-      Array.from(propertyIds).map((id) => this.countTenantsForProperty(id))
-    );
-
-    const existingTenantsByProperty = new Map<string, Set<Tenant>>();
-    for (const propertyId of propertyIds) {
-      const snap = await collectionRef(COLLECTIONS.TENANTS)
-        .where("property_id", "==", propertyId)
-        .where("is_deleted", "==", false)
-        .get();
-      existingTenantsByProperty.set(
-        propertyId,
-        new Set(snap.docs.map((doc) => snapshotToModel<Tenant>(doc)))
-      );
-    }
-
-    // Build properties map
-    let tenantCountIdx = 0;
+    const propertyMap = new Map<string, Property>();
     for (const property of fetchedProperties) {
       if (!property) {
         throw new AppError(404, "Property not found");
       }
-      properties.set(property.id, {
-        tenantAmount: property.tenant_amount,
-        existingCount: tenantCountsByProperty[tenantCountIdx],
-        seenCount: 0,
-      });
-      tenantCountIdx++;
+      propertyMap.set(property.id, property);
     }
 
-    // Validate all items using cached data
+    // Single fetch per property for duplicate-name checks
+    const existingTenantsByPropertySnaps = await Promise.all(
+      Array.from(propertyIds).map((propertyId) =>
+        collectionRef(COLLECTIONS.TENANTS)
+          .where("property_id", "==", propertyId)
+          .where("is_deleted", "==", false)
+          .get()
+      )
+    );
+
+    const existingTenantsByProperty = new Map<string, Set<Tenant>>();
+    Array.from(propertyIds).forEach((propertyId, i) => {
+      const snap = existingTenantsByPropertySnaps[i];
+      existingTenantsByProperty.set(
+        propertyId,
+        new Set(snap.docs.map((doc) => snapshotToModel<Tenant>(doc)))
+      );
+    });
+
+    // Validate duplicate names across the whole batch using cached data
     for (const item of data) {
-      const propertyState = properties.get(item.property_id);
       const seenNames = seenNamesByProperty.get(item.property_id) ?? new Set<string>();
       const normalizedTenantName = normalizeTenantName(item.tenant_name);
 
-      if (propertyState && propertyState.existingCount + propertyState.seenCount >= propertyState.tenantAmount) {
-        throw new AppError(409, "Property has reached the maximum number of tenants allowed");
-      }
-
-      // Check against existing tenants
       const existingTenants = existingTenantsByProperty.get(item.property_id) || new Set();
       const duplicate = Array.from(existingTenants).find(
         (t) => normalizeTenantName(t.tenant_name) === normalizedTenantName
@@ -122,26 +113,28 @@ export class TenantValidator {
 
       seenNames.add(normalizedTenantName);
       seenNamesByProperty.set(item.property_id, seenNames);
-
-      if (propertyState) {
-        propertyState.seenCount += 1;
-      }
     }
+
+    return propertyMap;
   }
 
-  async validateUpdate(tenant: Tenant, data: UpdateTenantDTO, property?: any): Promise<void> {
+  /**
+   * Existence + duplicate-name checks only. When the tenant is transferring to
+   * a new property, the tenant-count cap check is NOT performed here — it
+   * must be re-checked inside the same Firestore transaction that performs
+   * the update (see tenant.service.ts::update), to avoid a stale-count race.
+   * Returns the new property when a transfer is requested, so the caller can
+   * run the transactional cap check without re-fetching it.
+   */
+  async validateUpdate(tenant: Tenant, data: UpdateTenantDTO, property?: Property): Promise<Property | undefined> {
     const nextPropertyId = data.property_id ?? tenant.property_id;
     const nextTenantName = data.tenant_name ?? tenant.tenant_name;
 
+    let newProperty: Property | undefined;
     if (data.property_id && data.property_id !== tenant.property_id) {
-      const newProperty = property || await propertyRepository.getById(data.property_id);
+      newProperty = property || (await propertyRepository.getById(data.property_id)) || undefined;
       if (!newProperty) {
         throw new AppError(404, "Property not found");
-      }
-
-      const tenantCount = await this.countTenantsForProperty(data.property_id);
-      if (tenantCount >= newProperty.tenant_amount) {
-        throw new AppError(409, "Property has reached the maximum number of tenants allowed");
       }
     }
 
@@ -150,9 +143,20 @@ export class TenantValidator {
       logger.warn({property_id: nextPropertyId, tenant_name: nextTenantName}, "Duplicate tenant update attempt");
       throw new AppError(409, "Tenant name already exists for the selected property");
     }
+
+    return newProperty;
   }
 
-  async validateBatchUpdate(updates: { id: string; data: UpdateTenantDTO }[]): Promise<void> {
+  /**
+   * Existence + duplicate-name checks for the whole batch. Returns a map of
+   * tenantId -> { tenant, newProperty } for items that are transferring to a
+   * new property; the tenant-count cap check for those is NOT performed here
+   * — the caller must re-check it inside a per-transfer Firestore transaction
+   * (see tenant.service.ts::updateBatch) to avoid a stale-count race.
+   */
+  async validateBatchUpdate(
+    updates: { id: string; data: UpdateTenantDTO }[]
+  ): Promise<Map<string, { tenant: Tenant; newProperty: Property }>> {
     // Batch fetch all tenants upfront
     const tenantIds = updates.map((u) => u.id);
     const tenants = await tenantRepository.getByIds(tenantIds);
@@ -198,6 +202,7 @@ export class TenantValidator {
     }
 
     // Validate using cached entities
+    const transferMap = new Map<string, { tenant: Tenant; newProperty: Property }>();
     for (let i = 0; i < tenants.length; i++) {
       const tenant = tenants[i]!;
       const newPropertyIdData = updates[i].data.property_id;
@@ -205,16 +210,13 @@ export class TenantValidator {
       const nextPropertyId = newPropertyIdData ?? tenant.property_id;
       const nextTenantName = newTenantNameData ?? tenant.tenant_name;
 
-      // Check property change
+      // Check property change (cap check deferred to a per-transfer transaction)
       if (newPropertyIdData && newPropertyIdData !== tenant.property_id) {
         const newProperty = propertyMap.get(newPropertyIdData);
         if (!newProperty) {
           throw new AppError(404, "Property not found");
         }
-        const tenantCount = await this.countTenantsForProperty(newPropertyIdData);
-        if (tenantCount >= newProperty.tenant_amount) {
-          throw new AppError(409, "Property has reached the maximum number of tenants allowed");
-        }
+        transferMap.set(tenant.id, {tenant, newProperty});
       }
 
       // Check duplicate using cached existing tenants
@@ -228,5 +230,7 @@ export class TenantValidator {
         throw new AppError(409, "Tenant name already exists for the selected property");
       }
     }
+
+    return transferMap;
   }
 }

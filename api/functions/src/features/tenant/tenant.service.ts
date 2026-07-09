@@ -6,9 +6,81 @@ import {CreateTenantDTO, UpdateTenantDTO} from "./tenant.dto";
 import {Tenant} from "./tenant.model";
 import {TenantValidator} from "./tenant.validator";
 import {CachedRepository} from "../../lib/cached-repository.lib";
+import {firestore} from "../../config/firebase.config";
+import {collectionRef} from "../../lib/firestore.lib";
+import {COLLECTIONS} from "../../constants/collection.constants";
+import {Property} from "../property/property.model";
 
 const validator = new TenantValidator();
 const CACHE_TTL = 20 * 60; // 20 minutes
+
+/**
+ * Atomically re-checks the tenant-count cap and creates the tenant doc inside
+ * one Firestore transaction. This closes the TOCTOU race where two concurrent
+ * requests both read a stale (pre-write) count and both pass validation —
+ * Firestore retries the transaction on write conflict, so a losing request
+ * re-reads the updated count and throws the same capacity error instead of
+ * a raw transaction-conflict error.
+ */
+async function createTenantWithCapacityCheck(
+  propertyId: string,
+  tenantAmount: number,
+  data: CreateTenantDTO
+): Promise<Tenant> {
+  return firestore.runTransaction(async (txn) => {
+    const tenantsQuery = collectionRef(COLLECTIONS.TENANTS)
+      .where("property_id", "==", propertyId)
+      .where("is_deleted", "==", false);
+    const snap = await txn.get(tenantsQuery);
+
+    if (snap.size >= tenantAmount) {
+      throw new AppError(409, "Property has reached the maximum number of tenants allowed");
+    }
+
+    const docRef = collectionRef(COLLECTIONS.TENANTS).doc();
+    const now = Timestamp.now();
+    const tenant = {
+      ...data,
+      id: docRef.id,
+      tenant_start_date: now,
+      is_deleted: false,
+      created_at: now,
+      updated_at: now,
+    } as unknown as Tenant;
+
+    txn.set(docRef, tenant);
+    return tenant;
+  });
+}
+
+/**
+ * Atomically re-checks the tenant-count cap for the destination property and
+ * applies the update inside one Firestore transaction. Same race-closing
+ * rationale as createTenantWithCapacityCheck.
+ */
+async function updateTenantWithCapacityCheck(
+  tenant: Tenant,
+  newProperty: Property,
+  data: UpdateTenantDTO
+): Promise<Tenant> {
+  return firestore.runTransaction(async (txn) => {
+    const tenantsQuery = collectionRef(COLLECTIONS.TENANTS)
+      .where("property_id", "==", newProperty.id)
+      .where("is_deleted", "==", false);
+    const snap = await txn.get(tenantsQuery);
+
+    if (snap.size >= newProperty.tenant_amount) {
+      throw new AppError(409, "Property has reached the maximum number of tenants allowed");
+    }
+
+    const tenantRef = collectionRef(COLLECTIONS.TENANTS).doc(tenant.id);
+    const now = Timestamp.now();
+    const updateData = {...data, updated_at: now};
+    txn.update(tenantRef, updateData);
+
+    return {...tenant, ...updateData} as Tenant;
+  });
+}
 
 type TenantSearchOptions = {
   tenantName?: string;
@@ -22,23 +94,34 @@ type TenantSearchOptions = {
 
 export const tenantService = {
   async create(userId: string, data: CreateTenantDTO): Promise<Tenant> {
-    await validator.validateCreate(data);
+    const property = await validator.validateCreate(data);
+    const tenant = await createTenantWithCapacityCheck(data.property_id, property.tenant_amount, data);
+
     const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
-    return cachedRepo.create({
-      ...data,
-      tenant_start_date: Timestamp.now(),
-    });
+    await cachedRepo.cacheCreatedItem(tenant);
+
+    return tenant;
   },
 
   async createBatch(userId: string, data: CreateTenantDTO[]): Promise<Tenant[]> {
-    await validator.validateBatchCreate(data);
+    const propertyMap = await validator.validateBatchCreate(data);
     const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
-    return cachedRepo.createBatch(
-      data.map((item) => ({
-        ...item,
-        tenant_start_date: Timestamp.now(),
-      }))
-    );
+
+    // Sequential, one transaction per item (not a single batch write): each item
+    // re-checks the tenant-count cap for its property inside its own transaction,
+    // the same race-closing pattern as create(). Sequential because Firestore
+    // transactions can't safely interleave reads/writes for multiple properties
+    // in one transaction, and later items in the same request must see earlier
+    // items' writes when they share a property.
+    const results: Tenant[] = [];
+    for (const item of data) {
+      const property = propertyMap.get(item.property_id)!;
+      const tenant = await createTenantWithCapacityCheck(item.property_id, property.tenant_amount, item);
+      await cachedRepo.cacheCreatedItem(tenant);
+      results.push(tenant);
+    }
+
+    return results;
   },
 
   async getById(userId: string, id: string): Promise<Tenant | null> {
@@ -67,15 +150,48 @@ export const tenantService = {
       throw new AppError(404, "Tenant not found");
     }
 
-    await validator.validateUpdate(tenant, data);
+    const newProperty = await validator.validateUpdate(tenant, data);
     const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
+
+    if (newProperty) {
+      const updated = await updateTenantWithCapacityCheck(tenant, newProperty, data);
+      await cachedRepo.cacheUpdatedItem(updated);
+      return updated;
+    }
+
     return cachedRepo.update(id, data);
   },
 
   async updateBatch(userId: string, updates: { id: string; data: UpdateTenantDTO }[]): Promise<Tenant[]> {
-    await validator.validateBatchUpdate(updates);
+    const transferMap = await validator.validateBatchUpdate(updates);
     const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
-    return cachedRepo.updateBatch(updates);
+
+    const results: Tenant[] = new Array(updates.length);
+    const nonTransferUpdates: { id: string; data: UpdateTenantDTO }[] = [];
+    const nonTransferIndexes: number[] = [];
+
+    for (let i = 0; i < updates.length; i++) {
+      const {id, data} = updates[i];
+      const transfer = transferMap.get(id);
+
+      if (transfer) {
+        const updated = await updateTenantWithCapacityCheck(transfer.tenant, transfer.newProperty, data);
+        await cachedRepo.cacheUpdatedItem(updated);
+        results[i] = updated;
+      } else {
+        nonTransferUpdates.push({id, data});
+        nonTransferIndexes.push(i);
+      }
+    }
+
+    if (nonTransferUpdates.length > 0) {
+      const updatedBatch = await cachedRepo.updateBatch(nonTransferUpdates);
+      nonTransferIndexes.forEach((idx, j) => {
+        results[idx] = updatedBatch[j];
+      });
+    }
+
+    return results;
   },
 
   async delete(userId: string, id: string): Promise<void> {
