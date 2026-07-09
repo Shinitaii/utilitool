@@ -14,6 +14,9 @@ import {
 import { firestore } from '../config/firebase.config';
 import { cacheDelPattern, cacheDel } from './cache.util';
 import { collectionRef } from '../lib/firestore.lib';
+import { Timestamp } from 'firebase-admin/firestore';
+
+const READING_DATE = Timestamp.now();
 
 describe('cascade-delete.util - Cache Invalidation', () => {
   let mockTxn: any;
@@ -23,9 +26,15 @@ describe('cascade-delete.util - Cache Invalidation', () => {
     jest.clearAllMocks();
 
     // Setup transaction mock
+    // set/delete back the reading-lock doc lifecycle (see releaseReadingLock/
+    // reclaimReadingLock in cascade-delete.util.ts): soft-deleting a reading
+    // releases its month lock, restoring it reclaims that lock.
     mockTxn = {
       get: jest.fn(),
       update: jest.fn(),
+      set: jest.fn(),
+      create: jest.fn(),
+      delete: jest.fn(),
     };
 
     (firestore.runTransaction as jest.Mock).mockImplementation((callback) =>
@@ -68,6 +77,7 @@ describe('cascade-delete.util - Cache Invalidation', () => {
       const readingDocs = readingIds.map((id) => ({
         id,
         ref: { update: jest.fn() },
+        data: () => ({ meter_group_id: 'mg-1', reading_date: READING_DATE }),
       }));
       mockCollectionRef.get.mockResolvedValueOnce({
         docs: readingDocs,
@@ -101,7 +111,7 @@ describe('cascade-delete.util - Cache Invalidation', () => {
 
       mockTxn.get.mockResolvedValueOnce({ exists: true, id: propertyId });
       mockCollectionRef.get
-        .mockResolvedValueOnce({ docs: [{ id: 'reading-1', ref: { update: jest.fn() } }] })
+        .mockResolvedValueOnce({ docs: [{ id: 'reading-1', ref: { update: jest.fn() }, data: () => ({ meter_group_id: 'mg-1', reading_date: READING_DATE }) }] })
         .mockResolvedValueOnce({ docs: [{ id: 'billing-1', ref: { update: jest.fn() } }] });
 
       await cascadeDeleteProperty(propertyId);
@@ -133,7 +143,7 @@ describe('cascade-delete.util - Cache Invalidation', () => {
       const readingDocs = readingIds.map((id) => ({
         id,
         ref: { update: jest.fn() },
-        data: () => ({ meter_group_id: meterGroupId }),
+        data: () => ({ meter_group_id: meterGroupId, property_id: 'prop-1', reading_date: READING_DATE }),
       }));
       mockCollectionRef.get.mockResolvedValueOnce({ docs: readingDocs });
 
@@ -163,7 +173,7 @@ describe('cascade-delete.util - Cache Invalidation', () => {
       mockTxn.get.mockResolvedValueOnce({ exists: true, id: meterGroupId });
       mockCollectionRef.get
         .mockResolvedValueOnce({
-          docs: [{ id: 'reading-1', ref: { update: jest.fn() }, data: () => ({}) }],
+          docs: [{ id: 'reading-1', ref: { update: jest.fn() }, data: () => ({ property_id: 'prop-1', reading_date: READING_DATE }) }],
         })
         .mockResolvedValueOnce({ docs: [] });
 
@@ -184,6 +194,7 @@ describe('cascade-delete.util - Cache Invalidation', () => {
       mockTxn.get.mockResolvedValueOnce({
         exists: true,
         id: readingId,
+        data: () => ({ meter_group_id: 'mg-1', property_id: 'prop-1', reading_date: READING_DATE }),
       });
 
       const billingDocs = billingIds.map((id) => ({
@@ -209,7 +220,11 @@ describe('cascade-delete.util - Cache Invalidation', () => {
     it('should clear readings and billings list caches', async () => {
       const readingId = 'reading-1';
 
-      mockTxn.get.mockResolvedValueOnce({ exists: true, id: readingId });
+      mockTxn.get.mockResolvedValueOnce({
+        exists: true,
+        id: readingId,
+        data: () => ({ meter_group_id: 'mg-1', property_id: 'prop-1', reading_date: READING_DATE }),
+      });
       const billingDoc = {
         id: 'billing-1',
         ref: { update: jest.fn() },
@@ -246,6 +261,7 @@ describe('cascade-delete.util - Cache Invalidation', () => {
       const readingDocs = readingIds.map((id) => ({
         id,
         ref: { update: jest.fn() },
+        data: () => ({ meter_group_id: 'mg-1', reading_date: READING_DATE }),
       }));
 
       const billingDocs = billingIds.map((id) => ({
@@ -280,7 +296,7 @@ describe('cascade-delete.util - Cache Invalidation', () => {
 
       mockTxn.get.mockResolvedValueOnce({ exists: true, id: propertyId });
       mockCollectionRef.get
-        .mockResolvedValueOnce({ docs: [{ id: 'reading-1', ref: { update: jest.fn() } }] })
+        .mockResolvedValueOnce({ docs: [{ id: 'reading-1', ref: { update: jest.fn() }, data: () => ({ meter_group_id: 'mg-1', reading_date: READING_DATE }) }] })
         .mockResolvedValueOnce({ docs: [{ id: 'billing-1', ref: { update: jest.fn() } }] });
 
       await cascadeRestoreProperty(propertyId);
@@ -305,8 +321,8 @@ describe('cascade-delete.util - Cache Invalidation', () => {
       mockCollectionRef.get
         .mockResolvedValueOnce({
           docs: [
-            { id: 'reading-1', ref: { update: jest.fn() }, data: () => ({}) },
-            { id: 'reading-2', ref: { update: jest.fn() }, data: () => ({}) },
+            { id: 'reading-1', ref: { update: jest.fn() }, data: () => ({ property_id: 'prop-1', reading_date: READING_DATE }) },
+            { id: 'reading-2', ref: { update: jest.fn() }, data: () => ({ property_id: 'prop-1', reading_date: READING_DATE }) },
           ],
         })
         .mockResolvedValueOnce({
@@ -334,7 +350,7 @@ describe('cascade-delete.util - Cache Invalidation', () => {
 
       mockTxn.get.mockResolvedValueOnce({ exists: true, id: meterGroupId });
       mockCollectionRef.get
-        .mockResolvedValueOnce({ docs: [{ id: 'reading-1', ref: { update: jest.fn() }, data: () => ({}) }] })
+        .mockResolvedValueOnce({ docs: [{ id: 'reading-1', ref: { update: jest.fn() }, data: () => ({ property_id: 'prop-1', reading_date: READING_DATE }) }] })
         .mockResolvedValueOnce({ docs: [] });
 
       await cascadeRestoreMeterGroup(meterGroupId);
@@ -353,6 +369,7 @@ describe('cascade-delete.util - Cache Invalidation', () => {
       mockTxn.get.mockResolvedValueOnce({
         exists: true,
         id: readingId,
+        data: () => ({ meter_group_id: 'mg-1', property_id: 'prop-1', reading_date: READING_DATE }),
       });
 
       mockCollectionRef.get.mockResolvedValueOnce({
@@ -378,11 +395,45 @@ describe('cascade-delete.util - Cache Invalidation', () => {
       });
     });
 
+    // If a different reading already reclaimed the meter_group+property+month
+    // lock in the meantime (e.g. another reading was created/restored for the
+    // same slot after this one was deleted), reclaimReadingLock's txn.create()
+    // must fail loudly with ALREADY_EXISTS rather than silently overwriting the
+    // other reading's lock — runCascadeTransaction converts that into a clean
+    // 409 instead of letting the raw Firestore error or a generic 500 through.
+    it('should reject with 409 instead of silently overwriting when the reading lock was already reclaimed by another reading', async () => {
+      const readingId = 'reading-1';
+
+      mockTxn.get.mockResolvedValueOnce({
+        exists: true,
+        id: readingId,
+        data: () => ({ meter_group_id: 'mg-1', property_id: 'prop-1', reading_date: READING_DATE }),
+      });
+
+      mockTxn.create.mockImplementation(() => {
+        const err: any = new Error('ALREADY_EXISTS: Document already exists');
+        err.code = 6;
+        throw err;
+      });
+
+      // The mocked txn.update (unlike real Firestore) doesn't roll back on a
+      // later throw within the same callback — the assertion here is on the
+      // rejection itself; real Firestore atomicity guarantees nothing commits.
+      await expect(cascadeRestoreReading(readingId)).rejects.toMatchObject({
+        statusCode: 409,
+        message: 'Cannot restore: another active reading already occupies this meter group/property/month.',
+      });
+    });
+
     // Should clear readings and billings list caches on restore
     it('should clear readings and billings list caches on restore', async () => {
       const readingId = 'reading-1';
 
-      mockTxn.get.mockResolvedValueOnce({ exists: true, id: readingId });
+      mockTxn.get.mockResolvedValueOnce({
+        exists: true,
+        id: readingId,
+        data: () => ({ meter_group_id: 'mg-1', property_id: 'prop-1', reading_date: READING_DATE }),
+      });
       mockCollectionRef.get.mockResolvedValueOnce({
         docs: [{ id: 'billing-1', ref: { update: jest.fn() }, data: () => ({}) }],
       });

@@ -1,7 +1,69 @@
+import {FieldValue, Timestamp} from "firebase-admin/firestore";
 import {firestore} from "../config/firebase.config";
 import {COLLECTIONS} from "../constants/collection.constants";
 import {collectionRef} from "../lib/firestore.lib";
 import {cacheDel, cacheDelPattern} from "./cache.util";
+import {AppError} from "./error.util";
+import {readingLockId, isAlreadyExistsError} from "../features/reading/reading.util";
+
+/**
+ * Release the "one reading per meter_group+property+month" lock doc (see
+ * reading.util.ts) for a reading being soft-deleted, so a legitimate
+ * delete-then-recreate within the same month isn't permanently blocked by a
+ * lock document that outlives the reading it was created for.
+ */
+function releaseReadingLock(
+  txn: FirebaseFirestore.Transaction,
+  meterGroupId: string,
+  propertyId: string,
+  readingDate: Timestamp
+): void {
+  const lockRef = firestore.collection(COLLECTIONS.READING_LOCKS).doc(
+    readingLockId(meterGroupId, propertyId, readingDate)
+  );
+  txn.delete(lockRef);
+}
+
+/**
+ * Re-claim the reading lock for a reading being restored, mirroring
+ * `releaseReadingLock`. Uses `create` (not `set`): two different soft-deleted
+ * readings can legitimately share the same meter_group+property+month key
+ * (e.g. reading A created, deleted, reading B created for the same slot,
+ * deleted too) — if both were ever restored, `set` would let both re-claim
+ * the same slot silently, reintroducing two simultaneously-active readings
+ * for one month with no error. `create` enforces the invariant here exactly
+ * like it does on the write path; callers must catch ALREADY_EXISTS.
+ */
+function reclaimReadingLock(
+  txn: FirebaseFirestore.Transaction,
+  meterGroupId: string,
+  propertyId: string,
+  readingDate: Timestamp
+): void {
+  const lockRef = firestore.collection(COLLECTIONS.READING_LOCKS).doc(
+    readingLockId(meterGroupId, propertyId, readingDate)
+  );
+  txn.create(lockRef, {created_at: FieldValue.serverTimestamp()});
+}
+
+/**
+ * Runs a cascade transaction, converting a reading-lock ALREADY_EXISTS
+ * conflict (see `reclaimReadingLock`) into a clean 409 instead of letting the
+ * raw Firestore error bubble up as a 500.
+ */
+async function runCascadeTransaction(fn: (txn: FirebaseFirestore.Transaction) => Promise<void>): Promise<void> {
+  try {
+    await firestore.runTransaction(fn);
+  } catch (err) {
+    if (isAlreadyExistsError(err)) {
+      throw new AppError(
+        409,
+        "Cannot restore: another active reading already occupies this meter group/property/month."
+      );
+    }
+    throw err;
+  }
+}
 
 /**
  * Invalidate the active-list caches (all users) for the given feature names.
@@ -10,9 +72,7 @@ import {cacheDel, cacheDelPattern} from "./cache.util";
  * cleanly from Firestore.
  */
 async function invalidateListCaches(featureNames: string[]): Promise<void> {
-  for (const featureName of featureNames) {
-    await cacheDelPattern(`utilitool:${featureName}:all:*`);
-  }
+  await Promise.all(featureNames.map((featureName) => cacheDelPattern(`utilitool:${featureName}:all:*`)));
 }
 
 export interface CascadeDeleteSummary {
@@ -51,10 +111,11 @@ export async function cascadeDeleteProperty(propertyId: string): Promise<Cascade
     readingIds.push(...foundReadingIds);
     summary.readings = foundReadingIds.length;
 
-    // Soft-delete all readings
-    for (const readingId of foundReadingIds) {
-      const readingRef = firestore.collection(COLLECTIONS.READINGS).doc(readingId);
-      txn.update(readingRef, {is_deleted: true, deleted_at: new Date()});
+    // Soft-delete all readings + release their month locks
+    for (const readingDoc of readingsSnap.docs) {
+      txn.update(readingDoc.ref, {is_deleted: true, deleted_at: new Date()});
+      const readingData = readingDoc.data();
+      releaseReadingLock(txn, readingData.meter_group_id, propertyId, readingData.reading_date);
     }
 
     // Find all billings for this property
@@ -75,12 +136,8 @@ export async function cascadeDeleteProperty(propertyId: string): Promise<Cascade
 
   // Clear id caches after txn commits
   await cacheDel(`utilitool:properties:id:${propertyId}`);
-  for (const readingId of readingIds) {
-    await cacheDel(`utilitool:readings:id:${readingId}`);
-  }
-  for (const billingId of billingIds) {
-    await cacheDel(`utilitool:billings:id:${billingId}`);
-  }
+  await Promise.all(readingIds.map((readingId) => cacheDel(`utilitool:readings:id:${readingId}`)));
+  await Promise.all(billingIds.map((billingId) => cacheDel(`utilitool:billings:id:${billingId}`)));
 
   // Clear list caches so cascaded readings/billings stop appearing in active lists
   await invalidateListCaches(["properties", "readings", "billings"]);
@@ -119,10 +176,11 @@ export async function cascadeDeleteMeterGroup(meterGroupId: string): Promise<Cas
     readingIds.push(...foundReadingIds);
     summary.readings = foundReadingIds.length;
 
-    // Soft-delete all readings
-    for (const readingId of foundReadingIds) {
-      const readingRef = firestore.collection(COLLECTIONS.READINGS).doc(readingId);
-      txn.update(readingRef, {is_deleted: true, deleted_at: new Date()});
+    // Soft-delete all readings + release their month locks
+    for (const readingDoc of readingsSnap.docs) {
+      txn.update(readingDoc.ref, {is_deleted: true, deleted_at: new Date()});
+      const readingData = readingDoc.data();
+      releaseReadingLock(txn, meterGroupId, readingData.property_id, readingData.reading_date);
     }
 
     // Find all billings that reference these readings
@@ -131,11 +189,12 @@ export async function cascadeDeleteMeterGroup(meterGroupId: string): Promise<Cas
         .where("is_deleted", "==", false)
         .get();
 
+      const foundReadingIdSet = new Set(foundReadingIds);
       const billingsToDelete = billingsSnap.docs.filter((doc) => {
         const billing = doc.data();
         return (
-          foundReadingIds.includes(billing.previous_reading_id) ||
-          foundReadingIds.includes(billing.current_reading_id)
+          foundReadingIdSet.has(billing.previous_reading_id) ||
+          foundReadingIdSet.has(billing.current_reading_id)
         );
       });
 
@@ -152,12 +211,8 @@ export async function cascadeDeleteMeterGroup(meterGroupId: string): Promise<Cas
 
   // Clear id caches after txn commits
   await cacheDel(`utilitool:meter-groups:id:${meterGroupId}`);
-  for (const readingId of readingIds) {
-    await cacheDel(`utilitool:readings:id:${readingId}`);
-  }
-  for (const billingId of billingIds) {
-    await cacheDel(`utilitool:billings:id:${billingId}`);
-  }
+  await Promise.all(readingIds.map((readingId) => cacheDel(`utilitool:readings:id:${readingId}`)));
+  await Promise.all(billingIds.map((billingId) => cacheDel(`utilitool:billings:id:${billingId}`)));
 
   // Clear list caches so cascaded readings/billings stop appearing in active lists
   await invalidateListCaches(["meter-groups", "readings", "billings"]);
@@ -185,6 +240,9 @@ export async function cascadeDeleteReading(readingId: string): Promise<CascadeDe
     // Soft-delete reading
     txn.update(readingRef, {is_deleted: true, deleted_at: new Date()});
 
+    const readingData = readingSnap.data()!;
+    releaseReadingLock(txn, readingData.meter_group_id, readingData.property_id, readingData.reading_date);
+
     // Find all billings that reference this reading
     const billingsSnap = await collectionRef(COLLECTIONS.BILLINGS)
       .where("is_deleted", "==", false)
@@ -206,9 +264,7 @@ export async function cascadeDeleteReading(readingId: string): Promise<CascadeDe
 
   // Clear id caches after txn commits
   await cacheDel(`utilitool:readings:id:${readingId}`);
-  for (const billingId of billingIds) {
-    await cacheDel(`utilitool:billings:id:${billingId}`);
-  }
+  await Promise.all(billingIds.map((billingId) => cacheDel(`utilitool:billings:id:${billingId}`)));
 
   // Clear list caches so cascaded billings stop appearing in active lists
   await invalidateListCaches(["readings", "billings"]);
@@ -225,12 +281,12 @@ export async function cascadeRestoreProperty(propertyId: string): Promise<Cascad
   const readingIds: string[] = [];
   const billingIds: string[] = [];
 
-  await firestore.runTransaction(async (txn) => {
+  await runCascadeTransaction(async (txn) => {
     const propertyRef = firestore.collection(COLLECTIONS.PROPERTIES).doc(propertyId);
     const propertySnap = await txn.get(propertyRef);
 
     if (!propertySnap.exists) {
-      throw new Error("Property not found");
+      throw new AppError(404, "Property not found");
     }
 
     // Restore property
@@ -246,10 +302,11 @@ export async function cascadeRestoreProperty(propertyId: string): Promise<Cascad
     readingIds.push(...foundReadingIds);
     summary.readings = foundReadingIds.length;
 
-    // Restore all readings
-    for (const readingId of foundReadingIds) {
-      const readingRef = firestore.collection(COLLECTIONS.READINGS).doc(readingId);
-      txn.update(readingRef, {is_deleted: false, deleted_at: null});
+    // Restore all readings + reclaim their month locks
+    for (const readingDoc of readingsSnap.docs) {
+      txn.update(readingDoc.ref, {is_deleted: false, deleted_at: null});
+      const readingData = readingDoc.data();
+      reclaimReadingLock(txn, readingData.meter_group_id, propertyId, readingData.reading_date);
     }
 
     // Find all soft-deleted billings for this property
@@ -269,12 +326,8 @@ export async function cascadeRestoreProperty(propertyId: string): Promise<Cascad
 
   // Refresh id caches so restored entities aren't served stale (archived) from cache
   await cacheDel(`utilitool:properties:id:${propertyId}`);
-  for (const readingId of readingIds) {
-    await cacheDel(`utilitool:readings:id:${readingId}`);
-  }
-  for (const billingId of billingIds) {
-    await cacheDel(`utilitool:billings:id:${billingId}`);
-  }
+  await Promise.all(readingIds.map((readingId) => cacheDel(`utilitool:readings:id:${readingId}`)));
+  await Promise.all(billingIds.map((billingId) => cacheDel(`utilitool:billings:id:${billingId}`)));
 
   // Clear list caches so cascaded readings/billings reappear in active lists
   await invalidateListCaches(["properties", "readings", "billings"]);
@@ -291,12 +344,12 @@ export async function cascadeRestoreMeterGroup(meterGroupId: string): Promise<Ca
   const allReadingIds: string[] = [];
   const allBillingIds: string[] = [];
 
-  await firestore.runTransaction(async (txn) => {
+  await runCascadeTransaction(async (txn) => {
     const meterGroupRef = firestore.collection(COLLECTIONS.METER_GROUPS).doc(meterGroupId);
     const meterGroupSnap = await txn.get(meterGroupRef);
 
     if (!meterGroupSnap.exists) {
-      throw new Error("Meter group not found");
+      throw new AppError(404, "Meter group not found");
     }
 
     // Restore meter group
@@ -312,10 +365,11 @@ export async function cascadeRestoreMeterGroup(meterGroupId: string): Promise<Ca
     allReadingIds.push(...readingIds);
     summary.readings = readingIds.length;
 
-    // Restore all readings
-    for (const readingId of readingIds) {
-      const readingRef = firestore.collection(COLLECTIONS.READINGS).doc(readingId);
-      txn.update(readingRef, {is_deleted: false, deleted_at: null});
+    // Restore all readings + reclaim their month locks
+    for (const readingDoc of readingsSnap.docs) {
+      txn.update(readingDoc.ref, {is_deleted: false, deleted_at: null});
+      const readingData = readingDoc.data();
+      reclaimReadingLock(txn, meterGroupId, readingData.property_id, readingData.reading_date);
     }
 
     // Find all soft-deleted billings that reference these readings
@@ -324,11 +378,12 @@ export async function cascadeRestoreMeterGroup(meterGroupId: string): Promise<Ca
         .where("is_deleted", "==", true)
         .get();
 
+      const readingIdSet = new Set(readingIds);
       const billingsToRestore = billingsSnap.docs.filter((doc) => {
         const billing = doc.data();
         return (
-          readingIds.includes(billing.previous_reading_id) ||
-          readingIds.includes(billing.current_reading_id)
+          readingIdSet.has(billing.previous_reading_id) ||
+          readingIdSet.has(billing.current_reading_id)
         );
       });
 
@@ -344,12 +399,8 @@ export async function cascadeRestoreMeterGroup(meterGroupId: string): Promise<Ca
 
   // Refresh id caches so restored entities aren't served stale (archived) from cache
   await cacheDel(`utilitool:meter-groups:id:${meterGroupId}`);
-  for (const readingId of allReadingIds) {
-    await cacheDel(`utilitool:readings:id:${readingId}`);
-  }
-  for (const billingId of allBillingIds) {
-    await cacheDel(`utilitool:billings:id:${billingId}`);
-  }
+  await Promise.all(allReadingIds.map((readingId) => cacheDel(`utilitool:readings:id:${readingId}`)));
+  await Promise.all(allBillingIds.map((billingId) => cacheDel(`utilitool:billings:id:${billingId}`)));
 
   // Clear list caches so cascaded readings/billings reappear in active lists
   await invalidateListCaches(["meter-groups", "readings", "billings"]);
@@ -365,16 +416,19 @@ export async function cascadeRestoreReading(readingId: string): Promise<CascadeD
   const summary: CascadeDeleteSummary = {primary: 1, billings: 0};
   const billingIds: string[] = [];
 
-  await firestore.runTransaction(async (txn) => {
+  await runCascadeTransaction(async (txn) => {
     const readingRef = firestore.collection(COLLECTIONS.READINGS).doc(readingId);
     const readingSnap = await txn.get(readingRef);
 
     if (!readingSnap.exists) {
-      throw new Error("Reading not found");
+      throw new AppError(404, "Reading not found");
     }
 
     // Restore reading
     txn.update(readingRef, {is_deleted: false, deleted_at: null});
+
+    const readingData = readingSnap.data()!;
+    reclaimReadingLock(txn, readingData.meter_group_id, readingData.property_id, readingData.reading_date);
 
     // Find all soft-deleted billings that reference this reading
     const billingsSnap = await collectionRef(COLLECTIONS.BILLINGS)
@@ -397,9 +451,7 @@ export async function cascadeRestoreReading(readingId: string): Promise<CascadeD
 
   // Refresh id caches so restored entities aren't served stale (archived) from cache
   await cacheDel(`utilitool:readings:id:${readingId}`);
-  for (const billingId of billingIds) {
-    await cacheDel(`utilitool:billings:id:${billingId}`);
-  }
+  await Promise.all(billingIds.map((billingId) => cacheDel(`utilitool:billings:id:${billingId}`)));
 
   // Clear list caches so cascaded billings reappear in active lists
   await invalidateListCaches(["readings", "billings"]);
