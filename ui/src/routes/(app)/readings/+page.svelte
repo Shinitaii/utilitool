@@ -7,10 +7,11 @@
   import type { MeterGroup } from '$lib/types/meter-group.types';
   import type { Property } from '$lib/types/property.types';
   import type { PaginatedResult } from '$lib/types/api.types';
-  import { formatDate, formatReading, getReadingUnit } from '$lib/utils/format';
+  import { formatDate, formatLongDate, formatReading, getReadingUnit } from '$lib/utils/format';
   import { toDate } from '$lib/utils/timestamp';
   import { uploadToStorage } from '$lib/utils/firebase-storage';
   import { compressImage } from '$lib/utils/image-compression';
+  import { trueReading, resolveCurrentVersion, getVersionsSource, getCumulativeOffset } from '$lib/utils/true-reading';
   import EmptyState from '$lib/components/shared/EmptyState.svelte';
   import TableSkeleton from '$lib/components/shared/TableSkeleton.svelte';
   import EditModal from '$lib/components/shared/EditModal.svelte';
@@ -63,6 +64,9 @@
     image_url: ''
   });
 
+  const propertyMap = $derived.by(() => new Map(properties.map((p) => [p.id, p])));
+  const meterGroupMap = $derived.by(() => new Map(meterGroups.map((g) => [g.id, g])));
+
   const manualReadingProperties = $derived.by(() => {
     if (!manualReadingForm.meter_group_id) return [];
 
@@ -78,20 +82,18 @@
   let batchRows = $state<BatchReadingRow[]>([]);
   let batchLoading = $state(false);
 
+  // "Month day, Year" preview of the batch date, parsed as a local date to avoid
+  // the UTC-midnight/local-timezone off-by-one shift new Date(batchDate) would cause.
+  const batchDateDisplay = $derived.by(() => {
+    if (!batchDate) return '';
+    const [y, m, d] = batchDate.split('-').map(Number);
+    return formatLongDate(new Date(y, m - 1, d));
+  });
+
   // Image preview
   let previewImageUrl = $state<string | null>(null);
 
   let isUpdating = $state(false);
-
-  function getCumulativeOffset(meterGroup: MeterGroup | undefined, version: number): number {
-    if (!meterGroup?.versions) return 0;
-    let offset = 0;
-    for (let v = 1; v < version; v++) {
-      const versionData = meterGroup.versions[String(v)];
-      if (versionData) offset += versionData.last_reading;
-    }
-    return offset;
-  }
 
   onMount(async () => {
     await loadData();
@@ -508,6 +510,9 @@
             disabled={batchLoading}
             class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
           />
+          {#if batchDateDisplay}
+            <p class="mt-1 text-xs text-gray-500">{batchDateDisplay}</p>
+          {/if}
         </div>
       </div>
 
@@ -540,8 +545,9 @@
                     />
                     {#if row.reading_amount !== null}
                       {@const selectedMg = meterGroups.find((g) => g.id === selectedMeterGroup)}
-                      <!-- offset assumes new readings will be assigned current_version -->
-                      {@const offset = getCumulativeOffset(selectedMg, selectedMg?.current_version ?? 1)}
+                      {@const version = resolveCurrentVersion(selectedMg, row.property, selectedMeterGroup)}
+                      {@const versionsSource = getVersionsSource(selectedMg, row.property, selectedMeterGroup)}
+                      {@const offset = getCumulativeOffset(versionsSource, version)}
                       {@const unit = getReadingUnit(selectedMg?.utility_type || 'electricity')}
                       <p class="mt-1 text-xs text-gray-400">
                         True total: {(offset + row.reading_amount).toLocaleString()} {unit}
@@ -795,6 +801,8 @@
         </thead>
         <tbody>
           {#each readings.data as item (item.id)}
+            {@const itemProperty = propertyMap.get(item.property_id)}
+            {@const itemMeterGroup = meterGroupMap.get(item.meter_group_id)}
             <tr class="border-b border-gray-200 hover:bg-gray-50">
               <td class="px-4 py-4 w-8">
                 <input
@@ -805,16 +813,16 @@
                 />
               </td>
               <td class="px-6 py-4 font-medium text-gray-900">
-                {properties.find((p) => p.id === item.property_id)?.room_name || 'Unknown'}
+                {itemProperty?.room_name || 'Unknown'}
               </td>
               <td class="px-6 py-4">
-                {meterGroups.find((g) => g.id === item.meter_group_id)?.meter_name || 'Unknown'}
+                {itemMeterGroup?.meter_name || 'Unknown'}
               </td>
               <td class="px-6 py-4 text-right font-mono text-gray-700">
-                {formatReading(item.reading_amount, meterGroups.find((g) => g.id === item.meter_group_id)?.utility_type || 'electricity')}
+                {formatReading(item.reading_amount, itemMeterGroup?.utility_type || 'electricity')}
               </td>
               <td class="px-6 py-4 text-right font-mono text-gray-400 text-xs">
-                {(getCumulativeOffset(meterGroups.find((g) => g.id === item.meter_group_id), item.meter_version ?? 1) + item.reading_amount).toLocaleString()} {getReadingUnit(meterGroups.find((g) => g.id === item.meter_group_id)?.utility_type || 'electricity')}
+                {trueReading(item, itemMeterGroup, itemProperty).toLocaleString()} {getReadingUnit(itemMeterGroup?.utility_type || 'electricity')}
               </td>
               <td class="px-6 py-4">
                 {#if item.image_url}

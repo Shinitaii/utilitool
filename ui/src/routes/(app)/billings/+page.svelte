@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { SvelteMap } from 'svelte/reactivity';
   import { getBillingCycles, createBillingCycle, updateBillingCycle, ocrBillingCycle, softDeleteBillingCycle } from '$lib/api/billing-cycles';
   import { getBillings, createBilling, updateBilling, softDeleteBilling } from '$lib/api/billings';
   import { getReadings } from '$lib/api/readings';
@@ -30,7 +31,7 @@
     nextCursor: null,
     hasMore: false
   });
-  let billings = $state<Map<string, Billing[]>>(new Map());
+  let billings = $state<SvelteMap<string, Billing[]>>(new SvelteMap());
   let allBillings = $state<Billing[]>([]);
   let readings = $state<Reading[]>([]);
   let properties = $state<Property[]>([]);
@@ -65,6 +66,16 @@
   let cycleEditEndDate = $state('');
   let cycleEditDueDate = $state('');
   let isUpdatingCycle = $state(false);
+
+  // Straggler-fill modal state — adds one late-arriving billing to an already-created
+  // cycle. PATCH /billing-cycles/:id replaces the whole billing_ids map (no deep merge),
+  // so this assembles existing entries + the new one, same shape as the cycle edit modal.
+  let stragglerModalOpen = $state(false);
+  let stragglerCycle = $state<BillingCycle | null>(null);
+  let stragglerPropertyId = $state('');
+  let stragglerPrevReadingId = $state('');
+  let stragglerCurrReadingId = $state('');
+  let isAddingStraggler = $state(false);
 
   // OCR state
   let billPhotoUrl = $state<string | null>(null);
@@ -200,7 +211,7 @@
       readings = readingsResult.data;
       properties = propertiesResult.data;
       meterGroups = meterGroupsResult.data;
-      billings = new Map();
+      billings = new SvelteMap();
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load data';
     } finally {
@@ -243,7 +254,6 @@
     if (cycle) {
       const cycleBillings = allBillings.filter(b => b.id in cycle.billing_ids);
       billings.set(cycleId, cycleBillings);
-      billings = billings;
     }
   }
 
@@ -306,15 +316,15 @@
     const endDate = new Date(cycleFormEndDate);
     const base = allBillings
       .filter(billing => {
-        const currReading = readings.find(r => r.id === billing.current_reading_id);
+        const currReading = readingMap.get(billing.current_reading_id);
         if (!currReading) return false;
         if (currReading.meter_group_id !== cycleFormMeterGroup) return false;
         const readingDate = toDate(currReading.reading_date);
         return readingDate.getUTCMonth() === endDate.getUTCMonth() && readingDate.getUTCFullYear() === endDate.getUTCFullYear();
       })
       .map(billing => {
-        const currReading = readings.find(r => r.id === billing.current_reading_id)!;
-        const prevReading = readings.find(r => r.id === billing.previous_reading_id);
+        const currReading = readingMap.get(billing.current_reading_id)!;
+        const prevReading = readingMap.get(billing.previous_reading_id);
         const property = properties.find(p => p.id === billing.property_id);
 
         // Version-aware true-reading diff — matches the API's billing-cycle validator so the
@@ -335,8 +345,8 @@
     return base.map((entry) => {
       const override = cycleFormOverrideSelections.get(entry.propertyId);
       if (!override) return entry;
-      const prevReading = readings.find((r) => r.id === override.prev_reading_id);
-      const currReading = readings.find((r) => r.id === override.curr_reading_id);
+      const prevReading = readingMap.get(override.prev_reading_id);
+      const currReading = readingMap.get(override.curr_reading_id);
       if (!prevReading || !currReading) return entry;
       const property = properties.find((p) => p.id === entry.propertyId);
       const consumption = readingConsumption(currReading, prevReading, property);
@@ -406,7 +416,7 @@
         const cycleBillings = allBillings.filter(b => cycleBillingIds.includes(b.id));
         if (cycleBillings.length === 0) return false;
         const firstBilling = cycleBillings[0];
-        const firstReading = readings.find(r => r.id === firstBilling.current_reading_id);
+        const firstReading = readingMap.get(firstBilling.current_reading_id);
         return firstReading?.meter_group_id === cycleFormMeterGroup;
       })
       .sort((a, b) => new Date(toDate(b.billing_end_date)).getTime() - new Date(toDate(a.billing_end_date)).getTime());
@@ -602,6 +612,96 @@
       error = err instanceof Error ? err.message : 'Failed to update billing cycle';
     } finally {
       isUpdatingCycle = false;
+    }
+  }
+
+  function openStragglerModal(cycle: BillingCycle) {
+    stragglerCycle = cycle;
+    stragglerPropertyId = '';
+    stragglerPrevReadingId = '';
+    stragglerCurrReadingId = '';
+    stragglerModalOpen = true;
+  }
+
+  function closeStragglerModal() {
+    stragglerModalOpen = false;
+    stragglerCycle = null;
+  }
+
+  // Properties on the cycle's meter group that don't already have a billing in this cycle.
+  const stragglerCandidateProperties = $derived.by(() => {
+    if (!stragglerCycle) return [];
+    const meterGroupId = getCycleMeterGroupId(stragglerCycle);
+    if (!meterGroupId) return [];
+    const existingPropertyIds = new Set(
+      Object.keys(stragglerCycle.billing_ids)
+        .map((billingId) => billingMap.get(billingId)?.property_id)
+        .filter((id): id is string => !!id)
+    );
+    return properties.filter((property) =>
+      Object.values(property.meter_groups ?? {}).some(
+        (entry): entry is MeterGroupEntry => typeof entry === 'object' && entry?.meter_group_id === meterGroupId
+      ) && !existingPropertyIds.has(property.id)
+    );
+  });
+
+  // Readings for the selected straggler property on this cycle's meter group, oldest first.
+  const stragglerAvailableReadings = $derived.by(() => {
+    if (!stragglerCycle || !stragglerPropertyId) return [];
+    const meterGroupId = getCycleMeterGroupId(stragglerCycle);
+    if (!meterGroupId) return [];
+    return readings
+      .filter((r) => r.property_id === stragglerPropertyId && r.meter_group_id === meterGroupId)
+      .sort((a, b) => toDate(a.reading_date).getTime() - toDate(b.reading_date).getTime());
+  });
+
+  const stragglerConsumptionPreview = $derived.by(() => {
+    const curr = readings.find((r) => r.id === stragglerCurrReadingId);
+    if (!curr) return 0;
+    const prev = readings.find((r) => r.id === stragglerPrevReadingId);
+    const property = properties.find((p) => p.id === stragglerPropertyId);
+    return readingConsumption(curr, prev, property);
+  });
+
+  async function handleAddStraggler() {
+    if (!stragglerCycle || !stragglerPropertyId || !stragglerPrevReadingId || !stragglerCurrReadingId) {
+      error = 'Select a property and both a previous and current reading';
+      return;
+    }
+    isAddingStraggler = true;
+    try {
+      const currReading = readings.find((r) => r.id === stragglerCurrReadingId);
+      const prevReading = readings.find((r) => r.id === stragglerPrevReadingId);
+      const property = properties.find((p) => p.id === stragglerPropertyId);
+      if (!currReading) throw new Error('Selected current reading not found');
+
+      const newBilling = await createBilling({
+        property_id: stragglerPropertyId,
+        previous_reading_id: stragglerPrevReadingId,
+        current_reading_id: stragglerCurrReadingId,
+      });
+
+      const consumption = readingConsumption(currReading, prevReading, property);
+      const updatedBillingIds = {
+        ...stragglerCycle.billing_ids,
+        [newBilling.id]: consumption,
+      };
+      const updatedConsumption = round(
+        Object.values(updatedBillingIds).reduce((sum, c) => sum + c, 0)
+      );
+
+      await updateBillingCycle(stragglerCycle.id, {
+        billing_ids: updatedBillingIds,
+        billing_consumption: updatedConsumption,
+      });
+
+      closeStragglerModal();
+      await loadData();
+      alert('Straggler billing added to the cycle.');
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to add straggler billing';
+    } finally {
+      isAddingStraggler = false;
     }
   }
 
@@ -1230,6 +1330,7 @@
             {/if}
           </h2>
           {#each group.cycles as cycle (cycle.id)}
+            {@const cycleBillings = billings.get(cycle.id)}
             <div class="rounded-lg border border-gray-200 bg-white">
               <!-- Cycle Header Row -->
               <div class="px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition">
@@ -1334,6 +1435,16 @@
                   <button
                     onclick={(e) => {
                       e.stopPropagation();
+                      openStragglerModal(cycle);
+                    }}
+                    class="p-2 rounded hover:bg-gray-100 text-gray-600"
+                    title="Add a late-arriving billing to this cycle"
+                  >
+                    <Plus size={18} />
+                  </button>
+                  <button
+                    onclick={(e) => {
+                      e.stopPropagation();
                       if (confirm('Archive this billing cycle and all its billings? They can be restored from the archive.')) {
                         softDeleteBillingCycle(cycle.id)
                           .then(() => loadData())
@@ -1353,11 +1464,11 @@
               <!-- Expanded Billings Table -->
               {#if expandedCycleId === cycle.id}
                 <div id={`cycle-detail-${cycle.id}`} class="border-t border-gray-200 bg-gray-50">
-                  {#if billings.get(cycle.id)?.length === 0}
+                  {#if cycleBillings?.length === 0}
                     <div class="px-6 py-4">
                       <EmptyState title="No billings" message="No billings in this cycle yet" />
                     </div>
-                  {:else if billings.has(cycle.id)}
+                  {:else if cycleBillings}
                     <div class="overflow-x-auto">
                       <table class="w-full text-sm">
                         <thead class="border-b border-gray-200 bg-gray-50">
@@ -1374,47 +1485,47 @@
                           </tr>
                         </thead>
                         <tbody>
-                          {#each billings.get(cycle.id) || [] as billing (billing.id)}
+                          {#each cycleBillings || [] as billing (billing.id)}
                             {@const billingProperty = properties.find(p => p.id === billing.property_id)}
+                            {@const cycleMeterGroup = cycle.meter_group_id ? meterGroupMap.get(cycle.meter_group_id) : undefined}
                             {@const meterEntry = cycle.meter_group_id ? (
-                              meterGroups.find(m => m.id === cycle.meter_group_id)?.utility_type === 'water'
+                              cycleMeterGroup?.utility_type === 'water'
                                 ? billingProperty?.meter_groups.water
                                 : billingProperty?.meter_groups.electricity
                             ) : null}
                             {@const isMainMeter = typeof meterEntry === 'string' ? false : meterEntry?.is_main_meter ?? false}
+                            {@const previousReading = readingMap.get(billing.previous_reading_id)}
+                            {@const currentReading = readingMap.get(billing.current_reading_id)}
+                            {@const previousMeterGroup = previousReading ? meterGroupMap.get(previousReading.meter_group_id) : undefined}
+                            {@const currentMeterGroup = currentReading ? meterGroupMap.get(currentReading.meter_group_id) : undefined}
                             <tr class="border-b border-gray-100 hover:bg-white">
                               <td class="px-6 py-3 text-gray-900">
                                 <div class="flex items-center gap-2">
                                   <span>{billingProperty?.room_name ?? 'Unknown Property'}</span>
-                                  {#if isMainMeter}
-                                    <span class="inline-block rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-800">
-                                      Derived
-                                    </span>
-                                  {/if}
                                 </div>
                               </td>
                               <td class="px-6 py-3 font-mono text-gray-700">
-                                {#if readings.find(r => r.id === billing.previous_reading_id)}
-                                  {formatReading(readings.find(r => r.id === billing.previous_reading_id)?.reading_amount || 0, meterGroups.find(m => m.id === readings.find(r => r.id === billing.previous_reading_id)?.meter_group_id)?.utility_type || 'electricity')}
+                                {#if previousReading}
+                                  {formatReading(trueReading(previousReading, previousMeterGroup, billingProperty), previousMeterGroup?.utility_type || 'electricity')}
                                 {:else}
                                   N/A
                                 {/if}
                               </td>
                               <td class="px-6 py-3 font-mono text-gray-700">
-                                {#if readings.find(r => r.id === billing.current_reading_id)}
-                                  {formatReading(readings.find(r => r.id === billing.current_reading_id)?.reading_amount || 0, meterGroups.find(m => m.id === readings.find(r => r.id === billing.current_reading_id)?.meter_group_id)?.utility_type || 'electricity')}
+                                {#if currentReading}
+                                  {formatReading(trueReading(currentReading, currentMeterGroup, billingProperty), currentMeterGroup?.utility_type || 'electricity')}
                                 {:else}
                                   N/A
                                 {/if}
                               </td>
                               <td class="px-6 py-3 text-right font-mono text-gray-700">
-                                {#if readings.find(r => r.id === billing.current_reading_id)}
-                                  {(cycle.billing_ids[billing.id] ?? 0).toLocaleString()} {getReadingUnit(meterGroups.find(m => m.id === readings.find(r => r.id === billing.current_reading_id)?.meter_group_id)?.utility_type || 'electricity')}
+                                {#if currentReading}
+                                  {(cycle.billing_ids[billing.id] ?? 0).toLocaleString()} {getReadingUnit(currentMeterGroup?.utility_type || 'electricity')}
                                 {:else}
                                   N/A
                                 {/if}
                               </td>
-                              <td class="px-6 py-3 text-right font-semibold text-gray-900">
+                              <td class="px-6 py-3 text-right font-semibold {isMainMeter ? 'text-purple-800' : 'text-gray-900'}">
                                 {formatCurrency(
                                   (cycle.billing_ids[billing.id] ?? 0) * cycle.billing_rate
                                 )}
@@ -1596,5 +1707,79 @@
         class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
       />
     </div>
+  </div>
+</EditModal>
+
+<EditModal
+  bind:isOpen={stragglerModalOpen}
+  title="Add Straggler Billing"
+  isLoading={isAddingStraggler}
+  onClose={closeStragglerModal}
+  onSubmit={handleAddStraggler}
+  submitButtonText="Add to Cycle"
+>
+  <div class="space-y-4">
+    <p class="text-sm text-gray-500">
+      Adds one late-arriving billing to this cycle. Creates the billing from a reading
+      pair, then folds its consumption into the cycle's total.
+    </p>
+    <div>
+      <label for="straggler-property" class="block text-sm font-medium text-gray-700">Property</label>
+      <select
+        id="straggler-property"
+        bind:value={stragglerPropertyId}
+        onchange={() => { stragglerPrevReadingId = ''; stragglerCurrReadingId = ''; }}
+        class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+      >
+        <option value="">Select property...</option>
+        {#each stragglerCandidateProperties as property (property.id)}
+          <option value={property.id}>{property.room_name}</option>
+        {/each}
+      </select>
+      {#if stragglerCycle && stragglerCandidateProperties.length === 0}
+        <p class="mt-1 text-xs text-gray-500">
+          Every property on this cycle's meter group already has a billing.
+        </p>
+      {/if}
+    </div>
+    {#if stragglerPropertyId}
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label for="straggler-prev-reading" class="block text-sm font-medium text-gray-700">Previous Reading</label>
+          <select
+            id="straggler-prev-reading"
+            bind:value={stragglerPrevReadingId}
+            class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+          >
+            <option value="">Select...</option>
+            {#each stragglerAvailableReadings as reading (reading.id)}
+              <option value={reading.id}>{formatDate(toDate(reading.reading_date))} — {reading.reading_amount}</option>
+            {/each}
+          </select>
+        </div>
+        <div>
+          <label for="straggler-curr-reading" class="block text-sm font-medium text-gray-700">Current Reading</label>
+          <select
+            id="straggler-curr-reading"
+            bind:value={stragglerCurrReadingId}
+            class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+          >
+            <option value="">Select...</option>
+            {#each stragglerAvailableReadings as reading (reading.id)}
+              <option value={reading.id}>{formatDate(toDate(reading.reading_date))} — {reading.reading_amount}</option>
+            {/each}
+          </select>
+        </div>
+      </div>
+      {#if stragglerAvailableReadings.length === 0}
+        <p class="text-xs text-gray-500">No readings found for this property on this meter group.</p>
+      {/if}
+      {#if stragglerCurrReadingId}
+        <p class="text-sm text-gray-700">
+          Consumption preview: <span class="font-semibold">{stragglerConsumptionPreview}</span>
+          {getReadingUnit(getCycleUtilityType(stragglerCycle!))}
+        </p>
+      {/if}
+    {/if}
   </div>
 </EditModal>

@@ -25,6 +25,10 @@ export function formatDate(date: Date): string {
   return format(date, 'MMM d, yyyy');
 }
 
+export function formatLongDate(date: Date): string {
+  return format(date, 'MMMM d, yyyy');
+}
+
 export function formatDateTime(date: Date): string {
   return format(date, 'MMM d, yyyy · h:mm a');
 }
