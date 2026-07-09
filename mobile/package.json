@@ -27,6 +27,6 @@
     "@capacitor/camera": "^6.1.0",
     "@capacitor/core": "^6.1.0",
     "@lucide/svelte": "^1.16.0",
-    "firebase": "^10.0.0"
+    "firebase": "^12.16.0"
   }
 }
