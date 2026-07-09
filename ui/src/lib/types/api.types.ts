@@ -17,6 +17,11 @@ export interface PaginatedResult<T> {
   hasMore: boolean;
 }
 
+export interface BatchCreateResult<T> {
+  created: T[];
+  failed: { index: number; error: string }[];
+}
+
 export interface AuthResponse {
   access_token: string;
   refresh_token: string;

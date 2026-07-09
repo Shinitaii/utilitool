@@ -18,7 +18,7 @@ jest.mock('../../config/firebase.config', () => {
     firestore: {
       collection: jest.fn().mockImplementation(() => makeQueryChain({ empty: true, docs: [] })),
       runTransaction: jest.fn().mockImplementation(async (fn: Function) => {
-        await fn({ set: jest.fn() });
+        await fn({ set: jest.fn(), create: jest.fn() });
       }),
     },
   };
@@ -49,6 +49,7 @@ jest.mock('../meter-group/meter-group.repository', () => ({
 jest.mock('../property/property.repository', () => ({
   propertyRepository: {
     getById: jest.fn().mockResolvedValue(null),
+    getByIds: jest.fn().mockResolvedValue([]),
   },
 }));
 

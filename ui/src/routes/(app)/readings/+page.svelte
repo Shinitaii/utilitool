@@ -347,13 +347,22 @@
         },
       }));
 
-      await createReadingsBatch(readingsData);
+      const result = await createReadingsBatch(readingsData);
 
       readingFormOpen = false;
       batchRows = [];
       batchDate = new Date().toISOString().split('T')[0];
       await handleMeterGroupChange();
-      alert('Readings created successfully! If a previous-month reading exists for this meter group, billings have been auto-created for each property.');
+
+      if (result.failed.length > 0) {
+        const failedSummary = result.failed.map((f) => `Row ${f.index + 1}: ${f.error}`).join('\n');
+        alert(
+          `${result.created.length} of ${result.created.length + result.failed.length} readings created. ` +
+          `${result.failed.length} skipped:\n${failedSummary}`
+        );
+      } else {
+        alert('Readings created successfully! If a previous-month reading exists for this meter group, billings have been auto-created for each property.');
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to create readings';
     } finally {

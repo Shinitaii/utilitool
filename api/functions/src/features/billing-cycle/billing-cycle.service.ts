@@ -12,6 +12,7 @@ import {CachedRepository} from "../../lib/cached-repository.lib";
 import {firestore} from "../../config/firebase.config";
 import {COLLECTIONS} from "../../constants/collection.constants";
 import {snapshotToModel} from "../../utils/firestore.util";
+import {BatchCreateResult} from "../../utils/batch-result.util";
 
 const validator = new BillingCycleValidator();
 const CACHE_TTL = 15 * 60; // 15 minutes
@@ -122,30 +123,70 @@ type BillingCycleSearchOptions = {
 
 export const billingCycleService = {
   async create(userId: string, data: CreateBillingCycleDTO): Promise<BillingCycle> {
+    // Validate the submitted submeter consumption numbers BEFORE
+    // injectMainMeterBilling derives a main-meter reading from their sum —
+    // see validateSubmeterConsumption's doc comment.
+    await validator.validateSubmeterConsumption(data);
     const enrichedData = await injectMainMeterBilling(userId, data);
     await validator.validateCreate(enrichedData);
     const cachedRepo = new CachedRepository(billingCycleRepository, userId, "billing-cycles", CACHE_TTL);
     return cachedRepo.create(enrichedData);
   },
 
-  async createBatch(userId: string, data: CreateBillingCycleDTO[]): Promise<BillingCycle[]> {
+  /**
+   * Processes each cycle independently: a duplicate or invalid item is
+   * reported per-index in `failed` rather than aborting the whole batch, and
+   * every other valid cycle is still created.
+   */
+  async createBatch(userId: string, data: CreateBillingCycleDTO[]): Promise<BatchCreateResult<BillingCycle>> {
+    const failures: {index: number; error: string}[] = [];
     const seenMeterGroups = new Set<string>();
-    for (const item of data) {
-      if (item.meter_group_id) {
-        if (seenMeterGroups.has(item.meter_group_id)) {
-          throw new AppError(
-            400,
-            `Duplicate meter_group_id "${item.meter_group_id}" in batch. ` +
-            "Each billing cycle in a batch must be for a different meter group."
-          );
+    const enrichedByIndex = new Map<number, CreateBillingCycleDTO>();
+
+    for (let index = 0; index < data.length; index++) {
+      const item = data[index];
+      try {
+        if (item.meter_group_id) {
+          if (seenMeterGroups.has(item.meter_group_id)) {
+            throw new AppError(
+              400,
+              `Duplicate meter_group_id "${item.meter_group_id}" in batch. ` +
+              "Each billing cycle in a batch must be for a different meter group."
+            );
+          }
+          seenMeterGroups.add(item.meter_group_id);
         }
-        seenMeterGroups.add(item.meter_group_id);
+        // Same ordering fix as create(): validate this item's submeter
+        // consumption before injectMainMeterBilling derives a reading from it.
+        await validator.validateSubmeterConsumption(item);
+        const enriched = await injectMainMeterBilling(userId, item);
+        enrichedByIndex.set(index, enriched);
+      } catch (err) {
+        failures.push({
+          index,
+          error: err instanceof AppError ? err.message : "Failed to process billing cycle",
+        });
       }
     }
-    const enriched = await Promise.all(data.map((item) => injectMainMeterBilling(userId, item)));
-    await validator.validateBatch(enriched);
-    const cachedRepo = new CachedRepository(billingCycleRepository, userId, "billing-cycles", CACHE_TTL);
-    return cachedRepo.createBatch(enriched);
+
+    const candidateIndexes = Array.from(enrichedByIndex.keys());
+    const candidateItems = candidateIndexes.map((i) => enrichedByIndex.get(i)!);
+    const {validIndexes, failures: validationFailures} = await validator.validateBatch(candidateItems);
+
+    validationFailures.forEach((f) => {
+      failures.push({index: candidateIndexes[f.index], error: f.error});
+    });
+
+    const toCreate = validIndexes.map((i) => candidateItems[i]);
+
+    let created: BillingCycle[] = [];
+    if (toCreate.length > 0) {
+      const cachedRepo = new CachedRepository(billingCycleRepository, userId, "billing-cycles", CACHE_TTL);
+      created = await cachedRepo.createBatch(toCreate);
+    }
+
+    failures.sort((a, b) => a.index - b.index);
+    return {created, failed: failures};
   },
 
   async search(

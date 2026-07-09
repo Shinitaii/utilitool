@@ -16,6 +16,7 @@ import {Property} from "../property/property.model";
 import {collectionRef} from "../../lib/firestore.lib";
 import {snapshotToModel} from "../../utils/firestore.util";
 import type {Query} from "firebase-admin/firestore";
+import {BatchCreateResult} from "../../utils/batch-result.util";
 
 const validator = new ReadingValidator();
 const CACHE_TTL = 10 * 60; // 10 minutes
@@ -75,63 +76,70 @@ export const readingService = {
    * reading exists for that meter group, create a billing automatically.
    * Uses atomic transactions per reading to ensure consistency.
    *
-   * All validations (including meter rollback) are performed BEFORE any writes,
-   * ensuring that if any reading fails validation, the entire batch fails atomically.
+   * Each reading is validated and created independently — one invalid item
+   * (duplicate month, main-meter rejection, anomaly, rollback, etc.) is
+   * reported per-index in `failed` rather than aborting the whole batch.
    */
-  async createBatch(userId: string, data: CreateReadingDTO[]): Promise<Reading[]> {
-    await validator.validateBatch(data);
+  async createBatch(userId: string, data: CreateReadingDTO[]): Promise<BatchCreateResult<Reading>> {
+    const {validIndexes, failures: validationFailures} = await validator.validateBatch(data);
+    const failures: {index: number; error: string}[] = [...validationFailures];
 
-    // Reject if any reading targets a main meter property — those are derived automatically
     const propertyIds = [...new Set(data.map((r) => r.property_id))];
+    const propertiesResult = await propertyRepository.getByIds(propertyIds);
     const propertyMap = new Map<string, Property>();
-    for (const propertyId of propertyIds) {
-      const property = await propertyRepository.getById(propertyId);
-      if (property) propertyMap.set(propertyId, property);
-    }
-
-    for (const r of data) {
-      const property = propertyMap.get(r.property_id);
-      if (!property) continue;
-      const entry = Object.values(property.meter_groups).find(
-        (e) => e.meter_group_id === r.meter_group_id
-      );
-      if (entry?.is_main_meter) {
-        throw new AppError(
-          400,
-          `Property ${r.property_id} is the main meter for meter group ${r.meter_group_id}. ` +
-          "Its readings are derived automatically. Use POST /readings/seed for the first-time baseline."
-        );
-      }
-    }
+    propertiesResult.forEach((property) => {
+      if (property) propertyMap.set(property.id, property);
+    });
 
     const meterGroupIds = [...new Set(data.map((r) => r.meter_group_id))];
     const meterGroups = await meterGroupRepository.getByIds(meterGroupIds);
     const meterGroupMap = new Map<string, MeterGroup>();
     meterGroups.forEach((mg) => mg && meterGroupMap.set(mg.id, mg));
 
-    const readingsWithVersion: ReadingCreatePayload[] = data.map((r) => ({
-      ...r,
-      meter_version: resolveMeterVersion(propertyMap.get(r.property_id), r.meter_group_id, meterGroupMap.get(r.meter_group_id)),
-    }));
+    const candidates: {index: number; payload: ReadingCreatePayload}[] = [];
 
-    // Validate ALL readings for anomalies before any writes
-    for (const r of readingsWithVersion) {
-      await validator.validateAnomalous(r.meter_group_id, r.reading_amount, r.meter_version);
+    for (const index of validIndexes) {
+      const r = data[index];
+      try {
+        // Reject if this reading targets a main meter property — those are derived automatically
+        const property = propertyMap.get(r.property_id);
+        const entry = property && Object.values(property.meter_groups).find(
+          (e) => e.meter_group_id === r.meter_group_id
+        );
+        if (entry?.is_main_meter) {
+          throw new AppError(
+            400,
+            `Property ${r.property_id} is the main meter for meter group ${r.meter_group_id}. ` +
+            "Its readings are derived automatically. Use POST /readings/seed for the first-time baseline."
+          );
+        }
+
+        const meter_version = resolveMeterVersion(property, r.meter_group_id, meterGroupMap.get(r.meter_group_id));
+        await validator.validateAnomalous(r.meter_group_id, r.reading_amount, meter_version);
+        await validator.validateMeterRollback(
+          r.meter_group_id,
+          r.property_id,
+          r.reading_amount,
+          meter_version,
+          r.reading_date
+        );
+
+        candidates.push({index, payload: {...r, meter_version}});
+      } catch (err) {
+        failures.push({
+          index,
+          error: err instanceof AppError ? err.message : "Failed to process reading",
+        });
+      }
     }
 
-    // Validate ALL readings for meter rollback before any writes
-    // This ensures if ANY reading would violate meter rollback, the entire batch fails
-    for (const r of readingsWithVersion) {
-      await validator.validateMeterRollback(
-        r.meter_group_id,
-        r.property_id,
-        r.reading_amount,
-        r.meter_version,
-        r.reading_date
-      );
+    let created: Reading[] = [];
+    if (candidates.length > 0) {
+      created = await createBatchReadingsWithAutoBilling(userId, candidates.map((c) => c.payload));
     }
 
-    return createBatchReadingsWithAutoBilling(userId, readingsWithVersion);
+    failures.sort((a, b) => a.index - b.index);
+    return {created, failed: failures};
   },
 
   async createSeed(userId: string, data: CreateReadingDTO): Promise<Reading> {
@@ -230,11 +238,11 @@ export const readingService = {
   },
 
   async restore(userId: string, id: string): Promise<Reading> {
-    const reading = await readingRepository.getById(id);
-    if (!reading) {
-      throw new AppError(404, "Reading not found");
-    }
-
+    // No pre-check via readingRepository.getById here — it filters out
+    // is_deleted records, which would always reject a genuinely archived
+    // reading. cascadeRestoreReading does its own unfiltered existence check
+    // and throws AppError(404) if the reading truly doesn't exist.
+    //
     // cascadeRestoreReading already refreshes id caches and invalidates list
     // caches (wholesale, for all users) for readings/billings — appending here
     // would race with that invalidation and risk duplicates.

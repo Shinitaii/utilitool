@@ -1,6 +1,6 @@
 import { apiGet, apiPost, apiPatch, apiDelete } from './client';
 import type { Reading, CreateReadingRequest, CreateSeedReadingRequest, UpdateReadingRequest } from '$lib/types/reading.types';
-import type { PaginatedResult } from '$lib/types/api.types';
+import type { PaginatedResult, BatchCreateResult } from '$lib/types/api.types';
 
 export async function getReadings(params?: {
   meterGroupId?: string;
@@ -29,21 +29,15 @@ export async function getReadingById(id: string): Promise<Reading> {
 }
 
 export async function createReading(data: CreateReadingRequest): Promise<Reading> {
-  return apiPost<Reading>('/readings', {
-    ...data,
-    reading_date: typeof data.reading_date === 'string' ? data.reading_date : data.reading_date
-  });
+  return apiPost<Reading>('/readings', data);
 }
 
-export async function createReadingsBatch(data: CreateReadingRequest[]): Promise<Reading[]> {
-  return apiPost<Reading[]>('/readings/batch', data);
+export async function createReadingsBatch(data: CreateReadingRequest[]): Promise<BatchCreateResult<Reading>> {
+  return apiPost<BatchCreateResult<Reading>>('/readings/batch', data);
 }
 
 export async function createSeedReading(data: CreateSeedReadingRequest): Promise<Reading> {
-  return apiPost<Reading>('/readings/seed', {
-    ...data,
-    reading_date: typeof data.reading_date === 'string' ? data.reading_date : data.reading_date
-  });
+  return apiPost<Reading>('/readings/seed', data);
 }
 
 export async function updateReading(id: string, data: UpdateReadingRequest): Promise<Reading> {

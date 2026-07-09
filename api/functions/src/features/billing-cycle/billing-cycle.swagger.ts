@@ -211,7 +211,9 @@ export const billingCyclePaths = {
     post: {
       tags: ["Billing Cycles"],
       summary: "Create multiple billing cycles",
-      description: "Batch create 1-10 billing cycles.",
+      description: "Batch create 1-10 billing cycles. Each cycle is validated and created " +
+        "independently: an invalid or duplicate item is reported per-index in `failed` rather " +
+        "than aborting the whole batch, so other valid cycles are still created.",
       security: [{BearerAuth: []}],
       requestBody: {
         required: true,
@@ -229,14 +231,27 @@ export const billingCyclePaths = {
         },
       },
       responses: {
-        "200": {
-          description: "Billing cycles created",
+        "201": {
+          description: "Batch processed (may include partial failures — see `failed`)",
           content: {
             "application/json": {
               schema: {
-                type: "array",
-                items: {
-                  $ref: "#/components/schemas/BillingCycle",
+                type: "object",
+                properties: {
+                  created: {
+                    type: "array",
+                    items: {$ref: "#/components/schemas/BillingCycle"},
+                  },
+                  failed: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        index: {type: "integer", description: "Index into the request array"},
+                        error: {type: "string"},
+                      },
+                    },
+                  },
                 },
               },
             },
@@ -254,16 +269,6 @@ export const billingCyclePaths = {
         },
         "401": {
           description: "Unauthorized",
-          content: {
-            "application/json": {
-              schema: {
-                $ref: "#/components/schemas/ErrorResponse",
-              },
-            },
-          },
-        },
-        "404": {
-          description: "Billing not found",
           content: {
             "application/json": {
               schema: {

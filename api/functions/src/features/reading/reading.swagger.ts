@@ -182,7 +182,10 @@ export const readingPaths = {
     post: {
       tags: ["Readings"],
       summary: "Create multiple meter readings",
-      description: "Batch create 1-10 meter readings. Does NOT trigger auto-billing — use single POST /readings for that.",
+      description: "Batch create 1-10 meter readings. Does NOT trigger auto-billing — use single POST /readings for that. " +
+        "Each reading is validated and created independently: an invalid or duplicate item (e.g. meter group not " +
+        "found, or a reading already exists for that property+month) is reported per-index in `failed` rather " +
+        "than aborting the whole batch, so other valid readings are still created.",
       security: [{BearerAuth: []}],
       requestBody: {
         required: true,
@@ -200,14 +203,27 @@ export const readingPaths = {
         },
       },
       responses: {
-        "200": {
-          description: "Readings created",
+        "201": {
+          description: "Batch processed (may include partial failures — see `failed`)",
           content: {
             "application/json": {
               schema: {
-                type: "array",
-                items: {
-                  $ref: "#/components/schemas/Reading",
+                type: "object",
+                properties: {
+                  created: {
+                    type: "array",
+                    items: {$ref: "#/components/schemas/Reading"},
+                  },
+                  failed: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        index: {type: "integer", description: "Index into the request array"},
+                        error: {type: "string"},
+                      },
+                    },
+                  },
                 },
               },
             },
@@ -225,16 +241,6 @@ export const readingPaths = {
         },
         "401": {
           description: "Unauthorized",
-          content: {
-            "application/json": {
-              schema: {
-                $ref: "#/components/schemas/ErrorResponse",
-              },
-            },
-          },
-        },
-        "404": {
-          description: "Meter group not found",
           content: {
             "application/json": {
               schema: {

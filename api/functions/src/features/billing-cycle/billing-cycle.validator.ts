@@ -58,9 +58,7 @@ export class BillingCycleValidator {
     properties.forEach((p) => p && propertyMap.set(p.id, p));
 
     // Meter groups are only known once readings are resolved (meter_group_id lives on Reading)
-    const uniqueMeterGroupIds = Array.from(readingMap.values())
-      .map((r) => r.meter_group_id)
-      .filter((id, idx, arr) => arr.indexOf(id) === idx);
+    const uniqueMeterGroupIds = [...new Set(Array.from(readingMap.values()).map((r) => r.meter_group_id))];
 
     const meterGroupMap = new Map<string, MeterGroup | null>();
     const uniqueMeterGroups = await meterGroupRepository.getByIds(uniqueMeterGroupIds);
@@ -165,6 +163,28 @@ export class BillingCycleValidator {
     }
   }
 
+  /**
+   * Validates that each submitted submeter consumption is within 5% of the
+   * true, version-aware expected delta (see calculateTrueReading/
+   * resolveVersionsSource). Must run BEFORE injectMainMeterBilling
+   * synthesizes a main-meter reading from these numbers — otherwise a bad
+   * submeter consumption (e.g. from a meter-reset boundary) silently drives
+   * the derived main-meter reading below its previous value, surfacing a
+   * confusing "meter rollback" error on the main meter instead of the
+   * actual, actionable "consumption deviates from expected" error on the
+   * offending submeter billing.
+   */
+  async validateSubmeterConsumption(data: CreateBillingCycleDTO): Promise<void> {
+    const billingIds = Object.keys(data.billing_ids);
+
+    if (billingIds.length === 0) {
+      throw new AppError(400, "Billing IDs must not be empty");
+    }
+
+    await this.validateBillingIdsExist(billingIds);
+    await this.validateBillingConsumptionAmounts(data.billing_ids);
+  }
+
   async validateCreate(data: CreateBillingCycleDTO): Promise<void> {
     const billingIds = Object.keys(data.billing_ids);
 
@@ -190,35 +210,33 @@ export class BillingCycleValidator {
     this.validateConsumptionTolerance(totalBilledAmount, data.billing_consumption);
   }
 
-  async validateBatch(data: CreateBillingCycleDTO[]): Promise<void> {
-    const allBillingIds = new Set<string>();
+  /**
+   * Validates each cycle independently so one invalid item (e.g. a duplicate
+   * meter_group_id + billing_start_date pair) doesn't abort validation for the
+   * rest of the batch. Reuses validateCreate's per-item rules; the batch-level
+   * query fan-out optimization is dropped in favor of correctness — batches
+   * are capped at 10 items (CreateBillingCycleBatchDTOSchema), so sequential
+   * per-item validation is cheap enough.
+   */
+  async validateBatch(
+    data: CreateBillingCycleDTO[]
+  ): Promise<{validIndexes: number[]; failures: {index: number; error: string}[]}> {
+    const validIndexes: number[] = [];
+    const failures: {index: number; error: string}[] = [];
 
-    for (const cycle of data) {
-      const billingIds = Object.keys(cycle.billing_ids);
-
-      if (billingIds.length === 0) {
-        throw new AppError(400, "Billing IDs must not be empty");
+    for (let index = 0; index < data.length; index++) {
+      try {
+        await this.validateCreate(data[index]);
+        validIndexes.push(index);
+      } catch (err) {
+        failures.push({
+          index,
+          error: err instanceof AppError ? err.message : "Validation failed",
+        });
       }
-
-      billingIds.forEach((id) => allBillingIds.add(id));
-
-      await this.ensureBillingCycleNotDuplicate(cycle.meter_group_id, cycle.billing_start_date);
-
-      this.validateBillingDates(cycle.billing_start_date, cycle.billing_end_date);
-      this.validateBillingRate(cycle.billing_rate);
-      this.validateBillingConsumption(cycle.billing_consumption);
-
-      const totalBilledAmount = Object.values(cycle.billing_ids).reduce(
-        (sum, amount) => sum + amount,
-        0
-      );
-      this.validateConsumptionTolerance(
-        totalBilledAmount,
-        cycle.billing_consumption
-      );
     }
 
-    await this.validateBillingIdsExist(Array.from(allBillingIds));
+    return {validIndexes, failures};
   }
 
   async validateUpdate(

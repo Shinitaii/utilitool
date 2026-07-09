@@ -4,7 +4,7 @@ import type {
   CreateBillingCycleRequest,
   UpdateBillingCycleRequest
 } from '$lib/types/billing-cycle.types';
-import type { PaginatedResult } from '$lib/types/api.types';
+import type { PaginatedResult, BatchCreateResult } from '$lib/types/api.types';
 
 export async function getBillingCycles(params?: {
   billingStartDate?: string;
@@ -34,8 +34,8 @@ export async function createBillingCycle(data: CreateBillingCycleRequest): Promi
 
 export async function createBillingCyclesBatch(
   data: CreateBillingCycleRequest[]
-): Promise<BillingCycle[]> {
-  return apiPost<BillingCycle[]>('/billing-cycles/batch', data);
+): Promise<BatchCreateResult<BillingCycle>> {
+  return apiPost<BatchCreateResult<BillingCycle>>('/billing-cycles/batch', data);
 }
 
 export async function updateBillingCycle(
