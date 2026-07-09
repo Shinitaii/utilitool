@@ -28,14 +28,14 @@ Don't read this file (CLAUDE.md) again during the session unless you need contex
 
 ### Before Planning or Brainstorming
 
-Run RAG retrieval on the topic before writing any plan or spec:
+Run RAG retrieval on the topic before writing any plan or spec, using the standalone `rag-tool` (not the old in-repo `api/functions/rag.ts`, which has been removed):
 
 ```bash
-# From repo root
-cd api/functions && npx tsx rag.ts "YOUR TOPIC HERE" 5
+# From the rag-tool venv
+python -m rag.cli query "YOUR TOPIC HERE" 5
 ```
 
-Replace `YOUR TOPIC HERE` with the feature or question being planned (e.g. `"billing cycle validation"`, `"tenant CRUD"`, `"auth middleware"`). The database (`utilitool.db`) must exist at the repo root; if missing, run `python index_claude_md.py` from the repo root first.
+Replace `YOUR TOPIC HERE` with the feature or question being planned (e.g. `"billing cycle validation"`, `"tenant CRUD"`, `"auth middleware"`). See `coding-projects/rag-tool` for indexing/setup.
 
 ---
 
