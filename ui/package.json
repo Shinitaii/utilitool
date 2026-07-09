@@ -4,10 +4,10 @@
 	"version": "0.0.1",
 	"type": "module",
 	"scripts": {
-		"dev": "vite dev",
+		"dev": "vite dev --mode staging",
 		"build": "vite build",
 		"preview": "vite preview",
-		"prepare": "playwright install && svelte-kit sync || echo ''",
+		"prepare": "if [ \"$SKIP_PLAYWRIGHT_INSTALL\" = \"true\" ]; then svelte-kit sync; else playwright install && svelte-kit sync || echo ''; fi",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "prettier --check . && eslint .",
