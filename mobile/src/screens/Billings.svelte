@@ -146,9 +146,7 @@
     }));
   });
 
-  function getCycleBillings(cycleId: string): Billing[] {
-    const cycle = cycles.find(c => c.id === cycleId);
-    if (!cycle) return [];
+  function getCycleBillings(cycle: BillingCycle): Billing[] {
     return Object.keys(cycle.billing_ids)
       .map(billingId => billingMap.get(billingId))
       .filter((b): b is Billing => !!b);
@@ -179,7 +177,7 @@
           </h2>
           <div class="space-y-2">
             {#each group.cycles as cycle (cycle.id)}
-              {@const billings = getCycleBillings(cycle.id)}
+              {@const billings = getCycleBillings(cycle)}
               {@const statusSummary = getStatusSummary(cycle, billingMap)}
               <div
                 role="button"
