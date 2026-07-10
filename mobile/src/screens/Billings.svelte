@@ -3,7 +3,7 @@
   import { listBillings, updateBillingStatus, type Billing } from '../lib/api/billings';
   import { listMeterGroups, type MeterGroup } from '../lib/api/meter-groups';
   import { listProperties } from '../lib/api/properties';
-  import { formatDate } from '../lib/utils/timestamp';
+  import { formatTimestampDate } from '../lib/utils/timestamp';
   import { getReadingUnit } from '../lib/utils/format';
   import { getStatusSummary } from '../lib/utils/billing-cycle.util';
   import { sessionCache } from '../lib/stores/session';
@@ -188,7 +188,7 @@
               >
                 <div class="flex justify-between items-start mb-2">
                   <h4 class="font-semibold" style="color: var(--color-text-primary)">
-                    {formatDate(cycle.billing_start_date)} – {formatDate(cycle.billing_end_date)}
+                    {formatTimestampDate(cycle.billing_start_date)} – {formatTimestampDate(cycle.billing_end_date)}
                   </h4>
                   <span class="text-xs font-semibold text-gray-600">{billings.length} billing(s)</span>
                 </div>
@@ -199,7 +199,7 @@
                   </div>
                   {#if cycle.overdue_date}
                     <div class="text-xs" style="color: var(--color-status-alert)">
-                      Due: {formatDate(cycle.overdue_date)}
+                      Due: {formatTimestampDate(cycle.overdue_date)}
                     </div>
                   {/if}
                 </div>
