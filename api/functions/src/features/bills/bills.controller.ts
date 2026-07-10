@@ -19,7 +19,7 @@ export const ocrBill = async (req: Request, res: Response): Promise<void> => {
     billing_end_date: extracted.billing_end_date,
     billing_consumption: extracted.billing_consumption,
     billing_rate: extracted.billing_rate,
-    raw_amount: extracted.billing_rate * extracted.billing_consumption,
+    raw_amount: extracted.raw_amount,
   };
 
   res.status(200).json(result);

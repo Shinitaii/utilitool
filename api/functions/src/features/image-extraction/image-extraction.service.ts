@@ -74,6 +74,7 @@ export class ImageExtractionService {
         billing_end_date: billData.billing_end_date,
         billing_consumption: billData.billing_consumption,
         billing_rate: billData.billing_rate,
+        raw_amount: billData.raw_amount,
       } as any;
     } catch (err: any) {
       if (err instanceof AppError) throw err;

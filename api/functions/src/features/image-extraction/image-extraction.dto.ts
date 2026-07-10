@@ -25,7 +25,7 @@ export const ExtractedBillingDataSchema = z.object({
   billing_end_date: z.string(),
   billing_consumption: z.number().nonnegative(),
   billing_rate: z.number().nonnegative(),
-  raw_amount: z.string().optional(),
+  raw_amount: z.number().nonnegative(),
 });
 
 export type ExtractedReadingResponse = z.infer<typeof ExtractedReadingDataSchema>;
