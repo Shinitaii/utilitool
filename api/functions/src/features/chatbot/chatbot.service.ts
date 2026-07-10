@@ -117,7 +117,7 @@ export const chatbotService = {
       messages.push(assistantMessage);
 
       if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
-        const content = assistantMessage.content ?? "";
+        const content = typeof assistantMessage.content === "string" ? assistantMessage.content : "";
 
         if (isFlaggedResponse(content)) {
           logger.warn({userId, content}, "Chatbot response flagged by regex guard, replaced with refusal");

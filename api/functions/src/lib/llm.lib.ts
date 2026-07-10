@@ -9,9 +9,13 @@ const PROVIDER_BASE_URLS: Record<LlmProvider, string> = {
 
 const RETRY_DELAY_MS = 1500;
 
+export type LlmContentPart =
+  | {type: "text"; text: string}
+  | {type: "image"; mimeType: string; base64: string};
+
 export interface LlmChatMessage {
   role: "system" | "user" | "assistant" | "tool";
-  content: string | null;
+  content: string | LlmContentPart[] | null;
   tool_call_id?: string;
   tool_calls?: LlmToolCall[];
 }
@@ -60,7 +64,10 @@ export class LlmClient {
 
     const body = {
       model: this.options.model,
-      messages,
+      messages: messages.map((message) => ({
+        ...message,
+        content: this.serializeContent(message.content),
+      })),
       ...(tools ? {tools, tool_choice: "auto"} : {}),
     };
 
@@ -73,6 +80,25 @@ export class LlmClient {
     }
 
     return {message};
+  }
+
+  private serializeContent(content: string | LlmContentPart[] | null): unknown {
+    if (typeof content !== "object" || content === null) return content;
+    return content.map((part) => {
+      if (part.type === "text") return {type: "text", text: part.text};
+      const dataUrl = `data:${part.mimeType};base64,${part.base64}`;
+      switch (this.options.provider) {
+      case "groq":
+        return {type: "image_url", image_url: {url: dataUrl}};
+      case "ollama_cloud":
+        // Confirmed shape TBD — see plan's "Multimodal research findings". Placeholder uses the
+        // OpenAI-standard nested-object shape; flip to a plain string if the manual smoke test
+        // against ollama.com/v1 shows that's what's actually accepted.
+        return {type: "image_url", image_url: {url: dataUrl}};
+      default:
+        throw new Error(`Unsupported provider for image content: ${this.options.provider}`);
+      }
+    });
   }
 
   private async requestWithRetry(baseUrl: string, body: unknown): Promise<Response> {
