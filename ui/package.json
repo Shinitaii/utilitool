@@ -50,6 +50,7 @@
 	"dependencies": {
 		"chart.js": "^4.4.3",
 		"date-fns": "^4.1.0",
+		"decimal.js": "^10.6.0",
 		"firebase": "^12.13.0",
 		"lucide-svelte": "^1.0.1",
 		"svelte-chartjs": "^4.0.1"

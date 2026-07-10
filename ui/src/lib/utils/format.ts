@@ -14,7 +14,7 @@ export function getReadingUnit(utilityType: string): string {
 
 export function formatReading(amount: number, utilityType: string): string {
 	const unit = getReadingUnit(utilityType);
-	return `${amount.toFixed(2)} ${unit}`;
+	return `${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${unit}`;
 }
 
 export function formatKwh(kwh: number): string {
