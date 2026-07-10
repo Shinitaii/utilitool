@@ -22,7 +22,6 @@
   },
   "main": "lib/index.js",
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
     "cors": "^2.8.6",
     "decimal.js": "^10.6.0",
     "dotenv": "^17.4.2",

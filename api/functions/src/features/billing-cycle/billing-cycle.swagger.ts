@@ -191,7 +191,7 @@ export const billingCyclePaths = {
     post: {
       tags: ["Billing Cycles"],
       summary: "Extract billing data from utility bill photo",
-      description: "Uses Gemini vision to extract billing_start_date, billing_end_date, billing_consumption, billing_rate, and raw_amount from a Philippine utility bill (Meralco/Manila Water).",
+      description: "Uses the user's configured llm-config vision model to extract billing_start_date, billing_end_date, billing_consumption, billing_rate, and raw_amount from a Philippine utility bill (Meralco/Manila Water). Returns 404 if no vision_model is configured.",
       requestBody: {
         required: true,
         content: {

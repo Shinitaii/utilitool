@@ -145,7 +145,9 @@ export const ocrReading = async (
   res: Response
 ): Promise<void> => {
   const data = req.body as OcrReadingDTO;
-  const extracted = await ImageExtractionService.extractReadingFromImage(data.image_url);
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
+  const extracted = await ImageExtractionService.extractReadingFromImage(data.image_url, userId);
   res.status(200).json({suggested_reading_amount: extracted.reading_amount});
 };
 

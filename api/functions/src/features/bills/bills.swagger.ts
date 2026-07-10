@@ -2,7 +2,7 @@ export const billsPaths = {
   "/bills/ocr": {
     post: {
       summary: "Extract data from utility bill image via OCR",
-      description: "Processes a utility bill image (Meralco or Manila Water) and extracts billing period, consumption, and rate information using Gemini AI.",
+      description: "Processes a utility bill image (Meralco or Manila Water) and extracts billing period, consumption, and rate information using the user's configured llm-config vision model. Returns 404 if no vision_model is configured.",
       tags: ["Bills"],
       requestBody: {
         required: true,

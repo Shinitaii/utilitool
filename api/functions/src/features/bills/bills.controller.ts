@@ -1,18 +1,22 @@
-import {Request, Response} from "express";
+import {Response} from "express";
+import type {AuthenticatedRequest} from "../../utils/auth.util";
 import {ImageExtractionService} from "../image-extraction/image-extraction.service";
 import {OcrBillDTO, OcrBillResponse} from "./bills.dto";
+import {AppError} from "../../utils/error.util";
 
 /**
  * Thin wrapper around the shared image-extraction service — this endpoint and
  * `POST /image-extraction/billings` extract the same data from the same kind
- * of photo. Delegating here (rather than calling geminiLib directly, as this
- * controller used to) keeps a single source of truth for the extraction call,
- * its URL validation, and its 422-on-extraction-failure semantics.
+ * of photo. Delegating here (rather than calling the vision lib directly, as
+ * this controller used to) keeps a single source of truth for the extraction
+ * call, its URL validation, and its 422-on-extraction-failure semantics.
  */
-export const ocrBill = async (req: Request, res: Response): Promise<void> => {
+export const ocrBill = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const data = req.body as OcrBillDTO;
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
 
-  const extracted = await ImageExtractionService.extractBillingFromImage(data.image_url);
+  const extracted = await ImageExtractionService.extractBillingFromImage(data.image_url, userId);
 
   const result: OcrBillResponse = {
     billing_start_date: extracted.billing_start_date,

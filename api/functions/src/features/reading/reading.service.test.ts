@@ -24,7 +24,6 @@ jest.mock('../../utils/firestore.util', () => ({
   snapshotToModel: jest.fn().mockImplementation((snap: any) => ({ id: snap.id, ...snap.data() })),
 }));
 jest.mock('./reading.repository');
-jest.mock('../../lib/gemini.lib');
 jest.mock('../billing/billing.service');
 jest.mock('../meter-group/meter-group.repository');
 jest.mock('./reading.validator');

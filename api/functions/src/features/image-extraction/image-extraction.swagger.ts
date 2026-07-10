@@ -3,7 +3,7 @@ export const paths = {
     post: {
       tags: ["Image Extraction"],
       summary: "Extract meter reading data from image",
-      description: "Uses Gemini Vision to extract structured reading data from a meter photo",
+      description: "Uses the user's configured llm-config vision model to extract structured reading data from a meter photo. Returns 404 if no vision_model is configured.",
       requestBody: {
         required: true,
         content: {
@@ -51,7 +51,7 @@ export const paths = {
     post: {
       tags: ["Image Extraction"],
       summary: "Extract billing data from utility bill photo",
-      description: "Uses Gemini Vision to extract dates, consumption, and rate from a utility bill",
+      description: "Uses the user's configured llm-config vision model to extract dates, consumption, and rate from a utility bill. Returns 404 if no vision_model is configured.",
       requestBody: {
         required: true,
         content: {

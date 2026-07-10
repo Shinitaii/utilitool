@@ -1,24 +1,32 @@
-import {Request, Response} from "express";
+import {Response} from "express";
+import type {AuthenticatedRequest} from "../../utils/auth.util";
 import {ImageExtractionService} from "./image-extraction.service";
 import {ImageExtractionValidator} from "./image-extraction.validator";
 import type {ExtractReadingRequest, ExtractBillingRequest} from "./image-extraction.dto";
+import {AppError} from "../../utils/error.util";
 
 const validator = new ImageExtractionValidator();
 
 export async function extractReadingFromImage(
-  req: Request<Record<string, never>, unknown, ExtractReadingRequest>,
+  req: AuthenticatedRequest,
   res: Response
 ) {
-  validator.validateExtractReading(req.body);
-  const result = await ImageExtractionService.extractReadingFromImage(req.body.image_url);
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
+  const body = req.body as ExtractReadingRequest;
+  validator.validateExtractReading(body);
+  const result = await ImageExtractionService.extractReadingFromImage(body.image_url, userId);
   res.json(result);
 }
 
 export async function extractBillingFromImage(
-  req: Request<Record<string, never>, unknown, ExtractBillingRequest>,
+  req: AuthenticatedRequest,
   res: Response
 ) {
-  validator.validateExtractBilling(req.body);
-  const result = await ImageExtractionService.extractBillingFromImage(req.body.image_url);
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
+  const body = req.body as ExtractBillingRequest;
+  validator.validateExtractBilling(body);
+  const result = await ImageExtractionService.extractBillingFromImage(body.image_url, userId);
   res.json(result);
 }
