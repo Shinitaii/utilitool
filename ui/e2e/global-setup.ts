@@ -62,7 +62,9 @@ export async function setupEmulatorState(): Promise<void> {
 		// Caller is responsible for having already run
 		// api/functions/src/migrations/copy-staging-to-emulator.ts (EXECUTE=true) against this
 		// same emulator instance — skip the destructive clear so that data survives.
-		console.log('SEED_FROM_STAGING=true: skipping Firestore clear, keeping imported staging snapshot.');
+		console.log(
+			'SEED_FROM_STAGING=true: skipping Firestore clear, keeping imported staging snapshot.'
+		);
 	} else {
 		await clearFirestore();
 	}

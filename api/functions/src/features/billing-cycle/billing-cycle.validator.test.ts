@@ -2,6 +2,7 @@ jest.mock('../billing/billing.repository');
 jest.mock('../reading/reading.repository');
 jest.mock('../meter-group/meter-group.repository');
 jest.mock('../property/property.repository');
+jest.mock('./billing-cycle.repository');
 
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import { BillingCycleValidator } from './billing-cycle.validator';
@@ -10,6 +11,7 @@ import { billingRepository } from '../billing/billing.repository';
 import { readingRepository } from '../reading/reading.repository';
 import { meterGroupRepository } from '../meter-group/meter-group.repository';
 import { propertyRepository } from '../property/property.repository';
+import { billingCycleRepository } from './billing-cycle.repository';
 import { AppError } from '../../utils/error.util';
 import { Timestamp } from 'firebase-admin/firestore';
 
@@ -41,6 +43,7 @@ describe('BillingCycleValidator', () => {
     jest.mocked(readingRepository.getByIds).mockResolvedValue([]);
     jest.mocked(propertyRepository.getByIds).mockResolvedValue([]);
     jest.mocked(meterGroupRepository.getByIds).mockResolvedValue([]);
+    jest.mocked(billingCycleRepository.search).mockResolvedValue({ data: [], hasMore: false, nextCursor: null });
   });
 
   describe('validateConsumptionTolerance (via validateCreate)', () => {

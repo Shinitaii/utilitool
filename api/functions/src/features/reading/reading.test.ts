@@ -302,7 +302,7 @@ describe('readingService', () => {
   describe('createBatch', () => {
     // It should create multiple readings in a batch.
     it('should create multiple readings in a batch', async () => {
-      jest.mocked(ReadingValidator.prototype.validateBatch).mockResolvedValue(undefined);
+      jest.mocked(ReadingValidator.prototype.validateBatch).mockResolvedValue({ validIndexes: [0, 1], failures: [] });
       jest.mocked(readingRepository.create)
         .mockResolvedValueOnce(mockReading({ id: 'reading-1' }))
         .mockResolvedValueOnce(mockReading({ id: 'reading-2', reading_amount: 200 }));
@@ -322,7 +322,8 @@ describe('readingService', () => {
       const result = await readingService.createBatch(TEST_USER_ID, input);
 
       expect(readingRepository.create).toHaveBeenCalledTimes(2);
-      expect(result).toHaveLength(2);
+      expect(result.created).toHaveLength(2);
+      expect(result.failed).toHaveLength(0);
     });
 
     // It should return an error if batch is empty.

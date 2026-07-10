@@ -23,6 +23,10 @@
     "**/*.test.ts",
     "**/*.spec.ts",
     "**/rag-query.ts",
+    ".eslintrc.js",
+    "jest.config.ts",
+    "jest.setup.ts",
+    "seed.js",
   ],
   plugins: [
     "@typescript-eslint",
@@ -35,10 +39,14 @@
     "indent": ["error", 2],
     "max-len": "off",
     "require-jsdoc": "off",
+    "valid-jsdoc": "off",
     "camelcase": "off",
     "@typescript-eslint/no-explicit-any": "warn",
     "no-tabs": "off",
     "no-mixed-spaces-and-tabs": "off",
+    "new-cap": ["error", { "capIsNew": false }],
+    "@typescript-eslint/no-unused-vars": ["error", { "ignoreRestSiblings": true, "argsIgnorePattern": "^_" }],
+    "no-constant-condition": ["error", { "checkLoops": false }],
   },
   overrides: [
     {

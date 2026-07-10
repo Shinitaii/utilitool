@@ -4,6 +4,7 @@
 `--mode test` build/preview of the UI (see `decisions/20260611_emulator-for-e2e-testing.md`).
 
 ## Working
+
 - All three webServers (emulators on 8080/9099, API on 5002, UI preview on 4173) start cleanly
   with no orphaned processes.
 - `global-setup.ts` seeds the Firebase Auth emulator user and clears Firestore between runs.
@@ -22,6 +23,7 @@
     (day 15 could land in the future depending on "today").
 
 ## Remaining issue (not yet root-caused)
+
 - On the Billings page, "New Billing Cycle" discovery (`discoverBillings()` in
   `ui/src/routes/(app)/billings/+page.svelte`) reports "No billings found yet for this meter
   group and end month" even though the auto-created billing exists (sidebar badge shows
@@ -37,6 +39,7 @@
   the rest of the flow (Create Cycle → expand → Mark as paid → assert `₱625.00`) is untested.
 
 ## Next steps
+
 1. Resolve the discovery date-matching issue above.
 2. Run the full spec green locally, then in CI.
 3. Proceed to Phase 2B (convert pseudo-TDD `*.test.ts` specs to real Jest tests) and 2C

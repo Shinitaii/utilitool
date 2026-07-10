@@ -4,7 +4,7 @@ import {userRepository} from "../auth/auth.repository";
 import {AppError} from "../../utils/error.util";
 import type {User} from "../auth/auth.model";
 
-export async function createUser(req: Request<Record<string, never>, {}, CreateUserDTO>, res: Response) {
+export async function createUser(req: Request<Record<string, never>, unknown, CreateUserDTO>, res: Response) {
   const {uid, role} = req.body;
 
   // Check if user profile already exists (non-deleted)

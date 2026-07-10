@@ -3,13 +3,13 @@
  * Consumption (kWh/m³) stays float — only peso amounts go through this.
  */
 export function roundHalfUp2dp(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+	return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
 export function billAmount(consumption: number, rate: number): number {
-  return roundHalfUp2dp(consumption * rate);
+	return roundHalfUp2dp(consumption * rate);
 }
 
 export function sumMoney(values: number[]): number {
-  return roundHalfUp2dp(values.reduce((sum, v) => sum + v, 0));
+	return roundHalfUp2dp(values.reduce((sum, v) => sum + v, 0));
 }

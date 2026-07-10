@@ -1,3 +1,28 @@
+jest.mock('../../config/firebase.config', () => ({
+  firestore: {
+    collection: jest.fn().mockImplementation(() => ({
+      where: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+      doc: jest.fn().mockReturnValue({
+        id: 'new-reading-id',
+        get: jest.fn().mockResolvedValue({
+          id: 'new-reading-id',
+          exists: true,
+          data: () => ({ meter_group_id: 'mg-1', reading_amount: 200, is_deleted: false }),
+        }),
+      }),
+    })),
+    runTransaction: jest.fn().mockImplementation(async (fn: Function) => {
+      return fn({ set: jest.fn(), create: jest.fn() });
+    }),
+  },
+}));
+jest.mock('../../utils/firestore.util', () => ({
+  ...jest.requireActual('../../utils/firestore.util') as object,
+  snapshotToModel: jest.fn().mockImplementation((snap: any) => ({ id: snap.id, ...snap.data() })),
+}));
 jest.mock('./reading.repository');
 jest.mock('../../lib/gemini.lib');
 jest.mock('../billing/billing.service');

@@ -1,23 +1,23 @@
 import type { BaseModel } from './api.types';
 
 export interface Billing extends BaseModel {
-  property_id: string;
-  previous_reading_id: string;
-  current_reading_id: string;
-  payment_status: 'pending' | 'paid';
-  paid_at?: string;
+	property_id: string;
+	previous_reading_id: string;
+	current_reading_id: string;
+	payment_status: 'pending' | 'paid';
+	paid_at?: string;
 }
 
 export interface CreateBillingRequest {
-  property_id: string;
-  previous_reading_id: string;
-  current_reading_id: string;
+	property_id: string;
+	previous_reading_id: string;
+	current_reading_id: string;
 }
 
 export interface UpdateBillingRequest {
-  property_id?: string;
-  previous_reading_id?: string;
-  current_reading_id?: string;
-  payment_status?: 'pending' | 'paid';
-  paid_at?: string;
+	property_id?: string;
+	previous_reading_id?: string;
+	current_reading_id?: string;
+	payment_status?: 'pending' | 'paid';
+	paid_at?: string;
 }

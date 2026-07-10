@@ -45,6 +45,7 @@ const COLLECTIONS = [
 // Read a service-account key, stripping a UTF-8 BOM if present (Windows editors add one,
 // which breaks JSON.parse / cert()).
 function loadKey(p: string): ServiceAccount {
+  // eslint-disable-next-line no-irregular-whitespace -- strips a literal BOM character
   const raw = fs.readFileSync(path.resolve(p), "utf8").replace(/^﻿/, "");
   return JSON.parse(raw) as ServiceAccount;
 }

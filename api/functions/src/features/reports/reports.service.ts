@@ -131,7 +131,8 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
   const now = new Date();
   const joinedData: JoinedBilling[] = [];
 
-  const cycleByBillingId = new Map<string, (typeof cycles)[number]>();
+  type Cycle = typeof cycles[number];
+  const cycleByBillingId = new Map<string, Cycle>();
   cycles.forEach((c) => {
     Object.keys(c.billing_ids).forEach((billingId) => {
       cycleByBillingId.set(billingId, c);

@@ -15,7 +15,6 @@ import {calculateTrueReading, resolveVersionsSource} from "../reading/reading.ut
 const CONSUMPTION_TOLERANCE = 0.03;
 
 export class BillingCycleValidator {
-
   private async validateBillingIdsExist(billingIds: string[]): Promise<void> {
     const billings = await Promise.all(
       billingIds.map((id) => billingRepository.getById(id))

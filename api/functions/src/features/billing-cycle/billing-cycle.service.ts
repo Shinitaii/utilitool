@@ -95,7 +95,7 @@ async function injectMainMeterBilling(
   if (!billings.length) {
     throw new AppError(
       400,
-      `Main meter reading was recorded but no billing was auto-created. ` +
+      "Main meter reading was recorded but no billing was auto-created. " +
         `Create it manually: POST /billings { property_id: "${mainMeterProperty.id}", ` +
         `previous_reading_id: "${prevReading.id}", current_reading_id: "${derivedReading.id}" }, ` +
         "then retry this billing cycle."

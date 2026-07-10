@@ -39,6 +39,15 @@ export default defineConfig(
 	{
 		// Override or add rule settings here, such as:
 		// 'svelte/button-has-type': 'error'
-		rules: {}
+		rules: {
+			// Matches api/functions/.eslintrc.js precedent: `any` shows up frequently around
+			// Firestore data and generic table/column helpers, so downgrade to a warning
+			// instead of erroring on every instance.
+			'@typescript-eslint/no-explicit-any': 'warn',
+			'@typescript-eslint/no-unused-vars': [
+				'error',
+				{ varsIgnorePattern: '^_', argsIgnorePattern: '^_' }
+			]
+		}
 	}
 );

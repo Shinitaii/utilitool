@@ -70,6 +70,7 @@ const COLLECTIONS = [
 ];
 
 function loadKey(p: string): ServiceAccount {
+  // eslint-disable-next-line no-irregular-whitespace -- strips a literal BOM character
   const raw = fs.readFileSync(path.resolve(p), "utf8").replace(/^﻿/, "");
   return JSON.parse(raw) as ServiceAccount;
 }

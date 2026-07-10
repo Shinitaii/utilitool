@@ -17,6 +17,7 @@ const useEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
 // BOM, which makes firebase-admin's path-based cert() throw "Unexpected token" at startup
 // and crash the Cloud Run container before it can listen on PORT.
 function loadServiceAccount(filePath: string): admin.ServiceAccount {
+  // eslint-disable-next-line no-irregular-whitespace -- strips a literal BOM character
   const raw = fs.readFileSync(filePath, "utf8").replace(/^﻿/, "");
   return JSON.parse(raw) as admin.ServiceAccount;
 }
