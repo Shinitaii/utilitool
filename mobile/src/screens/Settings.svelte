@@ -1,11 +1,41 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { auth } from '../firebase';
   import { signOut } from 'firebase/auth';
   import { sessionCache } from '../lib/stores/session';
+  import { getPhotoSettings, upsertPhotoSettings } from '../lib/api/photo-settings';
   import BottomNav from '../components/BottomNav.svelte';
 
   let isSigningOut = $state(false);
   let error: string | null = $state(null);
+
+  let savePhotos = $state(false);
+  let photoSettingsLoading = $state(true);
+  let photoSettingsSaving = $state(false);
+
+  onMount(async () => {
+    try {
+      const settings = await getPhotoSettings();
+      savePhotos = settings.savePhotos;
+    } catch (e: any) {
+      error = e.message || 'Failed to load photo settings';
+    } finally {
+      photoSettingsLoading = false;
+    }
+  });
+
+  async function togglePhotoSettings() {
+    const next = !savePhotos;
+    photoSettingsSaving = true;
+    try {
+      const result = await upsertPhotoSettings({ savePhotos: next });
+      savePhotos = result.savePhotos;
+    } catch (e: any) {
+      error = e.message || 'Failed to save photo setting';
+    } finally {
+      photoSettingsSaving = false;
+    }
+  }
 
   async function handleSignOut() {
     try {
@@ -74,8 +104,31 @@
     <!-- Configuration Section -->
     <div>
       <h2 class="text-lg font-semibold mb-3" style="color: var(--color-text-primary)">Configuration</h2>
-      <div class="card-base">
-        <p class="text-sm" style="color: var(--color-text-secondary)">Reserved for future settings</p>
+      <div class="card-base space-y-2">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <p class="text-sm font-medium" style="color: var(--color-text-primary)">Save meter-reading photos</p>
+            <p class="text-xs mt-1" style="color: var(--color-text-secondary)">
+              Off by default — photos are only used in-memory to suggest a reading value, then
+              discarded before submitting.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={savePhotos}
+            aria-label="Save meter-reading photos"
+            onclick={togglePhotoSettings}
+            disabled={photoSettingsLoading || photoSettingsSaving}
+            class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50"
+            style="background-color: {savePhotos ? 'var(--color-accent)' : '#d1d5db'}"
+          >
+            <span
+              class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
+              style="transform: translateX({savePhotos ? '1.5rem' : '0.25rem'})"
+            ></span>
+          </button>
+        </div>
       </div>
     </div>
   </div>

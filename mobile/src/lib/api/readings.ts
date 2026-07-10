@@ -60,3 +60,9 @@ export async function createReadingsBatch(data: BatchReadingRequest): Promise<Ba
 export async function createSeedReading(data: CreateReadingRequest) {
   return apiPost('/readings/seed', data);
 }
+
+export async function ocrReadingImage(
+  imageUrl: string
+): Promise<{ suggested_reading_amount: number | null }> {
+  return apiPost('/readings/ocr', { image_url: imageUrl });
+}

@@ -2,7 +2,8 @@
   import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
   import { listMeterGroups, type MeterGroup } from '../lib/api/meter-groups';
   import { listProperties, type Property } from '../lib/api/properties';
-  import { createReadingsBatch, createSeedReading, listReadings, type CreateReadingRequest, type Reading } from '../lib/api/readings';
+  import { createReadingsBatch, createSeedReading, listReadings, ocrReadingImage, type CreateReadingRequest, type Reading } from '../lib/api/readings';
+  import { getPhotoSettings } from '../lib/api/photo-settings';
   import { getReadingUnit } from '../lib/utils/format';
   import { getUtilityTypeBadgeClasses } from '../lib/utils/utility-colors';
   import { sessionCache } from '../lib/stores/session';
@@ -11,6 +12,20 @@
   let step = $state(1);
   let isLoading = $state(false);
   let error: string | null = $state(null);
+
+  // Off by default — a captured photo is only used in-memory to suggest a reading value;
+  // it's stripped from the submit payload unless this is enabled in Settings.
+  let savePhotos = $state(false);
+  let suggestingFor: string | null = $state(null);
+
+  (async () => {
+    try {
+      const settings = await getPhotoSettings();
+      savePhotos = settings.savePhotos;
+    } catch {
+      // Keep the safe default (don't persist) if the setting fails to load.
+    }
+  })();
 
   // Step 1: Session setup
   let meterGroups: MeterGroup[] = $state([]);
@@ -117,10 +132,24 @@
         source: CameraSource.Camera
       });
 
-      // In production, upload to Cloud Storage and get URL
-      // For now, use data URL
-      if (image.base64String) {
-        propertyReadings[propertyId].image_url = `data:image/${image.format};base64,${image.base64String}`;
+      if (!image.base64String) return;
+
+      const dataUrl = `data:image/${image.format};base64,${image.base64String}`;
+      propertyReadings[propertyId].image_url = dataUrl;
+
+      // Auto-suggest a reading value from the photo — no separate Suggest button.
+      // The photo itself is only kept in the payload later if savePhotos is on;
+      // this OCR call works either way since it never persists anything.
+      suggestingFor = propertyId;
+      try {
+        const result = await ocrReadingImage(dataUrl);
+        if (result.suggested_reading_amount !== null) {
+          propertyReadings[propertyId].amount = result.suggested_reading_amount;
+        }
+      } catch (e) {
+        // Non-fatal — the photo is still captured, user can enter the amount manually.
+      } finally {
+        suggestingFor = null;
       }
     } catch (e) {
       error = 'Failed to capture photo';
@@ -152,7 +181,9 @@
         property_id: propertyId,
         reading_amount: data.amount,
         reading_date: `${readingDate}T00:00:00Z`,
-        image_url: data.image_url || undefined
+        // Only attach the photo when the user has opted into saving it in Settings —
+        // otherwise it was only ever used in-memory to suggest the amount above.
+        image_url: savePhotos && data.image_url ? data.image_url : undefined
       });
 
       const failedSummaries: string[] = [];
@@ -306,13 +337,25 @@
 
           <button
             onclick={() => capturePhoto(property.id)}
-            class="w-full p-4 border-2 border-dashed rounded-lg font-semibold text-center"
+            disabled={suggestingFor === property.id}
+            class="w-full p-4 border-2 border-dashed rounded-lg font-semibold text-center disabled:opacity-60"
             style={propertyReadings[property.id]?.image_url
               ? `background-color: var(--color-accent); color: white`
               : `border-color: var(--color-border); background-color: #f5eee5; color: var(--color-text-primary)`}
           >
-            {propertyReadings[property.id]?.image_url ? '📷 Retake' : '📷 Capture Photo'}
+            {#if suggestingFor === property.id}
+              Suggesting reading...
+            {:else if propertyReadings[property.id]?.image_url}
+              📷 Retake
+            {:else}
+              📷 Capture Photo
+            {/if}
           </button>
+          {#if !savePhotos && propertyReadings[property.id]?.image_url}
+            <p class="text-xs" style="color: var(--color-text-secondary)">
+              Photo won't be saved (enable in Settings) — used only to suggest the amount above.
+            </p>
+          {/if}
 
           <div>
             <label for={`amount-${property.id}`} class="label-base mb-1">
@@ -362,7 +405,11 @@
           <p class="text-sm" style="color: var(--color-text-secondary)">
             Amount: <strong style="color: var(--color-accent)">{propertyReadings[property.id]?.amount}</strong>
             {#if propertyReadings[property.id]?.image_url}
-              <span class="ml-2" style="color: var(--color-status-good)">📷 Photo attached</span>
+              {#if savePhotos}
+                <span class="ml-2" style="color: var(--color-status-good)">📷 Photo will be saved</span>
+              {:else}
+                <span class="ml-2" style="color: var(--color-text-tertiary)">📷 Photo used for suggestion only</span>
+              {/if}
             {/if}
           </p>
         </div>
