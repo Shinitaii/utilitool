@@ -15,14 +15,21 @@ shell take precedence over the file.
 
 ## Optional
 
-- **`GEMINI_API_KEY`** — Gemini Vision API key for OCR (image-extraction, billing-cycle/bills
-  OCR). If unset, `gemini.lib.ts` logs a warning and returns mock OCR responses — useful for
-  local dev without a real key.
 - **`REDIS_URL`** — connection string for the rate-limiter / cache backend. If unset, falls back
   to an in-memory store (single-instance only).
 - **`ALLOWED_ORIGINS`** — comma-separated list of allowed CORS origins (e.g. your Vercel UI
   domain). Required in non-development environments — `cors.config.ts` warns if unset outside
   `development`. Localhost dev origins are always allowed regardless of this setting.
+
+## OCR (image extraction)
+
+OCR (meter reading photos, utility bill photos) is driven entirely by the user's **vision**
+`llm-config` — no env var, no Gemini fallback. Set via `PATCH /llm-config/vision`
+(Groq or Ollama Cloud), independent from the chat config set via `PATCH /llm-config` — some
+providers (e.g. Ollama Cloud) have no usable free vision model, so chat and vision commonly use
+different providers. If the vision provider matches the chat provider, the vision config reuses
+the chat API key (no need to enter it twice); otherwise its own API key is required. OCR
+endpoints return 404 ("Vision model not configured...") until the vision config exists.
 
 ## Notes
 

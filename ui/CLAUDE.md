@@ -107,7 +107,7 @@ ui/src/
 │           ├── +page.svelte        (Account settings root)
 │           ├── payment/+page.svelte (Payment settings)
 │           ├── users/+page.svelte  (User management — create users, assign roles)
-│           └── llm-provider/+page.svelte (LLM provider/model/API key config for the insight chatbot)
+│           └── llm-provider/+page.svelte (Two tabs — Chatbot and Vision (OCR) — each with independent provider/model/API key; vision reuses the chatbot's key when providers match)
 │
 ├── lib/
 │   ├── api/                         (API client modules — one per feature)
@@ -122,7 +122,7 @@ ui/src/
 │   │   ├── bills.ts                (ocrBill — POST /bills/ocr)
 │   │   ├── users.ts                (createUser — POST /users)
 │   │   ├── reports.ts              (getSummaryReport, getConsumptionReport, getBillingTrendsReport, getCollectionStatusReport)
-│   │   ├── llm-config.ts           (getLlmConfig, upsertLlmConfig — GET/PATCH /llm-config)
+│   │   ├── llm-config.ts           (getLlmConfig, upsertLlmConfig, upsertVisionLlmConfig — GET /llm-config, PATCH /llm-config, PATCH /llm-config/vision)
 │   │   ├── chat.ts                 (sendChatMessage — POST /chatbot)
 │   │   └── cache.ts                (clearAllCaches — clears all feature caches in parallel)
 │   │
@@ -296,8 +296,8 @@ All archive pages: `GET /<feature>?archived=true` to list soft-deleted items, th
 - **Sub-routes**:
   - `/settings/payment` — payment config
   - `/settings/users` — user management: `POST /users` ← `createUser()` to create accounts with role (`admin`, `landlord`, `assistant`)
-  - `/settings/llm-provider` — configure the insight chatbot's LLM provider (`groq` | `ollama_cloud`), model, and API key
-    - **API calls**: `GET /llm-config` ← `getLlmConfig()`, `PATCH /llm-config` ← `upsertLlmConfig()` from `src/lib/api/llm-config.ts`
+  - `/settings/llm-provider` — two tabs, each an independent provider (`groq` | `ollama_cloud`) + model + API key config: **Chatbot** (used by the insight chatbot) and **Vision (OCR)** (used by photo OCR for readings/bills). Providers can differ — e.g. Ollama Cloud for chat, Groq for vision, since not every provider has a usable free vision model. When the vision tab's provider matches the chatbot tab's, its API key field is optional and the chatbot's key is reused; when it differs, an API key is required. No vision config set means OCR endpoints 404, no Gemini fallback.
+    - **API calls**: `GET /llm-config` ← `getLlmConfig()`, `PATCH /llm-config` ← `upsertLlmConfig()` (chat tab), `PATCH /llm-config/vision` ← `upsertVisionLlmConfig()` (vision tab), all from `src/lib/api/llm-config.ts`
 - **Status**: Create-only — full create-user flow (role select, password validation, Firebase error-code mapping, partial-failure handling); no listing/edit of existing users
 
 #### Bills / OCR Upload (`/bills`)
@@ -398,7 +398,8 @@ export async function getCollectionStatusReport(
 
 ```ts
 export async function getLlmConfig(): Promise<LlmConfigResponse>;
-export async function upsertLlmConfig(data: UpsertLlmConfigRequest): Promise<LlmConfigResponse>;
+export async function upsertLlmConfig(data: UpsertLlmConfigRequest): Promise<LlmConfigResponse>; // chat tab
+export async function upsertVisionLlmConfig(data: UpsertVisionLlmConfigRequest): Promise<LlmConfigResponse>; // vision tab
 // Types in src/lib/types/llm-config.types.ts
 ```
 

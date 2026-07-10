@@ -310,7 +310,7 @@ Represents billing periods with validation and rate calculation.
 |--------|------|---------|
 | POST | `/billing-cycles` | Create billing cycle + validate |
 | POST | `/billing-cycles/batch` | Batch create |
-| POST | `/billing-cycles/ocr` | Extract billing data from utility bill photo (Gemini vision) |
+| POST | `/billing-cycles/ocr` | Extract billing data from utility bill photo (vision OCR via `llm-config` `vision_model`) |
 | GET | `/billing-cycles` | List with filters (billingStartDate, billingEndDate) + sorting (sortBy=[created_at,billing_start_date], sortOrder=[asc,desc]) + pagination |
 | GET | `/billing-cycles/:id` | Get single cycle |
 | PATCH | `/billing-cycles/:id` | Update cycle — also the correction path for company errors in rate/consumption/dates (UI exposes this via an edit modal on the Billings page) |
@@ -337,7 +337,7 @@ Represents billing periods with validation and rate calculation.
 **OCR endpoint** (`POST /billing-cycles/ocr`):
 - Accepts `{ image_url: string }` (data URL or HTTPS URL of a utility bill photo)
 - Returns `{ billing_start_date, billing_end_date, billing_consumption, billing_rate, raw_amount }`
-- Returns 422 if Gemini cannot extract the data or any numeric field is invalid
+- Returns 404 if the user has no `vision_model` configured in `llm-config` (no fallback), 422 if the vision model cannot extract the data or any numeric field is invalid
 - Requires `admin` or `landlord` role
 
 ---
@@ -346,7 +346,9 @@ Represents billing periods with validation and rate calculation.
 
 Located: `src/features/image-extraction/`
 
-Provides Gemini Vision OCR extraction for two use cases: reading meter photos and utility bill photos.
+Provides vision OCR extraction for two use cases: reading meter photos and utility bill photos.
+Fully driven by the authenticated user's `llm-config` `vision_model` — Groq or Ollama Cloud only,
+no Gemini, no fallback.
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -355,8 +357,8 @@ Provides Gemini Vision OCR extraction for two use cases: reading meter photos an
 
 **Business rules**:
 - Accepts `{ image_url: string }` — data URL or HTTPS URL
-- Returns 400 if extraction fails or image URL is invalid
-- Backed by `src/lib/gemini.lib.ts` (Google Gemini Vision API)
+- Returns 404 if the user has no `vision_model` configured in `llm-config`, 422 if extraction fails, 400 if the image URL is invalid
+- Backed by `src/lib/vision-ocr.lib.ts` (via `src/lib/llm.lib.ts`'s `LlmClient`, same Groq/Ollama Cloud providers as the chatbot)
 - Requires authentication (BearerAuth)
 
 ---
@@ -385,12 +387,13 @@ Read-only analytics endpoints for billing summaries and trends. Accepts optional
 
 Located: `src/features/llm-config/`
 
-Stores the tenant's chosen LLM provider + model + API key for the insight chatbot. The API key is AES-256-GCM encrypted at rest via `src/lib/crypto.lib.ts` (`LLM_CONFIG_MASTER_KEY`) — never stored or returned in plaintext.
+Stores two **independent** provider configs per tenant: a chat config (used by the insight chatbot) and a vision config (used by OCR) — separate because not every provider has a usable free vision model (e.g. Ollama Cloud has none as of this writing, so a common setup is Ollama Cloud for chat + Groq for vision). When the vision provider matches the chat provider, the vision config reuses the chat API key and `apiKey` is optional on upsert; when it differs, `apiKey` is required (first time, or when switching to yet another distinct provider). No Gemini fallback — OCR 404s until a vision config exists. API keys are AES-256-GCM encrypted at rest via `src/lib/crypto.lib.ts` (`LLM_CONFIG_MASTER_KEY`) — never stored or returned in plaintext.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/llm-config` | Fetch the current provider/model config (no API key in response) |
-| PATCH | `/llm-config` | Upsert provider (`groq` \| `ollama_cloud`), model, and API key |
+| GET | `/llm-config` | Fetch both configs: `{provider, model, hasKey, visionProvider, visionModel, visionHasKey}` (no API keys in response) |
+| PATCH | `/llm-config` | Upsert the **chat** config: provider (`groq` \| `ollama_cloud`), model, apiKey (required on first setup) |
+| PATCH | `/llm-config/vision` | Upsert the **vision** config: provider, model, apiKey (optional if provider matches the chat provider — reuses that key; required otherwise). 400 if no chat config exists yet, or if a required apiKey is missing |
 
 ### Chatbot (`/chatbot` — protected)
 
@@ -408,7 +411,7 @@ The following feature folders exist but are **not fully implemented**:
 
 | Folder | Status | Notes |
 |--------|--------|-------|
-| `bills/` | ⚠️ Partial | `POST /bills/ocr` — OCR via Gemini; no model/service/repository. Functionally overlaps with `image-extraction/billings` |
+| `bills/` | ⚠️ Partial | `POST /bills/ocr` — OCR via `llm-config` `vision_model`; no model/service/repository. Functionally overlaps with `image-extraction/billings` |
 | `user/` | ⚠️ Partial | `POST /users` — create user record; no model/service/repository. Auth covered by `auth/` |
 | `audit/` | ❌ Stub | `audit.model.ts` only — not mounted |
 
@@ -522,7 +525,7 @@ api/functions/src/features/property/
 api/functions/src/features/image-extraction/
 ├── image-extraction.model.ts
 ├── image-extraction.dto.ts
-├── image-extraction.service.ts    → Calls gemini.lib.ts for OCR
+├── image-extraction.service.ts    → Calls vision-ocr.lib.ts (LlmClient) for OCR
 ├── image-extraction.controller.ts
 ├── image-extraction.route.ts
 ├── image-extraction.swagger.ts
@@ -543,7 +546,7 @@ api/functions/src/features/reports/
 ### LLM Config
 ```
 api/functions/src/features/llm-config/
-├── llm-config.model.ts        → LlmConfig (provider, model, encrypted_api_key, iv, auth_tag)
+├── llm-config.model.ts        → LlmConfig (provider, model, encrypted_api_key, iv, auth_tag, vision_provider?, vision_model?, encrypted_vision_api_key?, vision_iv?, vision_auth_tag?)
 ├── llm-config.dto.ts
 ├── llm-config.repository.ts
 ├── llm-config.service.ts      → Encrypts/decrypts API key via lib/crypto.lib.ts
@@ -591,7 +594,10 @@ api/functions/src/
 │   ├── repository.lib.ts        → Generic Repository<T> class (all CRUD)
 │   ├── firestore.lib.ts         → Low-level Firestore ops (timestamps, batch)
 │   ├── auth.lib.ts              → JWT generation (jsonwebtoken)
-│   ├── llm.lib.ts               → LlmClient — OpenAI-compatible chat-completions client (Groq, Ollama Cloud)
+│   ├── llm.lib.ts               → LlmClient — OpenAI-compatible chat-completions client (Groq, Ollama Cloud); serializes text+image content per-provider
+│   ├── vision-ocr.lib.ts        → Vision OCR (readings, bills) via LlmClient — no Gemini, requires `vision_model`
+│   ├── image-fetch.util.ts      → SSRF-guarded image fetch/decode shared by vision-ocr.lib.ts
+│   ├── ocr-parsing.util.ts      → OCR prompts + response parsing shared by vision-ocr.lib.ts
 │   ├── crypto.lib.ts            → AES-256-GCM encrypt/decryptSecret() for LLM API keys
 │   └── ... (Realtime DB, storage stubs)
 └── utils/
@@ -847,7 +853,6 @@ Dev environment (`APP_ENV=staging`) connects directly to `utilitool-staging` Fir
 APP_ENV=staging
 GCLOUD_PROJECT=utilitool-staging
 GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/utilitool-staging-firebase-adminsdk-fbsvc-1fe128504a.json
-GEMINI_API_KEY=<optional — OCR returns mock data if absent>
 REDIS_URL=<optional — rate limiting falls back to in-memory store if absent>
 LLM_CONFIG_MASTER_KEY=<base64, 32 bytes — required to encrypt/decrypt stored LLM API keys>
 ```
@@ -877,7 +882,7 @@ export APP_ENV=staging
 export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/secrets/utilitool-staging-firebase-adminsdk-fbsvc-50221e4bd0.json
 npm run dev:watch
 ```
-Connects to `utilitool-staging` Firebase project. Loads additional env vars (GCLOUD_PROJECT, GEMINI_API_KEY) from `secrets/.env.staging` — see `API_SETUP.md`.
+Connects to `utilitool-staging` Firebase project. Loads additional env vars (GCLOUD_PROJECT) from `secrets/.env.staging` — see `API_SETUP.md`. OCR now requires each user to configure a `vision_model` via `PATCH /llm-config`, not an env var.
 
 **Docker alternative**: `docker-compose up` from the repo root starts API, UI, and the mobile web preview, each with source bind-mounted and file watching in polling mode (needed for reliable hot reload from a Windows host). See `docker-compose.yml`.
 

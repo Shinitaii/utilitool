@@ -221,11 +221,11 @@ Each page/component is organized by:
 - ✅ Billings (CRUD, batch; normally auto-created; meter rollback prevention)
 - ✅ Billing Cycles (CRUD, batch, validation; editable via `PATCH /:id` for rate/consumption/date corrections; version-aware consumption (handles N meter resets cumulatively via `calculateTrueReading`/`resolveVersionsSource` in `reading.util.ts`); `POST /ocr` bill photo extraction; dynamic sorting)
 - ✅ Auth (Firebase Auth: sign up, login, logout)
-- ✅ Image Extraction (`POST /image-extraction/readings` + `POST /image-extraction/billings` — Gemini Vision OCR)
+- ✅ Image Extraction (`POST /image-extraction/readings` + `POST /image-extraction/billings` — vision OCR via the user's configured `llm-config` vision provider, Groq or Ollama Cloud only; no Gemini)
 - ✅ Reports (`GET /reports/summary`, `/consumption`, `/billing-trends`, `/collection-status`)
 - ✅ Bills (`POST /bills/ocr` — functional 3-step UI wizard; overlaps with image-extraction)
 - ⚠️ Users (`POST /users` — partial stub for user role management)
-- ✅ LLM Config (`GET`/`PATCH /llm-config` — provider/model/API key for the insight chatbot; API key AES-256-GCM encrypted at rest via `lib/crypto.lib.ts`)
+- ✅ LLM Config (`GET`/`PATCH /llm-config` for the chatbot provider/model/API key + `PATCH /llm-config/vision` for an **independent** vision provider/model/API key used by OCR — separate because not every provider has a usable free vision model; reuses the chatbot's API key when both configs use the same provider; API keys AES-256-GCM encrypted at rest via `lib/crypto.lib.ts`)
 - ✅ Chatbot (`POST /chatbot` — insight assistant scoped to the authenticated user's data, tool-calling via `lib/llm.lib.ts` against Groq/Ollama Cloud; regex jailbreak guard in `chatbot.guard.ts`)
 
 **Audit Highlights (25 fixes)**:
