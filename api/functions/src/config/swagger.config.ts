@@ -12,6 +12,7 @@ import {billsPaths} from "../features/bills/bills.swagger";
 import {paths as imageExtractionPaths} from "../features/image-extraction/image-extraction.swagger";
 import {reportsPaths} from "../features/reports/reports.swagger";
 import {llmConfigPaths} from "../features/llm-config/llm-config.swagger";
+import {photoSettingsPaths} from "../features/photo-settings/photo-settings.swagger";
 import {chatbotPaths} from "../features/chatbot/chatbot.swagger";
 
 const swaggerSpec = {
@@ -1012,6 +1013,25 @@ const swaggerSpec = {
         },
         required: ["provider", "model"],
       },
+      PhotoSettingsResponse: {
+        type: "object",
+        properties: {
+          savePhotos: {
+            type: "boolean",
+            description: "Whether meter-reading photos are persisted (image_url) on create. Defaults to false. Bill/billing-cycle photos are never persisted regardless.",
+          },
+        },
+        required: ["savePhotos"],
+      },
+      UpsertPhotoSettingsRequest: {
+        type: "object",
+        properties: {
+          savePhotos: {
+            type: "boolean",
+          },
+        },
+        required: ["savePhotos"],
+      },
       ChatHistoryMessage: {
         type: "object",
         properties: {
@@ -1108,6 +1128,7 @@ const swaggerSpec = {
     ...reportsPaths,
     ...llmConfigPaths,
     ...chatbotPaths,
+    ...photoSettingsPaths,
   },
 };
 

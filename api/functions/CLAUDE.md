@@ -405,6 +405,22 @@ Conversational insight assistant scoped to the authenticated user's own utility/
 |--------|------|---------|
 | POST | `/chatbot` | Send a message (+ optional up-to-20-message history); returns `{ reply }` |
 
+### Photo Settings (`/photo-settings` — protected)
+
+Located: `src/features/photo-settings/`
+
+Per-user preference for whether meter-reading photos get persisted (`image_url`) when a reading is created — separate collection, same one-doc-per-user pattern as `llm-config`. Unlike `llm-config`, `GET` never 404s: no stored doc just means the default applies.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/photo-settings` | Fetch `{savePhotos: boolean}` — defaults to `false` if never configured |
+| PATCH | `/photo-settings` | Set `{savePhotos: boolean}` |
+
+**Business rules**:
+- Default is `false` (disabled) — a captured/uploaded photo is still used transiently for OCR suggest (`POST /readings/ocr`, `POST /image-extraction/readings`), but web and mobile clients strip `image_url` from the create payload unless this is `true`.
+- Utility-bill / billing-cycle photos are **never** persisted regardless of this setting — there's no `image_url` field on the billing-cycle model to begin with, so this setting only governs meter-reading photos.
+- Enforcement is client-side (web `readings` page, mobile `CaptureReadings`) — the backend doesn't inspect this setting itself; `POST /readings`/`POST /readings/batch` still accept an optional `image_url` as before.
+
 ### Stub & Incomplete Features
 
 The following feature folders exist but are **not fully implemented**:
@@ -565,6 +581,18 @@ api/functions/src/features/chatbot/
 ├── chatbot.controller.ts
 ├── chatbot.route.ts
 └── chatbot.swagger.ts
+```
+
+### Photo Settings
+```
+api/functions/src/features/photo-settings/
+├── photo-settings.model.ts    → PhotoSettings (save_photos: boolean)
+├── photo-settings.dto.ts
+├── photo-settings.repository.ts → One doc per user, same pattern as llm-config.repository.ts
+├── photo-settings.service.ts  → get() defaults to {savePhotos: false} when no doc exists (never 404s)
+├── photo-settings.controller.ts
+├── photo-settings.route.ts
+└── photo-settings.swagger.ts
 ```
 
 ### Authentication (special case — public routes)
