@@ -208,6 +208,96 @@ export function validateMeterRollback(
 }
 
 /**
+ * Deterministic lock document id for "one reading per meter_group+property+month".
+ * Created with txn.create() inside the write transaction below: Firestore rejects
+ * a create() against an existing document id, so two concurrent requests racing
+ * for the same meter_group+property+month can no longer both pass validation and
+ * both write — the loser gets a clean 409 instead of a duplicate reading/billing.
+ */
+export function readingLockId(meterGroupId: string, propertyId: string, readingDate: Timestamp): string {
+  const manilaMs = readingDate.toMillis() + MANILA_OFFSET_MS;
+  const manilaDate = new Date(manilaMs);
+  return `${meterGroupId}_${propertyId}_${manilaDate.getUTCFullYear()}-${manilaDate.getUTCMonth()}`;
+}
+
+export function isAlreadyExistsError(err: unknown): boolean {
+  const code = (err as {code?: number | string})?.code;
+  return code === 6 || code === "already-exists";
+}
+
+/**
+ * Runs the write side of "create reading + auto-billing" inside a Firestore
+ * transaction, once a previous-month reading has been found. The `prevReading`/
+ * `property` snapshots are read just before this call (matching the existing
+ * flow), so re-validating rollback here only narrows the TOCTOU window rather
+ * than closing it outright — the actual guarantee against concurrent duplicate
+ * auto-billing comes from `txn.create(lockRef, ...)`: Firestore rejects a
+ * create() against an existing document id, so of two concurrent requests
+ * racing for the same meter_group+property+month, only one transaction can
+ * commit; the other fails with ALREADY_EXISTS and is surfaced as a 409.
+ */
+async function runCreateReadingTransaction(
+  data: CreateReadingDTO,
+  meterVersion: number,
+  prevReadingId: string,
+  prevReadingData: any,
+  propertyId: string,
+): Promise<{readingRef: FirebaseFirestore.DocumentReference; billingId: string}> {
+  const newReadingRef = firestore.collection(COLLECTIONS.READINGS).doc();
+  const lockRef = firestore.collection(COLLECTIONS.READING_LOCKS).doc(
+    readingLockId(data.meter_group_id, data.property_id, data.reading_date)
+  );
+
+  validateMeterRollback(
+    prevReadingData.reading_amount,
+    prevReadingData.meter_version ?? 1,
+    data.reading_amount,
+    meterVersion
+  );
+
+  const newReadingData = {
+    ...data,
+    meter_version: meterVersion,
+    created_at: FieldValue.serverTimestamp(),
+    is_deleted: false,
+    deleted_at: null,
+  };
+
+  const newReadingForBilling = {
+    meter_group_id: data.meter_group_id,
+    reading_amount: data.reading_amount,
+    reading_date: data.reading_date,
+    meter_version: meterVersion,
+  };
+
+  let billingId = "";
+  try {
+    await firestore.runTransaction(async (txn) => {
+      txn.create(lockRef, {created_at: FieldValue.serverTimestamp()});
+      txn.set(newReadingRef, newReadingData);
+      billingId = billingService.createFromReadings(
+        txn,
+        propertyId,
+        prevReadingId,
+        newReadingRef.id,
+        prevReadingData,
+        newReadingForBilling,
+      );
+    });
+  } catch (err) {
+    if (isAlreadyExistsError(err)) {
+      throw new AppError(
+        409,
+        "A reading for this property and meter group is already being submitted for this month. Please retry."
+      );
+    }
+    throw err;
+  }
+
+  return {readingRef: newReadingRef, billingId};
+}
+
+/**
  * Create a single reading with optional auto-billing in a Firestore transaction.
  * If a previous-month reading exists for the same meter group + property,
  * atomically creates the reading + one Billing document.
@@ -229,9 +319,6 @@ export async function createReadingWithAutoBilling(
     return cachedRepo.create(payload);
   }
 
-  const prevReadingId = prevReading.id;
-  const prevReadingData = prevReading.data;
-
   // Get the specific property for this reading
   const propertySnap = await firestore
     .collection(COLLECTIONS.PROPERTIES)
@@ -243,52 +330,20 @@ export async function createReadingWithAutoBilling(
     return cachedRepo.create(payload);
   }
 
-  const properties = [propertySnap];
+  const {readingRef, billingId} = await runCreateReadingTransaction(
+    data,
+    meterVersion,
+    prevReading.id,
+    prevReading.data,
+    propertySnap.id,
+  );
 
-  // Build the new reading document up front so we can use it inside the txn.
-  const newReadingRef = firestore.collection(COLLECTIONS.READINGS).doc();
-  const newReadingId = newReadingRef.id;
-  const newReadingData = {
-    ...data,
-    meter_version: meterVersion,
-    created_at: FieldValue.serverTimestamp(),
-    is_deleted: false,
-    deleted_at: null,
-  };
-
-  // Data passed to billingService.createFromReadings is the in-memory shape
-  // used for comparisons (meter_group_id, reading_amount, meter_version). The
-  // serverTimestamp sentinel isn't read by that method.
-  const newReadingForBilling = {
-    meter_group_id: data.meter_group_id,
-    reading_amount: data.reading_amount,
-    reading_date: data.reading_date,
-    meter_version: meterVersion,
-  };
-
-  const billingIds: string[] = [];
-  await firestore.runTransaction(async (txn) => {
-    txn.set(newReadingRef, newReadingData);
-    for (const propertyDoc of properties) {
-      const billingId = billingService.createFromReadings(
-        txn,
-        propertyDoc.id,
-        prevReadingId,
-        newReadingId,
-        prevReadingData,
-        newReadingForBilling,
-      );
-      billingIds.push(billingId);
-    }
-  });
-
-  const snap = await newReadingRef.get();
+  const snap = await readingRef.get();
   const reading = snapshotToModel<Reading>(snap);
   await cacheSet(`utilitool:readings:id:${reading.id}`, reading, CACHE_TTL);
   await listAppend(`utilitool:readings:all:${userId}`, reading);
 
-  // Cache auto-created billings
-  for (const billingId of billingIds) {
+  if (billingId) {
     const billing = await billingRepository.getById(billingId);
     if (billing) {
       await cacheSet(`utilitool:billings:id:${billing.id}`, billing, 10 * 60);
@@ -320,45 +375,19 @@ export async function createBatchReadingsWithAutoBilling(
       return cachedRepo.create(readingData);
     }
 
-    // Previous reading exists; create reading + billing in transaction
-    const prevReadingId = prevReading.id;
-    const prevReadingData = prevReading.data;
+    const {readingRef, billingId} = await runCreateReadingTransaction(
+      readingData,
+      readingData.meter_version,
+      prevReading.id,
+      prevReading.data,
+      readingData.property_id,
+    );
 
-    const newReadingRef = firestore.collection(COLLECTIONS.READINGS).doc();
-    const newReadingId = newReadingRef.id;
-    const newReadingDoc = {
-      ...readingData,
-      created_at: FieldValue.serverTimestamp(),
-      is_deleted: false,
-      deleted_at: null,
-    };
-
-    const newReadingForBilling = {
-      meter_group_id: readingData.meter_group_id,
-      reading_amount: readingData.reading_amount,
-      reading_date: readingData.reading_date,
-      meter_version: readingData.meter_version,
-    };
-
-    let billingId: string | undefined;
-    await firestore.runTransaction(async (txn) => {
-      txn.set(newReadingRef, newReadingDoc);
-      billingId = billingService.createFromReadings(
-        txn,
-        readingData.property_id,
-        prevReadingId,
-        newReadingId,
-        prevReadingData,
-        newReadingForBilling,
-      );
-    });
-
-    const snap = await newReadingRef.get();
+    const snap = await readingRef.get();
     const reading = snapshotToModel<Reading>(snap);
     await cacheSet(`utilitool:readings:id:${reading.id}`, reading, CACHE_TTL);
     await listAppend(`utilitool:readings:all:${userId}`, reading);
 
-    // Cache auto-created billing
     if (billingId) {
       const billing = await billingRepository.getById(billingId);
       if (billing) {

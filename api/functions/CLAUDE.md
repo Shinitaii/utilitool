@@ -381,6 +381,27 @@ Read-only analytics endpoints for billing summaries and trends. Accepts optional
 
 ---
 
+### LLM Config (`/llm-config` — protected)
+
+Located: `src/features/llm-config/`
+
+Stores the tenant's chosen LLM provider + model + API key for the insight chatbot. The API key is AES-256-GCM encrypted at rest via `src/lib/crypto.lib.ts` (`LLM_CONFIG_MASTER_KEY`) — never stored or returned in plaintext.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/llm-config` | Fetch the current provider/model config (no API key in response) |
+| PATCH | `/llm-config` | Upsert provider (`groq` \| `ollama_cloud`), model, and API key |
+
+### Chatbot (`/chatbot` — protected)
+
+Located: `src/features/chatbot/`
+
+Conversational insight assistant scoped to the authenticated user's own utility/billing data. Uses `src/lib/llm.lib.ts` (`LlmClient`) — a thin OpenAI-compatible chat-completions client shared by both supported providers — with tool-calling into `chatbot.tools.ts`, which reads properties/readings/billings/billing-cycles by name (never raw Firestore IDs) via existing repositories. `chatbot.guard.ts` regex-filters the final assistant response for jailbreak/off-topic patterns as defense-in-depth behind the system prompt.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/chatbot` | Send a message (+ optional up-to-20-message history); returns `{ reply }` |
+
 ### Stub & Incomplete Features
 
 The following feature folders exist but are **not fully implemented**:
@@ -390,9 +411,6 @@ The following feature folders exist but are **not fully implemented**:
 | `bills/` | ⚠️ Partial | `POST /bills/ocr` — OCR via Gemini; no model/service/repository. Functionally overlaps with `image-extraction/billings` |
 | `user/` | ⚠️ Partial | `POST /users` — create user record; no model/service/repository. Auth covered by `auth/` |
 | `audit/` | ❌ Stub | `audit.model.ts` only — not mounted |
-| `model/` | ❌ Empty | Placeholder folder — unused |
-| `ocr/` | ❌ Empty | Placeholder folder — functionality moved to `image-extraction/` |
-| `payment/` | ❌ Empty | Placeholder folder — not yet implemented |
 
 ---
 
@@ -522,6 +540,30 @@ api/functions/src/features/reports/
 └── reports.swagger.ts
 ```
 
+### LLM Config
+```
+api/functions/src/features/llm-config/
+├── llm-config.model.ts        → LlmConfig (provider, model, encrypted_api_key, iv, auth_tag)
+├── llm-config.dto.ts
+├── llm-config.repository.ts
+├── llm-config.service.ts      → Encrypts/decrypts API key via lib/crypto.lib.ts
+├── llm-config.controller.ts
+├── llm-config.route.ts
+└── llm-config.swagger.ts
+```
+
+### Chatbot
+```
+api/functions/src/features/chatbot/
+├── chatbot.dto.ts
+├── chatbot.guard.ts           → Regex jailbreak/off-topic filter over final reply
+├── chatbot.tools.ts           → Tool-calling functions over property/reading/billing repos
+├── chatbot.service.ts         → Orchestrates LlmClient + tool loop, scoped to req user
+├── chatbot.controller.ts
+├── chatbot.route.ts
+└── chatbot.swagger.ts
+```
+
 ### Authentication (special case — public routes)
 ```
 api/functions/src/features/auth/
@@ -549,6 +591,8 @@ api/functions/src/
 │   ├── repository.lib.ts        → Generic Repository<T> class (all CRUD)
 │   ├── firestore.lib.ts         → Low-level Firestore ops (timestamps, batch)
 │   ├── auth.lib.ts              → JWT generation (jsonwebtoken)
+│   ├── llm.lib.ts               → LlmClient — OpenAI-compatible chat-completions client (Groq, Ollama Cloud)
+│   ├── crypto.lib.ts            → AES-256-GCM encrypt/decryptSecret() for LLM API keys
 │   └── ... (Realtime DB, storage stubs)
 └── utils/
     ├── model.util.ts            → BaseModel, WithoutBaseModel<T>
@@ -749,15 +793,21 @@ export type UtilityType = typeof UTILITY_TYPES[keyof typeof UTILITY_TYPES];
 Generic class that handles all CRUD for any model. Located in `src/lib/repository.lib.ts`.
 
 Methods:
-- `create(item: T)` → T
-- `createBatch(items: T[])` → T[]
-- `getAll(options?: PaginationOptions)` → PaginatedResult<T>
+- `create(item: WithoutBaseModel<T>)` → T
+- `createBatch(items: WithoutBaseModel<T>[])` → T[]
 - `getById(id: string)` → T | null
-- `search(filters: Partial<T>, options?: PaginationOptions)` → PaginatedResult<T>
-- `update(id: string, data: Partial<T>)` → T
-- `updateBatch(items: { id: string; data: Partial<T> }[])` → T[]
-- `softDelete(id: string)` → T (sets deleted_at)
-- `delete(id: string)` → void (hard delete)
+- `getByIds(ids: string[])` → (T | null)[] (batches Firestore `in` queries by 10)
+- `search(options: SearchOptions<T>)` → PaginatedResult<T> (filters, range filters, `is_deleted`,
+  ordering, cursor pagination — the public list method; there is no `getAll()`)
+- `update(id: string, data: Partial<WithoutBaseModel<T>>)` → T
+- `updateBatch(updates: { id: string; data: Partial<WithoutBaseModel<T>> }[])` → T[]
+- `softDelete(id: string)` / `softDeleteBatch(ids: string[])` → T / T[] (sets `is_deleted`; the
+  only delete path exposed by feature services/routes)
+- `restore(id: string)` → T (clears `is_deleted`)
+- `delete(id: string)` / `deleteBatch(ids: string[])` → hard delete. **Internal/cascade-only** —
+  not exposed via any route; used only for cleaning up dependent records when a parent is
+  hard-deleted in a transaction. Public `DELETE /:id` endpoints map to `softDelete`, per the
+  soft-delete-only decision (D1).
 
 ### AppError
 Custom error class with HTTP status. Located in `src/utils/error.util.ts`.
@@ -799,6 +849,7 @@ GCLOUD_PROJECT=utilitool-staging
 GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/utilitool-staging-firebase-adminsdk-fbsvc-1fe128504a.json
 GEMINI_API_KEY=<optional — OCR returns mock data if absent>
 REDIS_URL=<optional — rate limiting falls back to in-memory store if absent>
+LLM_CONFIG_MASTER_KEY=<base64, 32 bytes — required to encrypt/decrypt stored LLM API keys>
 ```
 
 See `secrets/.env.staging` for all dev variables. Production deployments use `APP_ENV=production` and `secrets/.env.production`.
@@ -828,7 +879,7 @@ npm run dev:watch
 ```
 Connects to `utilitool-staging` Firebase project. Loads additional env vars (GCLOUD_PROJECT, GEMINI_API_KEY) from `secrets/.env.staging` — see `API_SETUP.md`.
 
-**Docker alternative**: `docker-compose up` from the repo root starts both API and UI. See `docker-compose.yml`.
+**Docker alternative**: `docker-compose up` from the repo root starts API, UI, and the mobile web preview, each with source bind-mounted and file watching in polling mode (needed for reliable hot reload from a Windows host). See `docker-compose.yml`.
 
 **Manual emulator use**: `npm run serve` works if you need to run integration tests against a local Firebase emulator.
 
@@ -842,8 +893,8 @@ A: In the service layer. Use `throw new AppError(statusCode, message)`.
 **Q: How do I add a new endpoint?**  
 A: Add the handler to the controller, the route to the route file, and update `.swagger.ts`.
 
-**Q: Can I use `getAll()` without filters?**  
-A: Avoid it for large collections — use `search()` with filters to avoid full-collection scans. Use `getAll()` only if you're sure the collection is small.
+**Q: Can I use `search()` without filters?**  
+A: Avoid it for large collections — pass `filters` to narrow the query and avoid full-collection scans. An unfiltered `search()` (still paginated via `limit`/`cursor`) is fine only if you're sure the collection is small.
 
 **Q: How do I handle pagination in the UI?**  
 A: Pass `cursor` from the previous response to the next request. UI should increment a page number internally while managing cursor state.

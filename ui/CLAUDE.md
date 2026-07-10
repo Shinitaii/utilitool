@@ -18,6 +18,7 @@ This document covers the SvelteKit frontend architecture, component structure, a
 ## Architecture & Technology Stack
 
 ### Framework & Plugins
+
 - **SvelteKit 5** — File-based routing, server-side render (SSR) optional
 - **Svelte 5 runes** — Reactive state (`$state`, `$derived`, `$effect`) enforced globally
 - **Tailwind CSS v4** — Utility-first CSS (no `tailwind.config.js` — config is CSS-driven via `@theme`)
@@ -27,6 +28,7 @@ This document covers the SvelteKit frontend architecture, component structure, a
 - **Playwright** — E2E tests
 
 ### Project Setup
+
 - Language: **TypeScript** (strict mode)
 - Package Manager: **npm**
 - Deployment: **Vercel** (via adapter)
@@ -36,6 +38,7 @@ This document covers the SvelteKit frontend architecture, component structure, a
 ## Architecture Overview
 
 ### Request Flow (Client → API → Firestore)
+
 ```
 User interaction
   ↓
@@ -51,18 +54,18 @@ Response + update local store
 ```
 
 ### Auth Flow
+
 ```
 Login form
   ↓
-POST /auth/login via client.ts
+Firebase SDK signInWithEmailAndPassword (firebase/auth)
   ↓
-Receive access_token + refresh_token
+onAuthStateChanged updates authStore + fetches profile via getMe()
   ↓
-Store in localStorage + authStore
+client.ts calls firebaseUser.getIdToken() and attaches it as
+  Authorization: Bearer <token> on every request
   ↓
-Attach access_token to all subsequent requests
-  ↓
-On 401: auto-refresh token (interceptor in client.ts)
+On 401: force-refresh the ID token (getIdToken(true)) and retry once
 ```
 
 ---
@@ -70,6 +73,7 @@ On 401: auto-refresh token (interceptor in client.ts)
 ## Component & File Map
 
 ### Directory Structure
+
 ```
 ui/src/
 ├── routes/                          (SvelteKit file-based routing)
@@ -97,12 +101,13 @@ ui/src/
 │       ├── billings/
 │       │   ├── +page.svelte
 │       │   └── archive/+page.svelte   (Archived billings recovery)
-│       ├── bills/+page.svelte      (OCR bill upload — stub)
+│       ├── bills/+page.svelte      (OCR bill upload — functional)
 │       ├── reports/+page.svelte    (Analytics dashboard — stub)
 │       └── settings/
 │           ├── +page.svelte        (Account settings root)
 │           ├── payment/+page.svelte (Payment settings)
-│           └── users/+page.svelte  (User management — create users, assign roles)
+│           ├── users/+page.svelte  (User management — create users, assign roles)
+│           └── llm-provider/+page.svelte (LLM provider/model/API key config for the insight chatbot)
 │
 ├── lib/
 │   ├── api/                         (API client modules — one per feature)
@@ -117,6 +122,8 @@ ui/src/
 │   │   ├── bills.ts                (ocrBill — POST /bills/ocr)
 │   │   ├── users.ts                (createUser — POST /users)
 │   │   ├── reports.ts              (getSummaryReport, getConsumptionReport, getBillingTrendsReport, getCollectionStatusReport)
+│   │   ├── llm-config.ts           (getLlmConfig, upsertLlmConfig — GET/PATCH /llm-config)
+│   │   ├── chat.ts                 (sendChatMessage — POST /chatbot)
 │   │   └── cache.ts                (clearAllCaches — clears all feature caches in parallel)
 │   │
 │   ├── types/                       (TypeScript types — mirror API models)
@@ -129,7 +136,8 @@ ui/src/
 │   │   ├── reading.types.ts
 │   │   ├── billing.types.ts
 │   │   ├── billing-cycle.types.ts
-│   │   └── reports.types.ts        (ReportSummary, ConsumptionReport, BillingTrendsReport, CollectionStatusReport, ReportQueryParams)
+│   │   ├── reports.types.ts        (ReportSummary, ConsumptionReport, BillingTrendsReport, CollectionStatusReport, ReportQueryParams)
+│   │   └── llm-config.types.ts     (LlmConfigResponse, UpsertLlmConfigRequest)
 │   │
 │   ├── stores/                      (Svelte 5 runes-based stores)
 │   │   ├── auth.svelte.ts          (isAuthenticated, user, isLoading, error)
@@ -155,6 +163,7 @@ ui/src/
 │           ├── EmptyState.svelte        (No data placeholder)
 │           ├── ImagePreview.svelte      (Inline image preview widget)
 │           ├── SelectionToolbar.svelte  (Multi-select batch action toolbar)
+│           ├── ChatWidget.svelte        (Floating insight chatbot — mounted globally in (app)/+layout.svelte)
 │           ├── StatCard.svelte          (Metric card with value + sub)
 │           ├── StatusPill.svelte        (Colored status badges)
 │           └── ToBeFinished.svelte      (Stub placeholder with build hammer icon)
@@ -169,10 +178,12 @@ ui/src/
 ### Authentication Pages
 
 #### Login (`/login`)
+
 - **Component**: `src/routes/(auth)/login/+page.svelte`
-- **API calls**:
-  - `POST /auth/login` ← `login()` from `src/lib/api/auth.ts`
-  - Stores tokens in localStorage + authStore
+- **Flow**:
+  - Firebase SDK `signInWithEmailAndPassword(auth, email, password)`
+  - `onAuthStateChanged` fires → `getMe()` from `src/lib/api/auth.ts` fetches the user profile and
+    populates `authStore`
 - **On success**: Redirect to `/dashboard`
 - **On error**: Display error message, enable retry
 
@@ -181,6 +192,7 @@ ui/src/
 ### Protected Routes (all under `(app)/`)
 
 #### Dashboard (`/dashboard`)
+
 - **Component**: `src/routes/(app)/dashboard/+page.svelte`
 - **API calls**:
   - `GET /properties?limit=100` ← `getProperties()` — for stat card counts
@@ -192,6 +204,7 @@ ui/src/
 - **Status**: Partial — stat data is mocked; needs real aggregation logic
 
 #### Meter Groups (`/meter-groups`)
+
 - **Component**: `src/routes/(app)/meter-groups/+page.svelte`
 - **API calls**:
   - `GET /meter-groups?limit=20` ← `getMeterGroups()`
@@ -204,6 +217,7 @@ ui/src/
 - **Status**: ✅ Complete
 
 #### Properties (`/properties`)
+
 - **Component**: `src/routes/(app)/properties/+page.svelte`
 - **API calls**:
   - `GET /properties?limit=100` ← `getProperties()` — left panel list
@@ -218,6 +232,7 @@ ui/src/
 - **Status**: Partial — list + tenants tab only; other tabs need build-out
 
 #### Tenants (`/tenants`)
+
 - **Component**: `src/routes/(app)/tenants/+page.svelte`
 - **API calls**:
   - `GET /tenants?limit=50` ← `getTenants()`
@@ -229,6 +244,7 @@ ui/src/
 - **Status**: Partial — list + search working; right panel needs build-out
 
 #### Readings (`/readings`)
+
 - **Component**: `src/routes/(app)/readings/+page.svelte`
 - **API calls**:
   - `GET /meter-groups?limit=100` ← `getMeterGroups()` — for filter dropdown + version data
@@ -242,6 +258,7 @@ ui/src/
 - **Status**: ✅ Complete
 
 #### Billings (`/billings`) — Cycle-Centric
+
 - **Component**: `src/routes/(app)/billings/+page.svelte`
 - **API calls**:
   - `GET /billing-cycles?limit=100` ← `getBillingCycles()` — fetches all cycles
@@ -260,32 +277,43 @@ ui/src/
 - **Status**: ✅ Complete (cycle-centric design; auto-billing integration; bill photo OCR)
 
 #### Archive Pages (`/<feature>/archive`)
+
 Each core feature has an archive page for restoring soft-deleted items. All use `ArchivePageTemplate.svelte`.
 
-| Route | Component | Restore API call |
-|-------|-----------|-----------------|
+| Route                   | Component                                            | Restore API call                  |
+| ----------------------- | ---------------------------------------------------- | --------------------------------- |
 | `/meter-groups/archive` | `src/routes/(app)/meter-groups/archive/+page.svelte` | `PATCH /meter-groups/:id/restore` |
-| `/properties/archive` | `src/routes/(app)/properties/archive/+page.svelte` | `PATCH /properties/:id/restore` |
-| `/tenants/archive` | `src/routes/(app)/tenants/archive/+page.svelte` | `PATCH /tenants/:id/restore` |
-| `/readings/archive` | `src/routes/(app)/readings/archive/+page.svelte` | `PATCH /readings/:id/restore` |
-| `/billings/archive` | `src/routes/(app)/billings/archive/+page.svelte` | `PATCH /billings/:id/restore` |
+| `/properties/archive`   | `src/routes/(app)/properties/archive/+page.svelte`   | `PATCH /properties/:id/restore`   |
+| `/tenants/archive`      | `src/routes/(app)/tenants/archive/+page.svelte`      | `PATCH /tenants/:id/restore`      |
+| `/readings/archive`     | `src/routes/(app)/readings/archive/+page.svelte`     | `PATCH /readings/:id/restore`     |
+| `/billings/archive`     | `src/routes/(app)/billings/archive/+page.svelte`     | `PATCH /billings/:id/restore`     |
 
 All archive pages: `GET /<feature>?archived=true` to list soft-deleted items, then restore via the respective `restore*` API function.
 
 #### Settings (`/settings`)
+
 - **Component**: `src/routes/(app)/settings/+page.svelte` — account info root
 - **Sub-routes**:
   - `/settings/payment` — payment config
   - `/settings/users` — user management: `POST /users` ← `createUser()` to create accounts with role (`admin`, `landlord`, `assistant`)
-- **Status**: Partial
+  - `/settings/llm-provider` — configure the insight chatbot's LLM provider (`groq` | `ollama_cloud`), model, and API key
+    - **API calls**: `GET /llm-config` ← `getLlmConfig()`, `PATCH /llm-config` ← `upsertLlmConfig()` from `src/lib/api/llm-config.ts`
+- **Status**: Create-only — full create-user flow (role select, password validation, Firebase error-code mapping, partial-failure handling); no listing/edit of existing users
 
 #### Bills / OCR Upload (`/bills`)
+
 - **Component**: `src/routes/(app)/bills/+page.svelte`
-- **API calls**: `POST /bills/ocr` ← `ocrBill()` from `src/lib/api/bills.ts` (partially wired)
-- **Displays**: "Coming Soon" placeholder with build hammer icon
-- **Status**: 🚧 Stub — UI not yet built out, API endpoint exists
+- **API calls**:
+  - `POST /bills/ocr` ← `ocrBill()` from `src/lib/api/bills.ts`
+  - `GET /meter-groups?limit=100` ← `getMeterGroups()`
+  - `GET /billings?limit=100` ← `getBillings()`
+  - `POST /billing-cycles` ← `createBillingCycle()`
+- **Displays**: 3-step wizard — (1) upload bill image, (2) review OCR results & map to billings,
+  (3) review & submit, creating a billing cycle from the extracted data
+- **Status**: ✅ Functional — overlaps with the billings-page "New Billing Cycle from photo" flow
 
 #### Reports (`/reports`)
+
 - **Component**: `src/routes/(app)/reports/+page.svelte`
 - **API calls** (available, not yet wired in UI):
   - `GET /reports/summary` ← `getSummaryReport()`
@@ -302,21 +330,33 @@ All archive pages: `GET /<feature>?archived=true` to list soft-deleted items, th
 Each module in `src/lib/api/` wraps backend endpoints and handles pagination.
 
 ### auth.ts
+
 ```ts
-export async function login(email: string, password: string): Promise<AuthResponse>
-export async function register(email: string, password: string): Promise<AuthResponse>
-export async function refreshToken(refreshToken: string): Promise<AuthResponse>
-export async function logout(refreshTokenId: string): Promise<void>
+export async function login(email: string, password: string): Promise<AuthResponse>;
+export async function register(email: string, password: string): Promise<AuthResponse>;
+export async function refreshToken(refreshToken: string): Promise<AuthResponse>;
+export async function logout(refreshTokenId: string): Promise<void>;
 ```
 
 ### meter-groups.ts
+
 ```ts
-export async function getMeterGroups(params?: { meterName?, utilityType?, sortBy?, sortOrder?, limit?, cursor? }): Promise<PaginatedResult<MeterGroup>>
-export async function getMeterGroupById(id: string): Promise<MeterGroup>
-export async function createMeterGroup(data: CreateMeterGroupRequest): Promise<MeterGroup>
-export async function updateMeterGroup(id: string, data: UpdateMeterGroupRequest): Promise<MeterGroup>
-export async function softDeleteMeterGroup(id: string): Promise<MeterGroup>  // Uses DELETE /:id
-export async function restoreMeterGroup(id: string): Promise<MeterGroup>    // Uses PATCH /:id/restore
+export async function getMeterGroups(params?: {
+	meterName?;
+	utilityType?;
+	sortBy?;
+	sortOrder?;
+	limit?;
+	cursor?;
+}): Promise<PaginatedResult<MeterGroup>>;
+export async function getMeterGroupById(id: string): Promise<MeterGroup>;
+export async function createMeterGroup(data: CreateMeterGroupRequest): Promise<MeterGroup>;
+export async function updateMeterGroup(
+	id: string,
+	data: UpdateMeterGroupRequest
+): Promise<MeterGroup>;
+export async function softDeleteMeterGroup(id: string): Promise<MeterGroup>; // Uses DELETE /:id
+export async function restoreMeterGroup(id: string): Promise<MeterGroup>; // Uses PATCH /:id/restore
 // + batch methods
 ```
 
@@ -325,28 +365,57 @@ export async function restoreMeterGroup(id: string): Promise<MeterGroup>    // U
 (Same pattern for properties, tenants, readings, billings, billing-cycles)
 
 ### bills.ts
+
 ```ts
-export async function ocrBill(imageUrl: string): Promise<OcrBillResponse>
+export async function ocrBill(imageUrl: string): Promise<OcrBillResponse>;
 // OcrBillResponse: { billing_start_date, billing_end_date, billing_consumption, billing_rate, raw_amount }
 ```
 
 ### users.ts
+
 ```ts
-export async function createUser(data: { uid: string; role: 'admin' | 'landlord' | 'assistant' }): Promise<void>
+export async function createUser(data: {
+	uid: string;
+	role: 'admin' | 'landlord' | 'assistant';
+}): Promise<void>;
 ```
 
 ### reports.ts
+
 ```ts
-export async function getSummaryReport(params?: ReportQueryParams): Promise<ReportSummary>
-export async function getConsumptionReport(params?: ReportQueryParams): Promise<ConsumptionReport>
-export async function getBillingTrendsReport(params?: ReportQueryParams): Promise<BillingTrendsReport>
-export async function getCollectionStatusReport(params?: ReportQueryParams): Promise<CollectionStatusReport>
+export async function getSummaryReport(params?: ReportQueryParams): Promise<ReportSummary>;
+export async function getConsumptionReport(params?: ReportQueryParams): Promise<ConsumptionReport>;
+export async function getBillingTrendsReport(
+	params?: ReportQueryParams
+): Promise<BillingTrendsReport>;
+export async function getCollectionStatusReport(
+	params?: ReportQueryParams
+): Promise<CollectionStatusReport>;
 // ReportQueryParams: { startDate?, endDate?, meterGroupId?, propertyId? }
 ```
 
-### cache.ts
+### llm-config.ts
+
 ```ts
-export async function clearAllCaches(): Promise<void>
+export async function getLlmConfig(): Promise<LlmConfigResponse>;
+export async function upsertLlmConfig(data: UpsertLlmConfigRequest): Promise<LlmConfigResponse>;
+// Types in src/lib/types/llm-config.types.ts
+```
+
+### chat.ts
+
+```ts
+export async function sendChatMessage(
+	message: string,
+	history?: ChatHistoryMessage[]
+): Promise<ChatResponse>;
+// POST /chatbot — used by ChatWidget.svelte
+```
+
+### cache.ts
+
+```ts
+export async function clearAllCaches(): Promise<void>;
 // Clears all 6 feature caches in parallel: properties, meter-groups, tenants, readings, billings, billing-cycles
 ```
 
@@ -355,16 +424,20 @@ export async function clearAllCaches(): Promise<void>
 ## API Client & Token Management
 
 ### client.ts (Core HTTP Client)
+
 Located: `src/lib/api/client.ts`
 
 **Features**:
+
 - **Base URL**: http://localhost:5002 (configurable)
-- **Token management**: getAccessToken(), setTokens(), clearTokens()
-- **Refresh interceptor**: On 401, auto-call `POST /auth/refresh` and retry request once
+- **Token management**: gets the Firebase ID token via `firebaseUser.getIdToken()`
+- **Refresh interceptor**: On 401, force-refreshes the ID token (`getIdToken(true)`) and retries
+  the request once
 - **Headers**: Automatically adds `Authorization: Bearer <token>` to all requests
 - **Error handling**: Custom ApiError thrown with status + message + details
 
 **Usage**:
+
 ```ts
 import { apiGet, apiPost, apiDelete } from '$lib/api/client';
 
@@ -374,45 +447,48 @@ const created = await apiPost<MyType>('/my-endpoint', { foo: 'bar' });
 ```
 
 ### auth.svelte.ts (Auth State)
+
 Located: `src/lib/stores/auth.svelte.ts`
 
 **State**: `{ isAuthenticated, user: AuthUser | null, isLoading, error }`  
 **Methods**: `setLoading()`, `setError()`, `setUser()`, `login(AuthUser)`, `logout()`, `clearError()`
 
 ### crud.svelte.ts (Generic CRUD Store Factory)
+
 Located: `src/lib/stores/crud.svelte.ts`
 
 Provides a reusable store returned by `createCrudStore<T>()`. Used by pages that need selection, delete, and edit modal state.
 
 ```ts
 interface CrudStore<T> {
-  // Selection
-  selectedIds: Set<string>;
-  toggleSelection(id: string): void;
-  toggleSelectAll(allIds: string[], visibleIds: string[]): void;
-  clearSelection(): void;
-  // Soft-delete
-  isDeleting: boolean;
-  deletingId: string | null;
-  handleSoftDelete(id, deleteFn, reload, confirmFn?): Promise<void>;
-  // Batch delete
-  isBatchDeleting: boolean;
-  handleBatchDelete(deleteFn, reload, confirmFn?): Promise<void>;
-  // Edit modal
-  editModalOpen: boolean;
-  editingItem: T | null;
-  editFormData: Partial<T>;
-  openEditModal(item: T, formData: Partial<T>): void;
-  closeEditModal(): void;
-  // Error
-  error: string;
-  clearError(): void;
+	// Selection
+	selectedIds: Set<string>;
+	toggleSelection(id: string): void;
+	toggleSelectAll(allIds: string[], visibleIds: string[]): void;
+	clearSelection(): void;
+	// Soft-delete
+	isDeleting: boolean;
+	deletingId: string | null;
+	handleSoftDelete(id, deleteFn, reload, confirmFn?): Promise<void>;
+	// Batch delete
+	isBatchDeleting: boolean;
+	handleBatchDelete(deleteFn, reload, confirmFn?): Promise<void>;
+	// Edit modal
+	editModalOpen: boolean;
+	editingItem: T | null;
+	editFormData: Partial<T>;
+	openEditModal(item: T, formData: Partial<T>): void;
+	closeEditModal(): void;
+	// Error
+	error: string;
+	clearError(): void;
 }
 ```
 
 **Usage**: `const crud = createCrudStore<MeterGroup>()`
 
 ### meter-groups.svelte.ts / properties.svelte.ts / tenants.svelte.ts
+
 Feature-specific list stores that wrap data fetching and compose `createCrudStore<T>()` for their entity type.
 
 ---
@@ -420,91 +496,114 @@ Feature-specific list stores that wrap data fetching and compose `createCrudStor
 ## Shared Components
 
 ### StatusPill
+
 Colored status badge component.
 
 **Props**: `status: 'paid' | 'unpaid' | 'overdue' | 'pending' | 'current' | 'moving-out'`
 
 **Colors**:
+
 - `paid`: green (#e8f4ea bg, #2c6b3a text)
 - `unpaid`: brown (#fff3e8 bg, #8b5a3c text)
 - `overdue`: red (#fde5e0 bg, #a23b21 text)
 - `pending`: gray (#f0eee9 bg, #5b524a text)
 
 **Usage**:
+
 ```svelte
 <StatusPill status="paid" />
 <StatusPill status="overdue" />
 ```
 
 ### StatCard
+
 Metric card for dashboard.
 
-**Props**: 
+**Props**:
+
 - `label: string` — e.g., "This Month Billed"
 - `value: string | number` — e.g., "₱48,210"
 - `sub?: string` — e.g., "MERALCO + MWSS"
 - `accent?: boolean` — highlight with accent color
 
 **Usage**:
+
 ```svelte
 <StatCard label="Outstanding" value="₱16,810" sub="5 tenants" accent />
 ```
 
 ### EmptyState
+
 Placeholder when no data.
 
 **Props**:
+
 - `title?: string` — default "Nothing here"
 - `message?: string` — default "No data to display"
 
 **Usage**:
+
 ```svelte
 {#if data.length === 0}
-  <EmptyState title="No readings" message="Create readings to get started" />
+	<EmptyState title="No readings" message="Create readings to get started" />
 {/if}
 ```
 
 ### ToBeFinished
+
 Stub placeholder for incomplete features.
 
 **Props**:
+
 - `title?: string` — default "Coming Soon"
 - `message?: string` — default "This feature is still being built"
 
 **Usage**:
+
 ```svelte
 <ToBeFinished title="OCR Upload" message="Automatically extract meter readings from photos" />
 ```
 
 ### ActionButtons
+
 Standardized row action buttons: edit (pencil), archive/soft-delete (trash), restore. Accepts handlers as props to decouple display from logic.
 
 ### ArchivePageTemplate
+
 Reusable page layout for all `/<feature>/archive` routes. Handles the list + restore + empty state in a consistent pattern.
 
 ### EditModal
+
 Generic modal wrapper. Accepts an `open` binding, `title`, and a default slot for form content. Provides Save/Cancel buttons.
 
 **Props**: `open: boolean`, `title: string`, `onSave: () => void`, `onClose: () => void`
 
 ### ImagePreview
+
 Inline image preview widget used in readings and billings forms. Shows a thumbnail with a clickable zoom overlay.
 
 **Props**: `src: string`, `alt?: string`
 
 ### SelectionToolbar
+
 Multi-select batch action toolbar. Slides in when `selectedIds.size > 0`. Shows count + "Archive selected" button.
 
 **Props**: `count: number`, `onBatchDelete: () => void`, `isDeleting: boolean`
+
+### ChatWidget
+
+Floating insight-chatbot widget mounted globally in `(app)/+layout.svelte` (available on every protected route, not a route-scoped component). Sends messages + rolling history via `sendChatMessage()` from `src/lib/api/chat.ts` to `POST /chatbot`.
 
 ---
 
 ## Layout Components
 
 ### Sidebar
+
 Persistent left navigation (200px wide).
 
 **Features**:
+
 - Logo "utilitool"
 - Nav links (Home, Properties, Tenants, Billings, Readings, Billing Cycles, Reports)
 - Badge counts (e.g., "Properties 4")
@@ -513,18 +612,22 @@ Persistent left navigation (200px wide).
 **Active state**: Dark background, white text
 
 ### TopBar
+
 Fixed top bar (52px tall).
 
 **Features**:
+
 - Breadcrumbs (dynamic from route)
 - Page actions slot (right-aligned buttons)
 
 **Layout**: Fixed at top, margin-left: 200px (offset sidebar)
 
 ### RightPanel
+
 Fixed right detail panel (280px wide).
 
 **Features**:
+
 - Selection-driven (shows when something is selected)
 - Slides in/out via margin-right animation
 - Content via slot
@@ -536,18 +639,24 @@ Fixed right detail panel (280px wide).
 ## Utilities & Helpers
 
 ### format.ts
+
 ```ts
 formatCurrency(amount: number): string          // ₱ formatting
+getReadingUnit(utilityType: string): string     // unit label by utility type
+formatReading(amount: number, utilityType: string): string  // reading value + unit
 formatKwh(kwh: number): string                  // kWh with comma separator
 formatDate(date: Date): string                  // "May 16, 2026"
+formatLongDate(date: Date): string              // long-form date string
 formatDateTime(date: Date): string              // "May 16, 2026 · 2:30 PM"
 formatMonthYear(date: Date): string             // "May 2026"
+parseDate(dateString: string): Date             // string → Date
 formatPercentage(value: number): string         // "65%"
 relativeTime(date: Date): string                // "2h ago", "yesterday", etc.
 getInitials(name: string): string               // "RC" from "Rico Campos"
 ```
 
 ### timestamp.ts
+
 ```ts
 toDate(timestamp: FirestoreTimestamp | string): Date
 toTimestamp(date: Date): FirestoreTimestamp
@@ -562,23 +671,26 @@ fromISOString(iso: string): FirestoreTimestamp
 ## Route Guards & Auth
 
 ### (app)/+layout.ts
+
 Located: `src/routes/(app)/+layout.ts`
 
 ```ts
 export function load() {
-  const token = getAccessToken();
-  if (!token) {
-    redirect(307, '/login');
-  }
+	const token = getAccessToken();
+	if (!token) {
+		redirect(307, '/login');
+	}
 }
 ```
 
 Protects all routes under `(app)/` — redirects to login if not authenticated.
 
 ### (auth)/+layout.svelte
+
 Centered card layout for login/register.
 
 ### (app)/+layout.svelte
+
 3-column shell: Sidebar | Main | RightPanel
 
 ---
@@ -586,57 +698,59 @@ Centered card layout for login/register.
 ## Adding a New Page
 
 ### 1. Create the Route File
+
 **File**: `src/routes/(app)/<name>/+page.svelte`
 
 ```svelte
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { getMyFeatures } from '$lib/api/my-feature';
-  import type { MyFeature } from '$lib/types/my-feature.types';
-  import EmptyState from '$lib/components/shared/EmptyState.svelte';
-  import { formatDate } from '$lib/utils/format';
-  import { toDate } from '$lib/utils/timestamp';
+	import { onMount } from 'svelte';
+	import { getMyFeatures } from '$lib/api/my-feature';
+	import type { MyFeature } from '$lib/types/my-feature.types';
+	import EmptyState from '$lib/components/shared/EmptyState.svelte';
+	import { formatDate } from '$lib/utils/format';
+	import { toDate } from '$lib/utils/timestamp';
 
-  let data = $state<MyFeature[]>([]);
-  let isLoading = $state(false);
-  let error = $state('');
+	let data = $state<MyFeature[]>([]);
+	let isLoading = $state(false);
+	let error = $state('');
 
-  onMount(async () => {
-    await loadData();
-  });
+	onMount(async () => {
+		await loadData();
+	});
 
-  async function loadData() {
-    isLoading = true;
-    error = '';
-    try {
-      const result = await getMyFeatures({ limit: 50 });
-      data = result.data;
-    } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to load';
-    } finally {
-      isLoading = false;
-    }
-  }
+	async function loadData() {
+		isLoading = true;
+		error = '';
+		try {
+			const result = await getMyFeatures({ limit: 50 });
+			data = result.data;
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to load';
+		} finally {
+			isLoading = false;
+		}
+	}
 </script>
 
 <div class="space-y-6">
-  <h1 class="text-3xl font-bold">My Features</h1>
-  
-  {#if error}
-    <div class="rounded-lg bg-red-50 p-4 text-red-700">{error}</div>
-  {/if}
+	<h1 class="text-3xl font-bold">My Features</h1>
 
-  {#if data.length === 0}
-    <EmptyState title="No features" message="Create your first feature" />
-  {:else}
-    <table class="w-full text-sm">
-      <!-- Render data here -->
-    </table>
-  {/if}
+	{#if error}
+		<div class="rounded-lg bg-red-50 p-4 text-red-700">{error}</div>
+	{/if}
+
+	{#if data.length === 0}
+		<EmptyState title="No features" message="Create your first feature" />
+	{:else}
+		<table class="w-full text-sm">
+			<!-- Render data here -->
+		</table>
+	{/if}
 </div>
 ```
 
 ### 2. Create the API Module
+
 **File**: `src/lib/api/my-feature.ts`
 
 ```ts
@@ -644,52 +758,57 @@ import { apiGet, apiPost } from './client';
 import type { MyFeature, CreateMyFeatureRequest } from '$lib/types/my-feature.types';
 import type { PaginatedResult } from '$lib/types/api.types';
 
-export async function getMyFeatures(params?: { limit?: number; cursor?: string }): Promise<PaginatedResult<MyFeature>> {
-  const query = new URLSearchParams();
-  if (params?.limit) query.set('limit', params.limit.toString());
-  if (params?.cursor) query.set('cursor', params.cursor);
-  
-  const path = query.toString() ? `/my-features?${query}` : '/my-features';
-  return apiGet<PaginatedResult<MyFeature>>(path);
+export async function getMyFeatures(params?: {
+	limit?: number;
+	cursor?: string;
+}): Promise<PaginatedResult<MyFeature>> {
+	const query = new URLSearchParams();
+	if (params?.limit) query.set('limit', params.limit.toString());
+	if (params?.cursor) query.set('cursor', params.cursor);
+
+	const path = query.toString() ? `/my-features?${query}` : '/my-features';
+	return apiGet<PaginatedResult<MyFeature>>(path);
 }
 
 export async function getMyFeatureById(id: string): Promise<MyFeature> {
-  return apiGet<MyFeature>(`/my-features/${id}`);
+	return apiGet<MyFeature>(`/my-features/${id}`);
 }
 
 export async function createMyFeature(data: CreateMyFeatureRequest): Promise<MyFeature> {
-  return apiPost<MyFeature>('/my-features', data);
+	return apiPost<MyFeature>('/my-features', data);
 }
 
 // ... other CRUD methods
 ```
 
 ### 3. Create Type Definitions
+
 **File**: `src/lib/types/my-feature.types.ts`
 
 ```ts
 import type { BaseModel } from './api.types';
 
 export interface MyFeature extends BaseModel {
-  name: string;
-  description?: string;
-  status: 'active' | 'inactive';
+	name: string;
+	description?: string;
+	status: 'active' | 'inactive';
 }
 
 export interface CreateMyFeatureRequest {
-  name: string;
-  description?: string;
-  status?: 'active' | 'inactive';
+	name: string;
+	description?: string;
+	status?: 'active' | 'inactive';
 }
 
 export interface UpdateMyFeatureRequest {
-  name?: string;
-  description?: string;
-  status?: 'active' | 'inactive';
+	name?: string;
+	description?: string;
+	status?: 'active' | 'inactive';
 }
 ```
 
 ### 4. Add to Navigation
+
 Edit `src/lib/components/layout/Sidebar.svelte` and add the link:
 
 ```svelte
@@ -701,6 +820,7 @@ Edit `src/lib/components/layout/Sidebar.svelte` and add the link:
 ## Svelte 5 Runes Reference
 
 ### $state
+
 Reactive variable.
 
 ```ts
@@ -709,6 +829,7 @@ let count = $state(0);
 ```
 
 ### $derived
+
 Computed value — updates when dependencies change.
 
 ```ts
@@ -716,21 +837,23 @@ const doubled = $derived(count * 2);
 ```
 
 ### $effect
+
 Side effect — runs when dependencies change.
 
 ```ts
 $effect(() => {
-  console.log('Count changed:', count);
+	console.log('Count changed:', count);
 });
 ```
 
 ### $props
+
 Component props using runes.
 
 ```ts
 interface Props {
-  title: string;
-  count?: number;
+	title: string;
+	count?: number;
 }
 
 const { title, count = 0 } = $props();
@@ -776,56 +899,59 @@ Defined in `src/routes/layout.css`:
 ## Common Patterns
 
 ### Paginated List with Cursor
+
 ```ts
 let data = $state<PaginatedResult<T>>({ data: [], nextCursor: null, hasMore: false });
 let cursor = $state<string | null>(null);
 
 async function loadMore() {
-  const result = await getItems({ cursor, limit: 50 });
-  data.data = [...data.data, ...result.data];
-  data.nextCursor = result.nextCursor;
-  data.hasMore = result.hasMore;
-  cursor = result.nextCursor;
+	const result = await getItems({ cursor, limit: 50 });
+	data.data = [...data.data, ...result.data];
+	data.nextCursor = result.nextCursor;
+	data.hasMore = result.hasMore;
+	cursor = result.nextCursor;
 }
 ```
 
 ### Form with Error Handling
+
 ```svelte
 <script>
-  let formData = $state({ name: '', email: '' });
-  let isLoading = $state(false);
-  let error = $state('');
+	let formData = $state({ name: '', email: '' });
+	let isLoading = $state(false);
+	let error = $state('');
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    isLoading = true;
-    error = '';
-    try {
-      await createItem(formData);
-      formData = { name: '', email: '' };
-      // Success message or redirect
-    } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed';
-    } finally {
-      isLoading = false;
-    }
-  }
+	async function handleSubmit(e) {
+		e.preventDefault();
+		isLoading = true;
+		error = '';
+		try {
+			await createItem(formData);
+			formData = { name: '', email: '' };
+			// Success message or redirect
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed';
+		} finally {
+			isLoading = false;
+		}
+	}
 </script>
 
 <form onsubmit={handleSubmit}>
-  <!-- inputs -->
-  <button disabled={isLoading}>
-    {isLoading ? 'Saving...' : 'Save'}
-  </button>
+	<!-- inputs -->
+	<button disabled={isLoading}>
+		{isLoading ? 'Saving...' : 'Save'}
+	</button>
 </form>
 
 {#if error}
-  <div class="error">{error}</div>
+	<div class="error">{error}</div>
 {/if}
 ```
 
 ---
 
 ## Back to Root Docs
+
 See `../CLAUDE.md` for project-level navigation.
 See `api/functions/CLAUDE.md` for backend architecture and API specs.

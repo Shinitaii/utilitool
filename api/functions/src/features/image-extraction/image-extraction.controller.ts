@@ -6,7 +6,7 @@ import type {ExtractReadingRequest, ExtractBillingRequest} from "./image-extract
 const validator = new ImageExtractionValidator();
 
 export async function extractReadingFromImage(
-  req: Request<{}, {}, ExtractReadingRequest>,
+  req: Request<Record<string, never>, unknown, ExtractReadingRequest>,
   res: Response
 ) {
   validator.validateExtractReading(req.body);
@@ -15,7 +15,7 @@ export async function extractReadingFromImage(
 }
 
 export async function extractBillingFromImage(
-  req: Request<{}, {}, ExtractBillingRequest>,
+  req: Request<Record<string, never>, unknown, ExtractBillingRequest>,
   res: Response
 ) {
   validator.validateExtractBilling(req.body);

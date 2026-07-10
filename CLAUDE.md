@@ -28,14 +28,14 @@ Don't read this file (CLAUDE.md) again during the session unless you need contex
 
 ### Before Planning or Brainstorming
 
-Run RAG retrieval on the topic before writing any plan or spec:
+Run RAG retrieval on the topic before writing any plan or spec, using the standalone `rag-tool` (not the old in-repo `api/functions/rag.ts`, which has been removed):
 
 ```bash
-# From repo root
-cd api/functions && npx tsx rag.ts "YOUR TOPIC HERE" 5
+# From the rag-tool venv
+python -m rag.cli query "YOUR TOPIC HERE" 5
 ```
 
-Replace `YOUR TOPIC HERE` with the feature or question being planned (e.g. `"billing cycle validation"`, `"tenant CRUD"`, `"auth middleware"`). The database (`utilitool.db`) must exist at the repo root; if missing, run `python index_claude_md.py` from the repo root first.
+Replace `YOUR TOPIC HERE` with the feature or question being planned (e.g. `"billing cycle validation"`, `"tenant CRUD"`, `"auth middleware"`). See `coding-projects/rag-tool` for indexing/setup.
 
 ---
 
@@ -107,6 +107,11 @@ npm run dev:watch
 cd ui
 npm ci
 npm run dev
+
+# Terminal 3 — Mobile web preview (port 5174, optional)
+cd mobile
+npm ci
+npm run dev
 ```
 
 ### Docker alternative
@@ -114,7 +119,7 @@ npm run dev
 docker-compose up
 ```
 
-Starts the API (port 5002) and UI (port 5173) in watch mode. Requires `api/functions/secrets/.env.staging` to exist — see `API_SETUP.md`.
+Starts API (port 5002), UI (port 5173), and the mobile web preview (port 5174) in watch mode, each in its own container with the source bind-mounted from your host. File watching runs in polling mode (`CHOKIDAR_USEPOLLING=true` / `ts-node-dev --poll`) so edits made on a Windows host are picked up reliably through the WSL2/VirtioFS bind mount — without it, native `fs.watch` can silently miss host-side changes and hot reload stalls. Trade-off vs. the manual 3-terminal setup: no local Node install needed and one `docker-compose up` instead of juggling terminals, at the cost of higher memory usage (`vmmem`) and slightly less snappy reload due to polling. Requires `api/functions/secrets/.env.staging` to exist — see `API_SETUP.md`. The mobile container only serves the Vite web preview; the Capacitor/Android native build is not containerized and still requires the manual `mobile/CLAUDE.md` workflow.
 
 ---
 
@@ -163,7 +168,7 @@ Each feature has a `.swagger.ts` file defining its endpoints. Reference Swagger 
   - Project alias: `staging` (utilitool-staging)
   - Requires: `FIREBASE_TOKEN_STAGING` in GitHub secrets
 
-- **UI**: Preview deploys on pull requests
+- **UI**: Vercel Preview deploy — triggered for pull requests and also on push to `main` (this is what's actually configured as staging; there's no separate custom Vercel Environment)
   - Project: Vercel
   - Requires: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`
 
@@ -218,8 +223,10 @@ Each page/component is organized by:
 - ✅ Auth (Firebase Auth: sign up, login, logout)
 - ✅ Image Extraction (`POST /image-extraction/readings` + `POST /image-extraction/billings` — Gemini Vision OCR)
 - ✅ Reports (`GET /reports/summary`, `/consumption`, `/billing-trends`, `/collection-status`)
-- ⚠️ Bills (`POST /bills/ocr` — partial stub; overlaps with image-extraction)
+- ✅ Bills (`POST /bills/ocr` — functional 3-step UI wizard; overlaps with image-extraction)
 - ⚠️ Users (`POST /users` — partial stub for user role management)
+- ✅ LLM Config (`GET`/`PATCH /llm-config` — provider/model/API key for the insight chatbot; API key AES-256-GCM encrypted at rest via `lib/crypto.lib.ts`)
+- ✅ Chatbot (`POST /chatbot` — insight assistant scoped to the authenticated user's data, tool-calling via `lib/llm.lib.ts` against Groq/Ollama Cloud; regex jailbreak guard in `chatbot.guard.ts`)
 
 **Audit Highlights (25 fixes)**:
 - **D1**: Soft-delete pattern — all DELETE endpoints soft-delete (set `is_deleted` flag), no hard delete
@@ -239,9 +246,10 @@ Each page/component is organized by:
 - ✅ Tenants (searchable list; archive page)
 - ✅ Readings (filterable list; True Total column; batch form with decoupled OCR suggest; archive page)
 - ✅ Billings (cycle-centric: expandable cycles with nested billings; bill photo OCR autofill; cycle edit modal for rate/consumption/date corrections; archive page)
-- 🚧 Bills / OCR upload (stub — API module ready, UI not built)
+- ✅ Bills / OCR upload (3-step wizard: upload → review/map → submit, creates a billing cycle)
 - 🚧 Reports (stub — API module ready, UI not built)
-- 🚧 Settings (partial — payment + user management tabs scaffolded)
+- 🚧 Settings (partial — payment + user management tabs scaffolded; LLM Provider tab added)
+- ✅ Insight Chatbot (`ChatWidget` floating widget, mounted globally on all protected routes)
 
 ### Mobile Screens (May 2026)
 - ✅ Login (Firebase Auth)

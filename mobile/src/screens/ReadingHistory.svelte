@@ -3,7 +3,7 @@
   import { listMeterGroups, type MeterGroup } from '../lib/api/meter-groups';
   import { listProperties, type Property } from '../lib/api/properties';
   import { getReadingUnit } from '../lib/utils/format';
-  import { formatDate } from '../lib/utils/timestamp';
+  import { formatTimestampDate } from '../lib/utils/timestamp';
   import { sessionCache } from '../lib/stores/session';
   import { getUtilityTypeBadgeClasses } from '../lib/utils/utility-colors';
   import BottomNav from '../components/BottomNav.svelte';
@@ -153,7 +153,7 @@
               {reading.reading_amount} {getUnit(reading.meter_group_id)}
             </span>
           </div>
-          <p class="text-xs" style="color: var(--color-text-secondary)">{formatDate(reading.reading_date)}</p>
+          <p class="text-xs" style="color: var(--color-text-secondary)">{formatTimestampDate(reading.reading_date)}</p>
 
           {#if selectedReading?.id === reading.id}
             <div class="mt-3 pt-3 border-t space-y-2 text-sm" style="border-color: var(--color-border)">
@@ -163,7 +163,7 @@
                 </div>
               {/if}
               <p style="color: var(--color-text-secondary)">
-                <strong>Created:</strong> {formatDate(reading.created_at)}
+                <strong>Created:</strong> {formatTimestampDate(reading.created_at)}
               </p>
               <p style="color: var(--color-text-secondary)">
                 <strong>Meter Version:</strong> {reading.meter_version}

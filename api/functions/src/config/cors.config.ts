@@ -23,7 +23,7 @@ if (!isDevelopment && webOrigins.length === 0) {
   );
 }
 
-const localhostPattern = /^http:\/\/localhost(:\d+)?$/;
+const localhostPattern = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
 export const corsOptions: CorsOptions = {
   origin: (origin, callback) => {

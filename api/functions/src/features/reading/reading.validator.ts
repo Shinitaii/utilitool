@@ -90,31 +90,33 @@ export class ReadingValidator {
     await this.validateMeterGroupConstraints(data.meter_group_id, data.property_id, data.reading_date);
   }
 
-  async validateBatch(data: CreateReadingDTO[]): Promise<void> {
-    const meterGroupIds = [...new Set(data.map((item) => item.meter_group_id))];
+  /**
+   * Validates each reading independently so one invalid item (e.g. a
+   * duplicate for a property+month) doesn't abort validation for the rest of
+   * the batch. Reuses validateCreate's per-item rules; the batch-level query
+   * fan-out optimization is dropped in favor of correctness — batches are
+   * capped at 10 items (CreateReadingBatchDTOSchema), so sequential per-item
+   * validation is cheap enough.
+   */
+  async validateBatch(
+    data: CreateReadingDTO[]
+  ): Promise<{validIndexes: number[]; failures: {index: number; error: string}[]}> {
+    const validIndexes: number[] = [];
+    const failures: {index: number; error: string}[] = [];
 
-    const meterGroups = await meterGroupRepository.getByIds(meterGroupIds);
-    meterGroups.forEach((mg, i) => {
-      if (!mg) {
-        throw new AppError(404, `Meter group ${meterGroupIds[i]} not found`);
+    for (let index = 0; index < data.length; index++) {
+      try {
+        await this.validateCreate(data[index]);
+        validIndexes.push(index);
+      } catch (err) {
+        failures.push({
+          index,
+          error: err instanceof AppError ? err.message : "Validation failed",
+        });
       }
-    });
-
-    for (const item of data) {
-      this.validateReadingAmount(item.reading_amount);
-      this.validateReadingDate(item.reading_date);
     }
 
-    // Fetch readings once per unique meter group and reuse across items that share it
-    const readingsByMeterGroup = new Map<string, Awaited<ReturnType<typeof this.fetchReadingsForConstraintCheck>>>();
-    for (const meterGroupId of meterGroupIds) {
-      readingsByMeterGroup.set(meterGroupId, await this.fetchReadingsForConstraintCheck(meterGroupId));
-    }
-
-    for (const item of data) {
-      const readings = readingsByMeterGroup.get(item.meter_group_id) ?? [];
-      this.checkExistingInMonth(readings, item.property_id, item.reading_date);
-    }
+    return {validIndexes, failures};
   }
 
   async validateUpdate(

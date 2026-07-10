@@ -106,6 +106,33 @@ export const billingPaths = {
             type: "string",
           },
         },
+        {
+          name: "sortBy",
+          in: "query",
+          description: "Field to sort by",
+          schema: {
+            type: "string",
+            enum: ["created_at", "payment_status"],
+          },
+        },
+        {
+          name: "sortOrder",
+          in: "query",
+          description: "Sort direction",
+          schema: {
+            type: "string",
+            enum: ["asc", "desc"],
+          },
+        },
+        {
+          name: "archived",
+          in: "query",
+          description: "List soft-deleted (archived) billings instead of active ones",
+          schema: {
+            type: "string",
+            enum: ["true", "false"],
+          },
+        },
       ],
       responses: {
         "200": {

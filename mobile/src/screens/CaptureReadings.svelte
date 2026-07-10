@@ -2,7 +2,7 @@
   import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
   import { listMeterGroups, type MeterGroup } from '../lib/api/meter-groups';
   import { listProperties, type Property } from '../lib/api/properties';
-  import { createReadingsBatch, type CreateReadingRequest } from '../lib/api/readings';
+  import { createReadingsBatch, createSeedReading, listReadings, type CreateReadingRequest, type Reading } from '../lib/api/readings';
   import { getReadingUnit } from '../lib/utils/format';
   import { getUtilityTypeBadgeClasses } from '../lib/utils/utility-colors';
   import { sessionCache } from '../lib/stores/session';
@@ -21,6 +21,11 @@
   // Step 2: Property iteration
   let properties: Property[] = $state([]);
   let propertyReadings: Record<string, { amount: number; image_url: string }> = $state({});
+  // Main-meter properties with no reading yet at the meter group's current_version need a
+  // baseline "seed" reading (POST /readings/seed) instead of a regular batch reading — this
+  // mirrors the web Readings page's shouldSeedReading() auto-detection, so seeding a main
+  // meter no longer needs a separate Settings form.
+  let propertyNeedsSeed: Record<string, boolean> = $state({});
 
   const selectedMeterGroup = $derived(meterGroups.find(g => g.id === selectedMeterGroupId));
   const readingUnit = $derived(selectedMeterGroup ? getReadingUnit(selectedMeterGroup.utility_type) : 'kWh');
@@ -64,19 +69,35 @@
         allProperties = res.data || [];
         sessionCache.setProperties(allProperties);
       }
-      // Filter properties that have the selected meter group, excluding main meters
+
+      const currentVersion = selectedMeterGroup?.current_version ?? 1;
+      const existingReadingsRes = await listReadings({ meterGroupId: selectedMeterGroupId, limit: 1000 });
+      const existingReadings: Reading[] = existingReadingsRes.data || [];
+
+      const hasCurrentVersionReading = (propertyId: string) =>
+        existingReadings.some((r) => r.property_id === propertyId && r.meter_version === currentVersion);
+
+      // Regular (non-main-meter) properties always show up. Main-meter properties only
+      // show up if they haven't been seeded yet at the current meter version — once
+      // seeded, their readings are derived automatically at billing-cycle creation.
       properties = (allProperties ?? []).filter((p: Property) => {
         const meterGroupEntry = Object.entries(p.meter_groups).find(
           ([_, entry]) => entry.meter_group_id === selectedMeterGroupId
         );
-        // Include if meter group exists AND it's not a main meter
-        return meterGroupEntry && meterGroupEntry[1].is_main_meter !== true;
+        if (!meterGroupEntry) return false;
+        if (meterGroupEntry[1].is_main_meter !== true) return true;
+        return !hasCurrentVersionReading(p.id);
       });
 
-      // Initialize readings object
+      // Initialize readings object + seed flags
       propertyReadings = {};
+      propertyNeedsSeed = {};
       properties.forEach((p: Property) => {
         propertyReadings[p.id] = { amount: 0, image_url: '' };
+        const meterGroupEntry = Object.entries(p.meter_groups).find(
+          ([_, entry]) => entry.meter_group_id === selectedMeterGroupId
+        );
+        propertyNeedsSeed[p.id] = meterGroupEntry?.[1].is_main_meter === true;
       });
 
       step = 2;
@@ -123,17 +144,52 @@
       isLoading = true;
       error = null;
 
-      const readings: CreateReadingRequest[] = Object.entries(propertyReadings).map(
-        ([propertyId, data]) => ({
-          meter_group_id: selectedMeterGroupId,
-          property_id: propertyId,
-          reading_amount: data.amount,
-          reading_date: `${readingDate}T00:00:00Z`,
-          image_url: data.image_url || undefined
-        })
-      );
+      const seedEntries = Object.entries(propertyReadings).filter(([propertyId]) => propertyNeedsSeed[propertyId]);
+      const regularEntries = Object.entries(propertyReadings).filter(([propertyId]) => !propertyNeedsSeed[propertyId]);
 
-      await createReadingsBatch({ readings });
+      const toRequest = ([propertyId, data]: [string, { amount: number; image_url: string }]): CreateReadingRequest => ({
+        meter_group_id: selectedMeterGroupId,
+        property_id: propertyId,
+        reading_amount: data.amount,
+        reading_date: `${readingDate}T00:00:00Z`,
+        image_url: data.image_url || undefined
+      });
+
+      const failedSummaries: string[] = [];
+      let createdCount = 0;
+      const totalCount = seedEntries.length + regularEntries.length;
+
+      // Seed readings establish a main meter's baseline — create individually via
+      // POST /readings/seed (not eligible for the regular batch endpoint).
+      const seedResults = await Promise.allSettled(
+        seedEntries.map(([propertyId, data]) =>
+          createSeedReading(toRequest([propertyId, data])).then(() => propertyId)
+        )
+      );
+      seedResults.forEach((result, i) => {
+        if (result.status === 'fulfilled') {
+          createdCount += 1;
+        } else {
+          const propertyId = seedEntries[i][0];
+          const name = properties.find((p) => p.id === propertyId)?.room_name ?? propertyId;
+          failedSummaries.push(`${name} (seed): ${result.reason?.message || 'Failed to create seed reading'}`);
+        }
+      });
+
+      if (regularEntries.length > 0) {
+        const result = await createReadingsBatch({ readings: regularEntries.map(toRequest) });
+        createdCount += result.created.length;
+        result.failed.forEach((f) => {
+          const name = properties.find((p) => p.id === regularEntries[f.index][0])?.room_name ?? regularEntries[f.index][0];
+          failedSummaries.push(`${name}: ${f.error}`);
+        });
+      }
+
+      if (failedSummaries.length > 0) {
+        error = `${createdCount} of ${totalCount} readings saved. ${failedSummaries.length} skipped:\n${failedSummaries.join('\n')}`;
+        isLoading = false;
+        return;
+      }
 
       // Success - return to home
       window.location.hash = '#/home';
@@ -222,7 +278,14 @@
 
       {#each properties as property (property.id)}
         <div class="card-base space-y-3">
-          <h3 class="font-semibold" style="color: var(--color-text-primary)">{property.room_name}</h3>
+          <div class="flex items-center gap-2">
+            <h3 class="font-semibold" style="color: var(--color-text-primary)">{property.room_name}</h3>
+            {#if propertyNeedsSeed[property.id]}
+              <span class="rounded-full px-2 py-0.5 text-xs font-medium" style="background-color: #f5eee5; color: var(--color-accent)">
+                Seed (baseline)
+              </span>
+            {/if}
+          </div>
 
           {#if propertyReadings[property.id]?.image_url}
             <div class="relative w-full h-32 bg-gray-100 rounded-lg overflow-hidden">
@@ -290,7 +353,12 @@
 
       {#each properties as property (property.id)}
         <div class="card-base">
-          <p class="font-semibold" style="color: var(--color-text-primary)">{property.room_name}</p>
+          <p class="font-semibold" style="color: var(--color-text-primary)">
+            {property.room_name}
+            {#if propertyNeedsSeed[property.id]}
+              <span class="ml-1 text-xs font-medium" style="color: var(--color-accent)">(seed baseline)</span>
+            {/if}
+          </p>
           <p class="text-sm" style="color: var(--color-text-secondary)">
             Amount: <strong style="color: var(--color-accent)">{propertyReadings[property.id]?.amount}</strong>
             {#if propertyReadings[property.id]?.image_url}

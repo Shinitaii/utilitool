@@ -1,11 +1,12 @@
 import {z} from "zod";
+import {ImageUrlSchema} from "../../utils/image-url.util";
 
 export const ExtractReadingFromImageSchema = z.object({
-  image_url: z.string().url("Invalid image URL"),
+  image_url: ImageUrlSchema,
 });
 
 export const ExtractBillingFromImageSchema = z.object({
-  image_url: z.string().url("Invalid image URL"),
+  image_url: ImageUrlSchema,
 });
 
 export type ExtractReadingRequest = z.infer<typeof ExtractReadingFromImageSchema>;
@@ -24,7 +25,7 @@ export const ExtractedBillingDataSchema = z.object({
   billing_end_date: z.string(),
   billing_consumption: z.number().nonnegative(),
   billing_rate: z.number().nonnegative(),
-  raw_amount: z.string().optional(),
+  raw_amount: z.number().nonnegative(),
 });
 
 export type ExtractedReadingResponse = z.infer<typeof ExtractedReadingDataSchema>;

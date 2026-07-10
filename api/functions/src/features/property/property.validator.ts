@@ -137,6 +137,18 @@ export class PropertyValidator {
       cursor,
     }));
 
+    // Pre-index existing properties for O(1) conflict lookups
+    const mainMeterOwnerByGroupId = new Map<string, Property>();
+    const propertyByNormalizedRoomName = new Map<string, Property>();
+    for (const p of allProperties) {
+      propertyByNormalizedRoomName.set(normalizeRoomName(p.room_name), p);
+      for (const pv of Object.values(p.meter_groups)) {
+        if (pv.is_main_meter) {
+          mainMeterOwnerByGroupId.set(pv.meter_group_id, p);
+        }
+      }
+    }
+
     // Validate all items at once using cached property list
     for (const item of data) {
       // Check main meter uniqueness against all properties
@@ -145,11 +157,7 @@ export class PropertyValidator {
         .filter((e) => e.is_main_meter);
 
       for (const entry of mainMeterEntries) {
-        const conflict = allProperties.find((p) => {
-          return Object.values(p.meter_groups).some(
-            (pv) => pv.meter_group_id === entry.meter_group_id && pv.is_main_meter
-          );
-        });
+        const conflict = mainMeterOwnerByGroupId.get(entry.meter_group_id);
 
         if (conflict) {
           throw new AppError(
@@ -161,9 +169,7 @@ export class PropertyValidator {
 
       // Check room name uniqueness
       const normalizedRoomName = normalizeRoomName(item.room_name);
-      const duplicate = allProperties.find((p) => {
-        return normalizeRoomName(p.room_name) === normalizedRoomName;
-      });
+      const duplicate = propertyByNormalizedRoomName.get(normalizedRoomName);
 
       if (duplicate) {
         logger.warn({room_name: item.room_name}, "Duplicate property batch creation attempt");
@@ -233,6 +239,18 @@ export class PropertyValidator {
       cursor,
     }));
 
+    // Pre-index existing properties for O(1) conflict lookups
+    const mainMeterOwnerByGroupId = new Map<string, Property>();
+    const propertyByNormalizedRoomName = new Map<string, Property>();
+    for (const p of allProperties) {
+      propertyByNormalizedRoomName.set(normalizeRoomName(p.room_name), p);
+      for (const pv of Object.values(p.meter_groups)) {
+        if (pv.is_main_meter) {
+          mainMeterOwnerByGroupId.set(pv.meter_group_id, p);
+        }
+      }
+    }
+
     // Validate each update using cached data
     for (let i = 0; i < updates.length; i++) {
       const property = properties[i]!;
@@ -245,14 +263,9 @@ export class PropertyValidator {
           .filter((e) => e.is_main_meter);
 
         for (const entry of mainMeterEntries) {
-          const conflict = allProperties.find((p) => {
-            if (p.id === property.id) return false;
-            return Object.values(p.meter_groups).some(
-              (pv) => pv.meter_group_id === entry.meter_group_id && pv.is_main_meter
-            );
-          });
+          const conflict = mainMeterOwnerByGroupId.get(entry.meter_group_id);
 
-          if (conflict) {
+          if (conflict && conflict.id !== property.id) {
             throw new AppError(
               409,
               `Meter group ${entry.meter_group_id} already has a main meter property`
@@ -263,12 +276,9 @@ export class PropertyValidator {
 
       if (update.data.room_name) {
         const normalizedRoomName = normalizeRoomName(update.data.room_name);
-        const duplicate = allProperties.find((p) => {
-          if (p.id === property.id) return false;
-          return normalizeRoomName(p.room_name) === normalizedRoomName;
-        });
+        const duplicate = propertyByNormalizedRoomName.get(normalizedRoomName);
 
-        if (duplicate) {
+        if (duplicate && duplicate.id !== property.id) {
           logger.warn({room_name: update.data.room_name}, "Duplicate property update attempt");
           throw new AppError(409, "Room name already exists");
         }

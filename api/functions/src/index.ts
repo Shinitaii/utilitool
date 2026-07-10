@@ -26,6 +26,8 @@ import {billsRouter} from "./features/bills/bills.route";
 import {userRouter} from "./features/user/user.route";
 import {imageExtractionRouter} from "./features/image-extraction/image-extraction.route";
 import {reportsRouter} from "./features/reports/reports.route";
+import {llmConfigRouter} from "./features/llm-config/llm-config.route";
+import {chatbotRouter} from "./features/chatbot/chatbot.route";
 
 const app = express();
 
@@ -92,6 +94,8 @@ app.use("/bills", billsRouter);
 app.use("/users", userRouter);
 app.use("/image-extraction", imageExtractionRouter);
 app.use("/reports", reportsRouter);
+app.use("/llm-config", llmConfigRouter);
+app.use("/chatbot", chatbotRouter);
 
 // Error handling
 app.use(errorHandler);

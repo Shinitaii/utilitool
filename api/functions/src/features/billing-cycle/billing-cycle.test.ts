@@ -212,7 +212,10 @@ describe('billingCycleService', () => {
     it('should create multiple billing cycles in a batch', async () => {
       const { start, end } = makeTimestamps();
       const mocks = [mockBillingCycle({ id: 'billing-cycle-1' }), mockBillingCycle({ id: 'billing-cycle-2' })];
-      jest.mocked(BillingCycleValidator.prototype.validateBatch).mockResolvedValue(undefined);
+      jest.mocked(BillingCycleValidator.prototype.validateBatch).mockResolvedValue({
+        validIndexes: [0, 1],
+        failures: [],
+      });
       jest.mocked(billingCycleRepository.createBatch).mockResolvedValue(mocks);
 
       const input = [
@@ -234,7 +237,8 @@ describe('billingCycleService', () => {
       const result = await billingCycleService.createBatch(TEST_USER_ID, input);
 
       expect(billingCycleRepository.createBatch).toHaveBeenCalledWith(expect.any(Array));
-      expect(result).toHaveLength(2);
+      expect(result.created).toHaveLength(2);
+      expect(result.failed).toEqual([]);
     });
 
     // It should return an error if batch is empty.

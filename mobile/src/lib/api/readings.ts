@@ -25,6 +25,11 @@ export interface BatchReadingRequest {
   readings: CreateReadingRequest[];
 }
 
+export interface BatchCreateResult<T> {
+  created: T[];
+  failed: { index: number; error: string }[];
+}
+
 export async function listReadings(options?: {
   meterGroupId?: string;
   limit?: number;
@@ -45,7 +50,7 @@ export async function createReading(data: CreateReadingRequest) {
   return apiPost('/readings', data);
 }
 
-export async function createReadingsBatch(data: BatchReadingRequest) {
+export async function createReadingsBatch(data: BatchReadingRequest): Promise<BatchCreateResult<Reading>> {
   if (!data.readings || data.readings.length === 0) {
     throw new Error('Cannot submit an empty batch — add at least one reading.');
   }

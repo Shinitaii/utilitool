@@ -1,9 +1,35 @@
+jest.mock('../../config/firebase.config', () => ({
+  firestore: {
+    collection: jest.fn().mockImplementation(() => ({
+      where: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+      doc: jest.fn().mockReturnValue({
+        id: 'new-reading-id',
+        get: jest.fn().mockResolvedValue({
+          id: 'new-reading-id',
+          exists: true,
+          data: () => ({ meter_group_id: 'mg-1', reading_amount: 200, is_deleted: false }),
+        }),
+      }),
+    })),
+    runTransaction: jest.fn().mockImplementation(async (fn: Function) => {
+      return fn({ set: jest.fn(), create: jest.fn() });
+    }),
+  },
+}));
+jest.mock('../../utils/firestore.util', () => ({
+  ...jest.requireActual('../../utils/firestore.util') as object,
+  snapshotToModel: jest.fn().mockImplementation((snap: any) => ({ id: snap.id, ...snap.data() })),
+}));
 jest.mock('./reading.repository');
 jest.mock('../../lib/gemini.lib');
 jest.mock('../billing/billing.service');
 jest.mock('../meter-group/meter-group.repository');
 jest.mock('./reading.validator');
 jest.mock('../property/property.repository');
+jest.mock('../../utils/cascade-delete.util');
 jest.mock('./reading.util', () => ({
   ...jest.requireActual('./reading.util') as object,
   findPreviousMonthReading: jest.fn(),
@@ -16,6 +42,7 @@ import { meterGroupRepository } from '../meter-group/meter-group.repository';
 import { propertyRepository } from '../property/property.repository';
 import { billingService } from '../billing/billing.service';
 import { findPreviousMonthReading } from './reading.util';
+import { cascadeRestoreReading } from '../../utils/cascade-delete.util';
 import { AppError } from '../../utils/error.util';
 import { Timestamp } from 'firebase-admin/firestore';
 import { ReadingValidator } from './reading.validator';
@@ -165,11 +192,15 @@ describe('readingService - Business Rules', () => {
   });
 
   describe('createBatch - main meter exclusion', () => {
-    it('should reject a batch that includes a main meter property', async () => {
+    it('should report a main-meter item as failed without rejecting the whole batch', async () => {
       jest.mocked(readingRepository.search).mockResolvedValue({
         data: [],
         hasMore: false,
         nextCursor: null,
+      });
+      jest.mocked(ReadingValidator.prototype.validateBatch).mockResolvedValue({
+        validIndexes: [0],
+        failures: [],
       });
       jest.mocked(propertyRepository.getById).mockResolvedValue({
         id: 'main-prop',
@@ -177,17 +208,30 @@ describe('readingService - Business Rules', () => {
           'entry-1': { meter_group_id: 'mg-1', is_main_meter: true },
         },
       } as any);
+      jest.mocked(propertyRepository.getByIds).mockResolvedValue([{
+        id: 'main-prop',
+        meter_groups: {
+          'entry-1': { meter_group_id: 'mg-1', is_main_meter: true },
+        },
+      } as any]);
+      jest.mocked(meterGroupRepository.getByIds).mockResolvedValue([{
+        id: 'mg-1',
+        current_version: 1,
+      } as any]);
 
-      await expect(
-        readingService.createBatch(TEST_USER_ID, [
-          {
-            meter_group_id: 'mg-1',
-            property_id: 'main-prop',
-            reading_amount: 100,
-            reading_date: Timestamp.now(),
-          },
-        ])
-      ).rejects.toMatchObject({ statusCode: 400 });
+      const result = await readingService.createBatch(TEST_USER_ID, [
+        {
+          meter_group_id: 'mg-1',
+          property_id: 'main-prop',
+          reading_amount: 100,
+          reading_date: Timestamp.now(),
+        },
+      ]);
+
+      expect(result.created).toEqual([]);
+      expect(result.failed).toEqual([
+        { index: 0, error: expect.stringContaining('main meter') },
+      ]);
     });
   });
 
@@ -257,6 +301,34 @@ describe('readingService - Business Rules', () => {
 
       expect(result.property_id).toBe('main-prop');
       expect(readingRepository.create).toHaveBeenCalled();
+    });
+  });
+
+  describe('readingService.restore - archived reading', () => {
+    // Regression test for the bug where restore() pre-checked existence via
+    // readingRepository.getById(id), which filters out is_deleted records —
+    // meaning a genuinely archived reading could never be found and restore
+    // always 404'd before cascadeRestoreReading ever ran.
+    it('should restore a reading without pre-checking via the is_deleted-filtered getById', async () => {
+      const restoredReading = mockReading({ is_deleted: false });
+      jest.mocked(cascadeRestoreReading).mockResolvedValue({ primary: 1, billings: 0 });
+      jest.mocked(readingRepository.getById).mockResolvedValue(restoredReading as any);
+
+      const result = await readingService.restore(TEST_USER_ID, 'reading-1');
+
+      expect(cascadeRestoreReading).toHaveBeenCalledWith('reading-1');
+      // getById is only ever consulted after the cascade restore commits.
+      expect(readingRepository.getById).toHaveBeenCalledTimes(1);
+      expect(result.id).toBe('reading-1');
+    });
+
+    it('should propagate a 404 from cascadeRestoreReading when the reading truly does not exist', async () => {
+      jest.mocked(cascadeRestoreReading).mockRejectedValue(new AppError(404, 'Reading not found'));
+
+      await expect(
+        readingService.restore(TEST_USER_ID, 'missing-id')
+      ).rejects.toMatchObject({ statusCode: 404 });
+      expect(readingRepository.getById).not.toHaveBeenCalled();
     });
   });
 });

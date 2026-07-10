@@ -11,6 +11,8 @@ import {billingCyclePaths} from "../features/billing-cycle/billing-cycle.swagger
 import {billsPaths} from "../features/bills/bills.swagger";
 import {paths as imageExtractionPaths} from "../features/image-extraction/image-extraction.swagger";
 import {reportsPaths} from "../features/reports/reports.swagger";
+import {llmConfigPaths} from "../features/llm-config/llm-config.swagger";
+import {chatbotPaths} from "../features/chatbot/chatbot.swagger";
 
 const swaggerSpec = {
   openapi: "3.0.3",
@@ -273,11 +275,26 @@ const swaggerSpec = {
                 type: "integer",
                 minimum: 1,
               },
-              meter_group_id: {
-                type: "string",
+              meter_groups: {
+                type: "object",
+                description:
+                  "Keyed by utility type (electricity, water); each entry links the property to a meter group and marks whether it's the main meter.",
+                additionalProperties: {
+                  type: "object",
+                  properties: {
+                    meter_group_id: {
+                      type: "string",
+                      minLength: 1,
+                    },
+                    is_main_meter: {
+                      type: "boolean",
+                    },
+                  },
+                  required: ["meter_group_id", "is_main_meter"],
+                },
               },
             },
-            required: ["room_name", "tenant_amount", "meter_group_id"],
+            required: ["room_name", "tenant_amount", "meter_groups"],
           },
         ],
       },
@@ -293,12 +310,26 @@ const swaggerSpec = {
             type: "integer",
             minimum: 1,
           },
-          meter_group_id: {
-            type: "string",
-            minLength: 1,
+          meter_groups: {
+            type: "object",
+            description:
+              "Keyed by utility type (electricity, water); at least one entry is required.",
+            additionalProperties: {
+              type: "object",
+              properties: {
+                meter_group_id: {
+                  type: "string",
+                  minLength: 1,
+                },
+                is_main_meter: {
+                  type: "boolean",
+                },
+              },
+              required: ["meter_group_id", "is_main_meter"],
+            },
           },
         },
-        required: ["room_name", "tenant_amount", "meter_group_id"],
+        required: ["room_name", "tenant_amount", "meter_groups"],
       },
       UpdatePropertyRequest: {
         type: "object",
@@ -312,9 +343,23 @@ const swaggerSpec = {
             type: "integer",
             minimum: 1,
           },
-          meter_group_id: {
-            type: "string",
-            minLength: 1,
+          meter_groups: {
+            type: "object",
+            description:
+              "Keyed by utility type (electricity, water); at least one entry is required.",
+            additionalProperties: {
+              type: "object",
+              properties: {
+                meter_group_id: {
+                  type: "string",
+                  minLength: 1,
+                },
+                is_main_meter: {
+                  type: "boolean",
+                },
+              },
+              required: ["meter_group_id", "is_main_meter"],
+            },
           },
         },
       },
@@ -415,6 +460,9 @@ const swaggerSpec = {
               meter_group_id: {
                 type: "string",
               },
+              property_id: {
+                type: "string",
+              },
               reading_amount: {
                 type: "integer",
                 minimum: 0,
@@ -433,7 +481,7 @@ const swaggerSpec = {
                 description: "Server-set version number from the meter group. Incremented on each physical meter reset.",
               },
             },
-            required: ["meter_group_id", "reading_amount", "reading_date"],
+            required: ["meter_group_id", "property_id", "reading_amount", "reading_date"],
           },
         ],
       },
@@ -441,6 +489,10 @@ const swaggerSpec = {
         type: "object",
         properties: {
           meter_group_id: {
+            type: "string",
+            minLength: 1,
+          },
+          property_id: {
             type: "string",
             minLength: 1,
           },
@@ -457,12 +509,16 @@ const swaggerSpec = {
             description: "Optional photo URL (requires Firebase Storage to be configured)",
           },
         },
-        required: ["meter_group_id", "reading_amount", "reading_date"],
+        required: ["meter_group_id", "property_id", "reading_amount", "reading_date"],
       },
       UpdateReadingRequest: {
         type: "object",
         properties: {
           meter_group_id: {
+            type: "string",
+            minLength: 1,
+          },
+          property_id: {
             type: "string",
             minLength: 1,
           },
@@ -604,8 +660,9 @@ const swaggerSpec = {
                 type: "object",
                 additionalProperties: {
                   type: "number",
+                  minimum: 0,
                 },
-                description: "Map of billing ID to consumption amount",
+                description: "Map of billing ID to consumption amount. Must not be empty.",
               },
               billing_rate: {
                 type: "number",
@@ -619,6 +676,9 @@ const swaggerSpec = {
                 $ref: "#/components/schemas/Timestamp",
               },
               billing_end_date: {
+                $ref: "#/components/schemas/Timestamp",
+              },
+              overdue_date: {
                 $ref: "#/components/schemas/Timestamp",
               },
             },
@@ -639,7 +699,9 @@ const swaggerSpec = {
             type: "object",
             additionalProperties: {
               type: "number",
+              minimum: 0,
             },
+            description: "Map of billing ID to consumption amount. Must not be empty.",
           },
           billing_rate: {
             type: "number",
@@ -653,6 +715,9 @@ const swaggerSpec = {
             $ref: "#/components/schemas/Timestamp",
           },
           billing_end_date: {
+            $ref: "#/components/schemas/Timestamp",
+          },
+          overdue_date: {
             $ref: "#/components/schemas/Timestamp",
           },
         },
@@ -671,6 +736,7 @@ const swaggerSpec = {
             type: "object",
             additionalProperties: {
               type: "number",
+              minimum: 0,
             },
           },
           billing_rate: {
@@ -685,6 +751,9 @@ const swaggerSpec = {
             $ref: "#/components/schemas/Timestamp",
           },
           billing_end_date: {
+            $ref: "#/components/schemas/Timestamp",
+          },
+          overdue_date: {
             $ref: "#/components/schemas/Timestamp",
           },
         },
@@ -871,6 +940,84 @@ const swaggerSpec = {
           },
         },
       },
+      LlmConfigResponse: {
+        type: "object",
+        properties: {
+          provider: {
+            type: ["string", "null"],
+            enum: ["groq", "ollama_cloud", null],
+          },
+          model: {
+            type: ["string", "null"],
+          },
+          hasKey: {
+            type: "boolean",
+          },
+        },
+        required: ["provider", "model", "hasKey"],
+      },
+      UpsertLlmConfigRequest: {
+        type: "object",
+        properties: {
+          provider: {
+            type: "string",
+            enum: ["groq", "ollama_cloud"],
+          },
+          model: {
+            type: "string",
+            minLength: 1,
+            maxLength: 255,
+          },
+          apiKey: {
+            type: "string",
+            minLength: 0,
+            maxLength: 500,
+            description: "Plaintext API key — encrypted server-side before storage, never returned. Optional: omit to keep the existing stored key.",
+          },
+        },
+        required: ["provider", "model"],
+      },
+      ChatHistoryMessage: {
+        type: "object",
+        properties: {
+          role: {
+            type: "string",
+            enum: ["user", "assistant"],
+          },
+          content: {
+            type: "string",
+            minLength: 1,
+            maxLength: 2000,
+          },
+        },
+        required: ["role", "content"],
+      },
+      ChatRequest: {
+        type: "object",
+        properties: {
+          message: {
+            type: "string",
+            minLength: 1,
+            maxLength: 2000,
+          },
+          history: {
+            type: "array",
+            maxItems: 20,
+            description: "Prior turns from the client's own message list — not persisted server-side.",
+            items: {$ref: "#/components/schemas/ChatHistoryMessage"},
+          },
+        },
+        required: ["message"],
+      },
+      ChatResponse: {
+        type: "object",
+        properties: {
+          reply: {
+            type: "string",
+          },
+        },
+        required: ["reply"],
+      },
       OcrBillResponse: {
         type: "object",
         properties: {
@@ -924,6 +1071,8 @@ const swaggerSpec = {
     ...billsPaths,
     ...imageExtractionPaths,
     ...reportsPaths,
+    ...llmConfigPaths,
+    ...chatbotPaths,
   },
 };
 

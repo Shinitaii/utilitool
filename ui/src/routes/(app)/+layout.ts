@@ -6,11 +6,11 @@ import { browser } from '$app/environment';
 export const ssr = false;
 
 export async function load() {
-  if (browser) {
-    await auth.authStateReady();
-    const token = await getAccessToken();
-    if (!token) {
-      redirect(307, '/login');
-    }
-  }
+	if (browser) {
+		await auth.authStateReady();
+		const token = await getAccessToken();
+		if (!token) {
+			redirect(307, '/login');
+		}
+	}
 }

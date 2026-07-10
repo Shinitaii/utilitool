@@ -1,6 +1,6 @@
 import type {BaseModel, WithoutBaseModel} from "../utils/model.util";
 import type {PaginatedResult} from "../utils/pagination.util";
-import type {Repository, SearchOptions} from "./repository.lib";
+import type {Repository, SearchFilter, SearchOptions} from "./repository.lib";
 import {cacheGet, cacheSet, cacheDel, cacheDelPattern} from "../utils/cache.util";
 import {loadAll, listAppend, listUpdate, listRemove, paginate, fetchAllPages} from "../utils/list-cache.util";
 
@@ -65,15 +65,7 @@ export class CachedRepository<T extends BaseModel> {
     );
 
     // Apply filters in memory
-    let filtered = allItems;
-    if (options.filters) {
-      filtered = allItems.filter((item) => {
-        return Object.entries(options.filters!).every(([field, value]) => {
-          if (value === undefined) return true;
-          return (item as any)[field] === value;
-        });
-      });
-    }
+    const filtered = this.applyFilters(allItems, options.filters);
 
     // Paginate over filtered results
     const result = paginate(filtered, {
@@ -118,17 +110,35 @@ export class CachedRepository<T extends BaseModel> {
     );
 
     // Apply filters in memory
-    let filtered = allItems;
-    if (options.filters) {
-      filtered = allItems.filter((item) => {
-        return Object.entries(options.filters!).every(([field, value]) => {
-          if (value === undefined) return true;
-          return (item as any)[field] === value;
-        });
-      });
+    return this.applyFilters(allItems, options.filters);
+  }
+
+  /**
+   * Apply equality filters to an in-memory item list, keyed on the real
+   * fields of T (no `any` cast). Unknown filter keys and range-filter objects
+   * (`{$gte, ...}`) are rejected outright rather than silently comparing an
+   * object to a primitive and returning an empty/wrong result set — the
+   * in-memory list cache only supports equality filtering; range queries must
+   * go through `repo.search()` (`archived: true` or a dedicated method).
+   */
+  private applyFilters(items: T[], filters: SearchFilter<WithoutBaseModel<T>> | undefined): T[] {
+    if (!filters) return items;
+
+    const entries = Object.entries(filters) as [keyof T, unknown][];
+    const activeEntries = entries.filter(([, value]) => value !== undefined);
+
+    for (const [field, value] of activeEntries) {
+      if (value !== null && typeof value === "object" && !(value instanceof Date)) {
+        throw new Error(
+          `CachedRepository.applyFilters: range filters (e.g. { $gte, $lte }) on "${String(field)}" ` +
+          "are not supported for cached (active-item) searches — use archived: true or repo.search() directly."
+        );
+      }
     }
 
-    return filtered;
+    return items.filter((item) =>
+      activeEntries.every(([field, value]) => item[field] === value)
+    );
   }
 
   /**
@@ -136,12 +146,27 @@ export class CachedRepository<T extends BaseModel> {
    */
   async create(data: WithoutBaseModel<T>): Promise<T> {
     const created = await this.repo.create(data);
-
-    // Update both cache tiers
-    await cacheSet(this.idCacheKey(created.id), created, this.cacheTTL);
-    await listAppend(this.listCacheKey(), created);
-
+    await this.cacheCreatedItem(created);
     return created;
+  }
+
+  /**
+   * Cache an item that was created outside this repository (e.g. inside a
+   * Firestore transaction that bypassed `repo.create` for atomicity). Mirrors
+   * the cache side effect of `create()` without performing the write itself.
+   */
+  async cacheCreatedItem(item: T): Promise<void> {
+    await cacheSet(this.idCacheKey(item.id), item, this.cacheTTL);
+    await listAppend(this.listCacheKey(), item);
+  }
+
+  /**
+   * Cache an item that was updated outside this repository (e.g. inside a
+   * Firestore transaction). Mirrors the cache side effect of `update()`.
+   */
+  async cacheUpdatedItem(item: T): Promise<void> {
+    await cacheSet(this.idCacheKey(item.id), item, this.cacheTTL);
+    await listUpdate(this.listCacheKey(), item);
   }
 
   /**
@@ -164,11 +189,7 @@ export class CachedRepository<T extends BaseModel> {
    */
   async update(id: string, data: Partial<WithoutBaseModel<T>>): Promise<T> {
     const updated = await this.repo.update(id, data);
-
-    // Update both cache tiers
-    await cacheSet(this.idCacheKey(id), updated, this.cacheTTL);
-    await listUpdate(this.listCacheKey(), updated);
-
+    await this.cacheUpdatedItem(updated);
     return updated;
   }
 

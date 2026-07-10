@@ -1,11 +1,17 @@
 jest.mock('../billing/billing.repository');
 jest.mock('../reading/reading.repository');
+jest.mock('../meter-group/meter-group.repository');
+jest.mock('../property/property.repository');
+jest.mock('./billing-cycle.repository');
 
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import { BillingCycleValidator } from './billing-cycle.validator';
 import { CreateBillingCycleDTOSchema } from './billing-cycle.dto';
 import { billingRepository } from '../billing/billing.repository';
 import { readingRepository } from '../reading/reading.repository';
+import { meterGroupRepository } from '../meter-group/meter-group.repository';
+import { propertyRepository } from '../property/property.repository';
+import { billingCycleRepository } from './billing-cycle.repository';
 import { AppError } from '../../utils/error.util';
 import { Timestamp } from 'firebase-admin/firestore';
 
@@ -30,8 +36,14 @@ describe('BillingCycleValidator', () => {
     validator = new BillingCycleValidator();
     jest.clearAllMocks();
     jest.mocked(billingRepository.getById).mockImplementation(async (id: string) => mockBilling(id));
+    // validateBillingConsumptionAmounts batch-fetches via getByIds, not getById
+    jest.mocked(billingRepository.getByIds).mockImplementation(async (ids: string[]) => ids.map((id) => mockBilling(id)));
     // Return null so per-billing consumption validation is skipped (readings not loaded in these unit tests)
     jest.mocked(readingRepository.getById).mockResolvedValue(null);
+    jest.mocked(readingRepository.getByIds).mockResolvedValue([]);
+    jest.mocked(propertyRepository.getByIds).mockResolvedValue([]);
+    jest.mocked(meterGroupRepository.getByIds).mockResolvedValue([]);
+    jest.mocked(billingCycleRepository.search).mockResolvedValue({ data: [], hasMore: false, nextCursor: null });
   });
 
   describe('validateConsumptionTolerance (via validateCreate)', () => {
@@ -109,6 +121,70 @@ describe('BillingCycleValidator', () => {
         // meter_group_id intentionally omitted
       });
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe('validateSubmeterConsumption - meter-reset boundary', () => {
+    // Reproduces the reported bug: a submeter that went through a meter
+    // reset (previous true total 634, reset to v2, current raw reading 5.5 —
+    // true consumption should be 5.5) must be validated against its TRUE,
+    // version-aware delta. If a bad/overstated consumption number for that
+    // submeter slips through, billingCycleService used to only discover the
+    // mismatch AFTER already trying to derive+create a main-meter reading
+    // from the bad total, surfacing a confusing "meter rollback" error
+    // instead of this validator's clear "deviates more than 5%" message.
+    const prevReading = {
+      id: 'r-1',
+      meter_group_id: 'mg-1',
+      property_id: 'prop-1',
+      reading_amount: 634,
+      reading_date: startTs,
+      meter_version: 1,
+    };
+    const currReading = {
+      id: 'r-2',
+      meter_group_id: 'mg-1',
+      property_id: 'prop-1',
+      reading_amount: 5.5,
+      reading_date: endTs,
+      meter_version: 2,
+    };
+    const submeterProperty = {
+      id: 'prop-1',
+      meter_groups: {
+        water: {
+          meter_group_id: 'mg-1',
+          is_main_meter: false,
+          current_version: 2,
+          versions: { '1': { reset_at: startTs, last_reading: 634 } },
+        },
+      },
+    };
+    const meterGroup = { id: 'mg-1', current_version: 5, versions: {} };
+
+    beforeEach(() => {
+      jest.mocked(readingRepository.getByIds).mockResolvedValue([prevReading, currReading] as any);
+      jest.mocked(propertyRepository.getByIds).mockResolvedValue([submeterProperty] as any);
+      jest.mocked(meterGroupRepository.getByIds).mockResolvedValue([meterGroup] as any);
+    });
+
+    it('accepts the correct true-reading delta across the reset (5.5)', async () => {
+      await expect(
+        validator.validateSubmeterConsumption({
+          billing_ids: { 'b-1': 5.5 },
+        } as any)
+      ).resolves.toBeUndefined();
+    });
+
+    it('rejects an overstated consumption that used the full true reading (639.5) instead of the delta', async () => {
+      await expect(
+        validator.validateSubmeterConsumption({
+          billing_ids: { 'b-1': 639.5 },
+        } as any)
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        message: expect.stringContaining('deviates more than 5%'),
+      });
     });
   });
 });

@@ -2,33 +2,33 @@
 @plugin '@tailwindcss/forms';
 
 @theme {
-  --color-ink: #2a251f;
-  --color-ink-2: #5b524a;
-  --color-ink-3: #8a7f74;
-  --color-paper: #fbf7ef;
-  --color-accent: #8b5a3c;
-  --color-status-paid-bg: #e8f4ea;
-  --color-status-paid-fg: #2c6b3a;
-  --color-status-unpaid-bg: #fff3e8;
-  --color-status-unpaid-fg: #8b5a3c;
-  --color-status-overdue-bg: #fde5e0;
-  --color-status-overdue-fg: #a23b21;
-  --color-status-pending-bg: #f0eee9;
-  --color-status-pending-fg: #5b524a;
+	--color-ink: #2a251f;
+	--color-ink-2: #5b524a;
+	--color-ink-3: #8a7f74;
+	--color-paper: #fbf7ef;
+	--color-accent: #8b5a3c;
+	--color-status-paid-bg: #e8f4ea;
+	--color-status-paid-fg: #2c6b3a;
+	--color-status-unpaid-bg: #fff3e8;
+	--color-status-unpaid-fg: #8b5a3c;
+	--color-status-overdue-bg: #fde5e0;
+	--color-status-overdue-fg: #a23b21;
+	--color-status-pending-bg: #f0eee9;
+	--color-status-pending-fg: #5b524a;
 }
 
 :root {
-  --color-ink: #2a251f;
-  --color-ink-2: #5b524a;
-  --color-ink-3: #8a7f74;
-  --color-paper: #fbf7ef;
-  --color-accent: #8b5a3c;
-  --color-status-paid-bg: #e8f4ea;
-  --color-status-paid-fg: #2c6b3a;
-  --color-status-unpaid-bg: #fff3e8;
-  --color-status-unpaid-fg: #8b5a3c;
-  --color-status-overdue-bg: #fde5e0;
-  --color-status-overdue-fg: #a23b21;
-  --color-status-pending-bg: #f0eee9;
-  --color-status-pending-fg: #5b524a;
+	--color-ink: #2a251f;
+	--color-ink-2: #5b524a;
+	--color-ink-3: #8a7f74;
+	--color-paper: #fbf7ef;
+	--color-accent: #8b5a3c;
+	--color-status-paid-bg: #e8f4ea;
+	--color-status-paid-fg: #2c6b3a;
+	--color-status-unpaid-bg: #fff3e8;
+	--color-status-unpaid-fg: #8b5a3c;
+	--color-status-overdue-bg: #fde5e0;
+	--color-status-overdue-fg: #a23b21;
+	--color-status-pending-bg: #f0eee9;
+	--color-status-pending-fg: #5b524a;
 }

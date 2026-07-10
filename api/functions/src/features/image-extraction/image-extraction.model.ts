@@ -13,5 +13,5 @@ export interface ExtractedBillingData extends BaseModel {
   billing_end_date: string;
   billing_consumption: number;
   billing_rate: number;
-  raw_amount?: string;
+  raw_amount: number;
 }

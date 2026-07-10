@@ -25,7 +25,7 @@ export function toDate(timestamp: FirestoreTimestamp | string | any): Date {
   return new Date(timestamp);
 }
 
-export function formatDate(timestamp: FirestoreTimestamp | string | any): string {
+export function formatTimestampDate(timestamp: FirestoreTimestamp | string | any): string {
   const date = toDate(timestamp);
   return date.toLocaleDateString('en-US', {
     month: 'short',
@@ -34,7 +34,7 @@ export function formatDate(timestamp: FirestoreTimestamp | string | any): string
   });
 }
 
-export function formatDateTime(timestamp: FirestoreTimestamp | string | any): string {
+export function formatTimestampDateTime(timestamp: FirestoreTimestamp | string | any): string {
   const date = toDate(timestamp);
   return date.toLocaleDateString('en-US', {
     month: 'short',

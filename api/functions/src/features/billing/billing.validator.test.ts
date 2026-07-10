@@ -1,10 +1,12 @@
 jest.mock('../property/property.repository');
 jest.mock('../reading/reading.repository');
+jest.mock('./billing.repository');
 
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import { BillingValidator } from './billing.validator';
 import { propertyRepository } from '../property/property.repository';
 import { readingRepository } from '../reading/reading.repository';
+import { billingRepository } from './billing.repository';
 import { AppError } from '../../utils/error.util';
 import { Timestamp } from 'firebase-admin/firestore';
 
@@ -35,7 +37,8 @@ describe('BillingValidator', () => {
 
   beforeEach(() => {
     validator = new BillingValidator();
-    jest.clearAllMocks();
+    jest.resetAllMocks();
+    jest.mocked(billingRepository.search).mockResolvedValue({ data: [], hasMore: false, nextCursor: null } as any);
   });
 
   describe('validateCreate', () => {
