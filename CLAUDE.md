@@ -227,6 +227,7 @@ Each page/component is organized by:
 - ⚠️ Users (`POST /users` — partial stub for user role management)
 - ✅ LLM Config (`GET`/`PATCH /llm-config` for the chatbot provider/model/API key + `PATCH /llm-config/vision` for an **independent** vision provider/model/API key used by OCR — separate because not every provider has a usable free vision model; reuses the chatbot's API key when both configs use the same provider; API keys AES-256-GCM encrypted at rest via `lib/crypto.lib.ts`)
 - ✅ Chatbot (`POST /chatbot` — insight assistant scoped to the authenticated user's data, tool-calling via `lib/llm.lib.ts` against Groq/Ollama Cloud; regex jailbreak guard in `chatbot.guard.ts`)
+- ✅ Photo Settings (`GET`/`PATCH /photo-settings` — per-user `savePhotos` preference, defaults to `false`; web and mobile check it before attaching a meter-reading `image_url` on create. OCR suggest always works regardless; billing-cycle/bill photos are never persisted either way)
 
 **Audit Highlights (25 fixes)**:
 - **D1**: Soft-delete pattern — all DELETE endpoints soft-delete (set `is_deleted` flag), no hard delete
@@ -254,10 +255,10 @@ Each page/component is organized by:
 ### Mobile Screens (May 2026)
 - ✅ Login (Firebase Auth)
 - ✅ Home (dashboard + "New Reading Session" CTA)
-- ✅ CaptureReadings (3-step wizard: meter group select → per-property readings + camera → review & batch submit)
+- ✅ CaptureReadings (3-step wizard: meter group select → per-property readings + camera with auto OCR suggest → review & batch submit)
 - ✅ ReadingHistory (filterable by utility type + property)
 - ✅ Billings (grouped by status: overdue/pending/paid; mark-as-paid action)
-- ✅ Settings (account info + sign out)
+- ✅ Settings (account info + sign out; save-photos preference toggle)
 
 ---
 
