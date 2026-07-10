@@ -10,12 +10,14 @@
   let isLoading = $state(false);
   let error = $state('');
   let success = $state('');
+  let warning = $state('');
 
   async function handleCreateUser(e: SubmitEvent) {
     e.preventDefault();
     isLoading = true;
     error = '';
     success = '';
+    warning = '';
 
     if (password.length < 8) {
       error = 'Password must be at least 8 characters';
@@ -35,12 +37,12 @@
           uid: credential.user.uid,
           role
         });
+        success = `User "${displayName || email}" created successfully`;
       } catch (roleErr) {
         console.error('Failed to set user role:', roleErr);
-        // Continue anyway - user auth was successful
+        warning = `User "${displayName || email}" was created but role assignment failed. Retry setting the role from the users list.`;
       }
 
-      success = `User "${displayName || email}" created successfully`;
       email = '';
       displayName = '';
       password = '';
@@ -77,6 +79,12 @@
     {#if success}
       <div class="mb-4 rounded-lg bg-green-50 p-4 text-sm text-green-700">
         {success}
+      </div>
+    {/if}
+
+    {#if warning}
+      <div class="mb-4 rounded-lg bg-yellow-50 p-4 text-sm text-yellow-800">
+        {warning}
       </div>
     {/if}
 
