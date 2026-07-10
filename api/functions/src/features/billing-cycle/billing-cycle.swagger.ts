@@ -115,6 +115,33 @@ export const billingCyclePaths = {
             type: "string",
           },
         },
+        {
+          name: "sortBy",
+          in: "query",
+          description: "Field to sort by",
+          schema: {
+            type: "string",
+            enum: ["created_at", "billing_start_date"],
+          },
+        },
+        {
+          name: "sortOrder",
+          in: "query",
+          description: "Sort direction",
+          schema: {
+            type: "string",
+            enum: ["asc", "desc"],
+          },
+        },
+        {
+          name: "archived",
+          in: "query",
+          description: "List soft-deleted (archived) billing cycles instead of active ones",
+          schema: {
+            type: "string",
+            enum: ["true", "false"],
+          },
+        },
       ],
       responses: {
         "200": {
