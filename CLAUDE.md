@@ -168,7 +168,7 @@ Each feature has a `.swagger.ts` file defining its endpoints. Reference Swagger 
   - Project alias: `staging` (utilitool-staging)
   - Requires: `FIREBASE_TOKEN_STAGING` in GitHub secrets
 
-- **UI**: Preview deploys on pull requests
+- **UI**: Vercel Preview deploy — triggered for pull requests and also on push to `main` (this is what's actually configured as staging; there's no separate custom Vercel Environment)
   - Project: Vercel
   - Requires: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`
 

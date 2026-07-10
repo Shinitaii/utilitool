@@ -49,7 +49,14 @@ mobile/
 │       │   ├── meter-groups.ts     → listMeterGroups, getMeterGroup
 │       │   ├── readings.ts         → listReadings, getReading, createReading, createReadingsBatch
 │       │   ├── properties.ts       → listProperties, getProperty
-│       │   └── billings.ts         → listBillings, getBilling, updateBillingStatus
+│       │   ├── billings.ts         → listBillings, getBilling, updateBillingStatus
+│       │   └── billing-cycles.ts   → listBillingCycles, getBillingCycle
+│       ├── utils/
+│       │   ├── auth-errors.ts      → getReadableAuthError
+│       │   ├── billing-cycle.util.ts → getStatusSummary, getCyclePaidAmount, getCycleOutstandingAmount
+│       │   ├── format.ts           → getReadingUnit, formatReading
+│       │   ├── timestamp.ts        → toDate, formatTimestampDate, formatTimestampDateTime (Firestore timestamp handling)
+│       │   └── utility-colors.ts   → getUtilityTypeBadgeClasses
 │       └── stores/
 │           └── session.ts          → sessionCache: module-level cache for meterGroups + properties (survives screen nav, cleared on sign-out)
 ├── capacitor.config.ts         → App ID, webDir, Camera plugin config
@@ -93,6 +100,7 @@ All API calls go through `src/lib/api/client.ts`:
 | `readings.ts` | `listReadings`, `getReading`, `createReading`, `createReadingsBatch` | `GET /readings`, `GET /readings/:id`, `POST /readings`, `POST /readings/batch` |
 | `properties.ts` | `listProperties`, `getProperty` | `GET /properties`, `GET /properties/:id` |
 | `billings.ts` | `listBillings`, `getBilling`, `updateBillingStatus` | `GET /billings`, `GET /billings/:id`, `PATCH /billings/:id` |
+| `billing-cycles.ts` | `listBillingCycles`, `getBillingCycle` | `GET /billing-cycles`, `GET /billing-cycles/:id` |
 
 ---
 
@@ -119,7 +127,7 @@ Two cascading filters:
 
 Groups billing cycles by meter group; expanding a cycle card reveals its nested billings (mirrors the desktop UI's expanded cycle view) — each shows the property name, its per-property consumption/amount breakdown (`{consumption} {unit} · {currency amount}`, derived from the cycle's `billing_ids` map and `billing_rate`), payment status, and a "Mark as Paid" action that calls `PATCH /billings/:id`.
 
-**Note**: Always render `billing_start_date`/`billing_end_date`/`overdue_date` via `formatDate()`/`toDate()` from `lib/utils/timestamp.ts` — the API may return these as Firestore `{_seconds, _nanoseconds}` objects despite the `BillingCycle` type's `string` annotation, and `new Date(timestampObject)` silently produces "Invalid Date".
+**Note**: Always render `billing_start_date`/`billing_end_date`/`overdue_date` via `formatTimestampDate()`/`toDate()` from `lib/utils/timestamp.ts` — the API may return these as Firestore `{_seconds, _nanoseconds}` objects despite the `BillingCycle` type's `string` annotation, and `new Date(timestampObject)` silently produces "Invalid Date".
 
 ---
 

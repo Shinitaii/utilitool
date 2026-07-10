@@ -411,9 +411,6 @@ The following feature folders exist but are **not fully implemented**:
 | `bills/` | ⚠️ Partial | `POST /bills/ocr` — OCR via Gemini; no model/service/repository. Functionally overlaps with `image-extraction/billings` |
 | `user/` | ⚠️ Partial | `POST /users` — create user record; no model/service/repository. Auth covered by `auth/` |
 | `audit/` | ❌ Stub | `audit.model.ts` only — not mounted |
-| `model/` | ❌ Empty | Placeholder folder — unused |
-| `ocr/` | ❌ Empty | Placeholder folder — functionality moved to `image-extraction/` |
-| `payment/` | ❌ Empty | Placeholder folder — not yet implemented |
 
 ---
 

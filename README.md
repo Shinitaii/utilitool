@@ -168,7 +168,7 @@ npx cap open android   # Open in Android Studio
 
 ### Staging (Automatic on push to `main`)
 - **API**: Deploys to `utilitool-staging` Firebase project
-- **UI**: Preview deploys on Vercel for pull requests
+- **UI**: Vercel Preview deploy — triggered for pull requests and also on push to `main` (this is what's actually configured as staging; there's no separate custom Vercel Environment)
 
 ### Production (Manual)
 - Firebase project: `utilitool-3fe70`

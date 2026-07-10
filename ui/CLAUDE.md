@@ -284,7 +284,7 @@ All archive pages: `GET /<feature>?archived=true` to list soft-deleted items, th
   - `/settings/users` — user management: `POST /users` ← `createUser()` to create accounts with role (`admin`, `landlord`, `assistant`)
   - `/settings/llm-provider` — configure the insight chatbot's LLM provider (`groq` | `ollama_cloud`), model, and API key
     - **API calls**: `GET /llm-config` ← `getLlmConfig()`, `PATCH /llm-config` ← `upsertLlmConfig()` from `src/lib/api/llm-config.ts`
-- **Status**: Partial
+- **Status**: Create-only — full create-user flow (role select, password validation, Firebase error-code mapping, partial-failure handling); no listing/edit of existing users
 
 #### Bills / OCR Upload (`/bills`)
 - **Component**: `src/routes/(app)/bills/+page.svelte`
@@ -567,10 +567,14 @@ Fixed right detail panel (280px wide).
 ### format.ts
 ```ts
 formatCurrency(amount: number): string          // ₱ formatting
+getReadingUnit(utilityType: string): string     // unit label by utility type
+formatReading(amount: number, utilityType: string): string  // reading value + unit
 formatKwh(kwh: number): string                  // kWh with comma separator
 formatDate(date: Date): string                  // "May 16, 2026"
+formatLongDate(date: Date): string              // long-form date string
 formatDateTime(date: Date): string              // "May 16, 2026 · 2:30 PM"
 formatMonthYear(date: Date): string             // "May 2026"
+parseDate(dateString: string): Date             // string → Date
 formatPercentage(value: number): string         // "65%"
 relativeTime(date: Date): string                // "2h ago", "yesterday", etc.
 getInitials(name: string): string               // "RC" from "Rico Campos"
