@@ -1,3 +1,12 @@
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB
+const ALLOWED_IMAGE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+]);
+
 function validateImageUrl(imageUrl: string): void {
   let parsed: URL;
   try {
@@ -26,7 +35,14 @@ export async function fetchImageAsBuffer(imageUrl: string): Promise<{ buffer: Bu
     if (!base64Data) throw new Error("Invalid data URL format");
     // Extract MIME type from "data:image/png;base64" prefix
     const mimeType = header.split(":")[1]?.split(";")[0] ?? "image/jpeg";
-    return {buffer: Buffer.from(base64Data, "base64"), mimeType};
+    if (!ALLOWED_IMAGE_MIME_TYPES.has(mimeType)) {
+      throw new Error(`Unsupported image type: ${mimeType}`);
+    }
+    const buffer = Buffer.from(base64Data, "base64");
+    if (buffer.byteLength > MAX_IMAGE_BYTES) {
+      throw new Error(`Image exceeds maximum allowed size of ${MAX_IMAGE_BYTES} bytes`);
+    }
+    return {buffer, mimeType};
   }
 
   validateImageUrl(imageUrl);
@@ -36,7 +52,22 @@ export async function fetchImageAsBuffer(imageUrl: string): Promise<{ buffer: Bu
   if (!response.ok) {
     throw new Error(`Failed to fetch image: ${response.statusText}`);
   }
+
+  const contentLength = response.headers.get("content-length");
+  if (contentLength && Number(contentLength) > MAX_IMAGE_BYTES) {
+    throw new Error(`Image exceeds maximum allowed size of ${MAX_IMAGE_BYTES} bytes`);
+  }
+
   const contentType = response.headers.get("content-type") ?? "image/jpeg";
   const mimeType = contentType.split(";")[0].trim();
-  return {buffer: Buffer.from(await response.arrayBuffer()), mimeType};
+  if (!ALLOWED_IMAGE_MIME_TYPES.has(mimeType)) {
+    throw new Error(`Unsupported image type: ${mimeType}`);
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.byteLength > MAX_IMAGE_BYTES) {
+    throw new Error(`Image exceeds maximum allowed size of ${MAX_IMAGE_BYTES} bytes`);
+  }
+
+  return {buffer, mimeType};
 }

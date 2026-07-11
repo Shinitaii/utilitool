@@ -1,7 +1,15 @@
 import {LlmClient, LlmContentPart} from "./llm.lib";
 import {LlmProvider} from "../features/llm-config/llm-config.model";
 import {fetchImageAsBuffer} from "./image-fetch.util";
-import {BillOcrResult, READING_PROMPT, BILL_PROMPT, parseReadingResponse, parseBillDataResponse} from "./ocr-parsing.util";
+import {
+  BillOcrResult,
+  OCR_SYSTEM_PROMPT,
+  READING_PROMPT,
+  BILL_PROMPT,
+  parseReadingResponse,
+  parseBillDataResponse,
+  looksLikeSteeredResponse,
+} from "./ocr-parsing.util";
 import {logger} from "../utils/logger.util";
 
 export interface VisionLlmConfig {
@@ -23,8 +31,16 @@ export const visionOcrLib = {
     try {
       const content = await buildImageContent(imageUrl, READING_PROMPT);
       const client = new LlmClient(config);
-      const result = await client.chatCompletion([{role: "user", content}]);
-      return parseReadingResponse(result.message.content as string);
+      const result = await client.chatCompletion([
+        {role: "system", content: OCR_SYSTEM_PROMPT},
+        {role: "user", content},
+      ]);
+      const text = result.message.content as string;
+      if (looksLikeSteeredResponse(text)) {
+        logger.warn({imageUrl}, "OCR reading response flagged as steered, treating as extraction failure");
+        return null;
+      }
+      return parseReadingResponse(text);
     } catch (error) {
       logger.error({error}, "Error extracting reading from image");
       return null;
@@ -35,8 +51,16 @@ export const visionOcrLib = {
     try {
       const content = await buildImageContent(imageUrl, BILL_PROMPT);
       const client = new LlmClient(config);
-      const result = await client.chatCompletion([{role: "user", content}]);
-      return parseBillDataResponse(result.message.content as string);
+      const result = await client.chatCompletion([
+        {role: "system", content: OCR_SYSTEM_PROMPT},
+        {role: "user", content},
+      ]);
+      const text = result.message.content as string;
+      if (looksLikeSteeredResponse(text)) {
+        logger.warn({imageUrl}, "OCR bill response flagged as steered, treating as extraction failure");
+        return null;
+      }
+      return parseBillDataResponse(text);
     } catch (error) {
       logger.error({error}, "Error extracting bill data from image");
       return null;

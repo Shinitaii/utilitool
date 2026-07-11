@@ -86,18 +86,14 @@ export class LlmClient {
     if (typeof content !== "object" || content === null) return content;
     return content.map((part) => {
       if (part.type === "text") return {type: "text", text: part.text};
-      const dataUrl = `data:${part.mimeType};base64,${part.base64}`;
-      switch (this.options.provider) {
-      case "groq":
-        return {type: "image_url", image_url: {url: dataUrl}};
-      case "ollama_cloud":
-        // Confirmed shape TBD — see plan's "Multimodal research findings". Placeholder uses the
-        // OpenAI-standard nested-object shape; flip to a plain string if the manual smoke test
-        // against ollama.com/v1 shows that's what's actually accepted.
-        return {type: "image_url", image_url: {url: dataUrl}};
-      default:
+      if (this.options.provider !== "groq" && this.options.provider !== "ollama_cloud") {
         throw new Error(`Unsupported provider for image content: ${this.options.provider}`);
       }
+      // Both Groq and Ollama Cloud's OpenAI-compatible /v1/chat/completions endpoints accept
+      // the standard OpenAI image_url content-part shape with a base64 data URI — confirmed
+      // against Ollama's OpenAI compatibility docs (docs.ollama.com/api/openai-compatibility).
+      const dataUrl = `data:${part.mimeType};base64,${part.base64}`;
+      return {type: "image_url", image_url: {url: dataUrl}};
     });
   }
 
