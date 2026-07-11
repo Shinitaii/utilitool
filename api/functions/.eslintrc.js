@@ -47,6 +47,7 @@
     "new-cap": ["error", { "capIsNew": false }],
     "@typescript-eslint/no-unused-vars": ["error", { "ignoreRestSiblings": true, "argsIgnorePattern": "^_" }],
     "no-constant-condition": ["error", { "checkLoops": false }],
+    "linebreak-style": "off",
   },
   overrides: [
     {

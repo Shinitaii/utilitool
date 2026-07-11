@@ -9,6 +9,7 @@ export const stripHtml = (value: string) => value.replace(/<[^>]*>/g, "");
  * provider. Reject them at write time rather than trying to escape everywhere the
  * name is later consumed.
  */
+// eslint-disable-next-line no-control-regex -- control chars are intentionally matched to reject unsafe names
 const UNSAFE_NAME_CHARS = /["'`\\\x00-\x1F\x7F]/;
 
 export const isSafeName = (value: string) => !UNSAFE_NAME_CHARS.test(value);
