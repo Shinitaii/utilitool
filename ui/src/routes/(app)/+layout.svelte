@@ -53,5 +53,7 @@
 		</div>
 	</main>
 
-	<ChatWidget />
+	{#if authState.user?.role === 'admin'}
+		<ChatWidget />
+	{/if}
 </div>

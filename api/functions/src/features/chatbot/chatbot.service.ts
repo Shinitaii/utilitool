@@ -95,6 +95,63 @@ export interface ChatHistoryMessage {
   content: string;
 }
 
+/**
+ * Tool results carry `propertyName` (Property.room_name) — a real-world unit
+ * identifier. It has no bearing on the LLM's math (totals/costs/spikes), so
+ * it's swapped for an opaque per-request token before any tool result is
+ * sent to the provider, and swapped back only in the final reply shown to
+ * the user. Scoped per `chat()` call — never persisted or shared across
+ * requests.
+ */
+function createPropertyNameMasker() {
+  const nameToToken = new Map<string, string>();
+  const tokenToName = new Map<string, string>();
+
+  function tokenFor(realName: string): string {
+    let token = nameToToken.get(realName);
+    if (!token) {
+      token = `Property ${nameToToken.size + 1}`;
+      nameToToken.set(realName, token);
+      tokenToName.set(token, realName);
+    }
+    return token;
+  }
+
+  function maskResult(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(maskResult);
+    if (value && typeof value === "object") {
+      const entries = Object.entries(value as Record<string, unknown>).map(([key, val]) => {
+        if (key === "propertyName" && typeof val === "string") return [key, tokenFor(val)];
+        return [key, maskResult(val)];
+      });
+      return Object.fromEntries(entries);
+    }
+    return value;
+  }
+
+  // Tool-call args may echo a token seen in an earlier tool result within the
+  // same conversation (or a real name straight from the user's own message,
+  // which is never masked to begin with) — resolve either back to the real
+  // name the repositories expect.
+  function unmaskArgs<T extends {propertyNames?: string[]}>(args: T): T {
+    if (!args.propertyNames) return args;
+    return {
+      ...args,
+      propertyNames: args.propertyNames.map((n) => tokenToName.get(n) ?? n),
+    };
+  }
+
+  function unmaskContent(content: string): string {
+    let out = content;
+    for (const [token, realName] of tokenToName) {
+      out = out.split(token).join(realName);
+    }
+    return out;
+  }
+
+  return {maskResult, unmaskArgs, unmaskContent};
+}
+
 export const chatbotService = {
   /**
    * `history` is resent by the client on every call (the widget's own local
@@ -105,6 +162,7 @@ export const chatbotService = {
   async chat(userId: string, message: string, history: ChatHistoryMessage[] = []): Promise<string> {
     const {provider, model, apiKey} = await llmConfigService.getDecryptedConfig(userId);
     const client = new LlmClient({provider, model, apiKey});
+    const masker = createPropertyNameMasker();
 
     const messages: LlmChatMessage[] = [
       {role: "system", content: SYSTEM_PROMPT},
@@ -124,7 +182,7 @@ export const chatbotService = {
           return REFUSAL_MESSAGE;
         }
 
-        return content;
+        return masker.unmaskContent(content);
       }
 
       for (const toolCall of assistantMessage.tool_calls) {
@@ -135,8 +193,8 @@ export const chatbotService = {
           result = {error: `Unknown function: ${toolCall.function.name}`};
         } else {
           try {
-            const args = JSON.parse(toolCall.function.arguments);
-            result = await handler(args);
+            const args = masker.unmaskArgs(JSON.parse(toolCall.function.arguments));
+            result = masker.maskResult(await handler(args));
           } catch (error) {
             logger.error({error, tool: toolCall.function.name}, "Chatbot tool call failed");
             result = {error: "Failed to execute function"};
