@@ -6,6 +6,7 @@ import {
   updateMeterGroup,
   softDeleteMeterGroup,
   restoreMeterGroup,
+  purgeMeterGroup,
   createBatchMeterGroups,
   updateBatchMeterGroups,
   recordMeterGroupReset,
@@ -87,6 +88,15 @@ router.patch(
   validateRequest({params: MeterGroupByIdParamsDTOSchema}),
   requireRole("admin", "landlord"),
   restoreMeterGroup
+);
+
+// Second step of the archive-then-purge lifecycle (right-to-erasure): only
+// works on an already-archived (is_deleted=true) meter group, admin-only.
+router.delete(
+  "/:id/purge",
+  validateRequest({params: MeterGroupByIdParamsDTOSchema}),
+  requireRole("admin"),
+  purgeMeterGroup
 );
 
 export const meterGroupRouter = router;

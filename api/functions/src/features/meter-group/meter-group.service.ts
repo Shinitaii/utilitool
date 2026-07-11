@@ -10,7 +10,7 @@ import {collectionRef} from "../../lib/firestore.lib";
 import {COLLECTIONS} from "../../constants/collection.constants";
 import {listRemove} from "../../utils/list-cache.util";
 import {cacheDel, cacheSet} from "../../utils/cache.util";
-import {cascadeDeleteMeterGroup, cascadeRestoreMeterGroup} from "../../utils/cascade-delete.util";
+import {cascadeDeleteMeterGroup, cascadeRestoreMeterGroup, cascadePurgeMeterGroup} from "../../utils/cascade-delete.util";
 import {CachedRepository} from "../../lib/cached-repository.lib";
 import {logger} from "../../utils/logger.util";
 
@@ -213,5 +213,14 @@ export const meterGroupService = {
     };
     const cachedRepo = new CachedRepository(meterGroupRepository, userId, "meter-groups", CACHE_TTL);
     return cachedRepo.update(id, updatePayload);
+  },
+
+  /**
+   * Permanently delete an already-archived meter group and its already-archived
+   * readings/billings. Second step of the archive-then-purge lifecycle — throws
+   * 409 if the meter group is still active. See cascadePurgeMeterGroup.
+   */
+  async purge(id: string): Promise<void> {
+    await cascadePurgeMeterGroup(id);
   },
 };

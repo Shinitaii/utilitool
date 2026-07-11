@@ -125,6 +125,17 @@ export const restoreMeterGroup = async (
   res.status(200).json(result);
 };
 
+export const purgeMeterGroup = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  const {id} = req.params as unknown as MeterGroupByIdParamsDTO;
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
+  await meterGroupService.purge(id);
+  res.status(204).send();
+};
+
 export const recordMeterGroupReset = async (
   req: AuthenticatedRequest,
   res: Response

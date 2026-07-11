@@ -6,6 +6,7 @@ import {
   updateBillingCycle,
   softDeleteBillingCycle,
   restoreBillingCycle,
+  purgeBillingCycle,
   createBatchBillingCycles,
   updateBatchBillingCycles,
   ocrBillingCycle,
@@ -91,6 +92,15 @@ router.patch(
   validateRequest({params: BillingCycleByIdParamsDTOSchema}),
   requireRole("admin", "landlord"),
   restoreBillingCycle
+);
+
+// Second step of the archive-then-purge lifecycle (right-to-erasure): only
+// works on an already-archived (is_deleted=true) billing cycle, admin-only.
+router.delete(
+  "/:id/purge",
+  validateRequest({params: BillingCycleByIdParamsDTOSchema}),
+  requireRole("admin"),
+  purgeBillingCycle
 );
 
 export const billingCycleRouter = router;

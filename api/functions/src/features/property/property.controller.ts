@@ -128,6 +128,17 @@ export const restoreProperty = async (
   res.status(200).json(result);
 };
 
+export const purgeProperty = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  const {id} = req.params as unknown as PropertyByIdParamsDTO;
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
+  await propertyService.purge(id);
+  res.status(204).send();
+};
+
 export const recordPropertyMeterGroupReset = async (
   req: AuthenticatedRequest,
   res: Response

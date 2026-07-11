@@ -154,6 +154,15 @@ export const billingService = {
   },
 
   /**
+   * Permanently delete an already-archived billing. Second step of the
+   * archive-then-purge lifecycle — throws 409 if the billing is still active.
+   */
+  async purge(userId: string, id: string): Promise<void> {
+    const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
+    await cachedRepo.purge(id);
+  },
+
+  /**
    * Write a new billing document within an already-open Firestore transaction.
    * Called by the reading service when auto-creating billings during a reading
    * create/update transaction. Existence checks are skipped because the caller

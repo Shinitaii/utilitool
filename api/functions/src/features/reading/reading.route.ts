@@ -7,6 +7,7 @@ import {
   updateReading,
   softDeleteReading,
   restoreReading,
+  purgeReading,
   createBatchReadings,
   updateBatchReadings,
   ocrReading,
@@ -99,6 +100,15 @@ router.patch(
   validateRequest({params: ReadingByIdParamsDTOSchema}),
   requireRole("admin", "landlord"),
   restoreReading
+);
+
+// Second step of the archive-then-purge lifecycle (right-to-erasure): only
+// works on an already-archived (is_deleted=true) reading, admin-only.
+router.delete(
+  "/:id/purge",
+  validateRequest({params: ReadingByIdParamsDTOSchema}),
+  requireRole("admin"),
+  purgeReading
 );
 
 export const readingRouter = router;

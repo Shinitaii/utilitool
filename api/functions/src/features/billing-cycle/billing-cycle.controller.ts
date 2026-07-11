@@ -127,6 +127,17 @@ export const restoreBillingCycle = async (
   res.status(200).json(result);
 };
 
+export const purgeBillingCycle = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  const {id} = req.params as unknown as BillingCycleByIdParamsDTO;
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
+  await billingCycleService.purge(userId, id);
+  res.status(204).send();
+};
+
 export const ocrBillingCycle = async (
   req: AuthenticatedRequest,
   res: Response

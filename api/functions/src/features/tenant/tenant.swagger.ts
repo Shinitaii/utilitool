@@ -597,6 +597,47 @@ export const tenantPaths = {
       },
     },
   },
+  "/tenants/{id}/purge": {
+    delete: {
+      tags: ["Tenants"],
+      summary: "Permanently delete an archived tenant",
+      description:
+        "Second step of the archive-then-purge lifecycle (right-to-erasure). Only works on a " +
+        "tenant already soft-deleted via DELETE /:id. Admin-only.",
+      security: [{BearerAuth: []}],
+      parameters: [
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: {type: "string", minLength: 1},
+        },
+      ],
+      responses: {
+        "204": {description: "Tenant permanently deleted"},
+        "401": {
+          description: "Unauthorized",
+          content: {"application/json": {schema: {$ref: "#/components/schemas/ErrorResponse"}}},
+        },
+        "403": {
+          description: "Forbidden (requires admin role)",
+          content: {"application/json": {schema: {$ref: "#/components/schemas/ErrorResponse"}}},
+        },
+        "404": {
+          description: "Tenant not found",
+          content: {"application/json": {schema: {$ref: "#/components/schemas/ErrorResponse"}}},
+        },
+        "409": {
+          description: "Tenant is still active — archive it first via DELETE /:id",
+          content: {"application/json": {schema: {$ref: "#/components/schemas/ErrorResponse"}}},
+        },
+        "500": {
+          description: "Internal server error",
+          content: {"application/json": {schema: {$ref: "#/components/schemas/ErrorResponse"}}},
+        },
+      },
+    },
+  },
   "/tenants/soft/{id}": {
     delete: {
       tags: ["Tenants"],

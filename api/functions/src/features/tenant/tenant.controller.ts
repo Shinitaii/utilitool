@@ -127,6 +127,17 @@ export const restoreTenant = async (
   res.status(200).json(result);
 };
 
+export const purgeTenant = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  const {id} = req.params as unknown as TenantByIdParamsDTO;
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
+  await tenantService.purge(userId, id);
+  res.status(204).send();
+};
+
 export const clearCache = async (
   _req: AuthenticatedRequest,
   res: Response

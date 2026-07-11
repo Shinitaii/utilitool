@@ -140,6 +140,17 @@ export const restoreReading = async (
   res.status(200).json(result);
 };
 
+export const purgeReading = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  const {id} = req.params as unknown as ReadingByIdParamsDTO;
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
+  await readingService.purge(id);
+  res.status(204).send();
+};
+
 export const ocrReading = async (
   req: AuthenticatedRequest,
   res: Response

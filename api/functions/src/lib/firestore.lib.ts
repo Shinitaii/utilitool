@@ -2,6 +2,7 @@
 import {firestore} from "../config/firebase.config";
 import {BaseModel, WithoutBaseModel} from "../utils/model.util";
 import {snapshotToModel} from "../utils/firestore.util";
+import {AppError} from "../utils/error.util";
 
 const withCreateTimestamps = <T extends Record<string, unknown>>(document: T) => ({
   ...document,
@@ -108,6 +109,43 @@ export const restoreDocument = async <T extends BaseModel>(
 
 export const deleteDocument = async (collectionName: string, documentId: string) => {
   await documentRef(collectionName, documentId).delete();
+};
+
+/**
+ * Fetches a document regardless of its `is_deleted` state, unlike `getDocument`
+ * which returns null for soft-deleted records. Used by `purgeDocument` to
+ * verify a record is already archived before permanently removing it.
+ */
+export const getDocumentIncludingDeleted = async <T extends BaseModel>(
+  collectionName: string,
+  documentId: string,
+): Promise<T | null> => {
+  const snapshot = await documentRef(collectionName, documentId).get();
+  if (!snapshot.exists) return null;
+  return snapshotToModel<T>(snapshot);
+};
+
+/**
+ * Permanently removes a document, but only if it has already been
+ * soft-deleted (`is_deleted: true`). This enforces the archive-then-purge
+ * lifecycle at the lowest layer, so no service can accidentally expose a
+ * one-step irreversible delete by skipping a higher-level check.
+ */
+export const purgeDocument = async (collectionName: string, documentId: string): Promise<void> => {
+  const reference = documentRef(collectionName, documentId);
+  const snapshot = await reference.get();
+
+  if (!snapshot.exists) {
+    throw new AppError(404, "Record not found");
+  }
+  if (snapshot.data()?.is_deleted !== true) {
+    throw new AppError(
+      409,
+      "Cannot permanently delete an active record. Archive it first (DELETE /:id), then purge."
+    );
+  }
+
+  await reference.delete();
 };
 
 // Batch creates

@@ -676,6 +676,83 @@ export const meterGroupPaths = {
       },
     },
   },
+  "/meter-groups/{id}/purge": {
+    delete: {
+      tags: ["Meter Groups"],
+      summary: "Permanently delete an archived meter group",
+      description:
+        "Second step of the archive-then-purge lifecycle (right-to-erasure). Only works on a " +
+        "meter group already soft-deleted via DELETE /:id — permanently removes it and its " +
+        "already-archived readings/billings. Admin-only.",
+      security: [{BearerAuth: []}],
+      parameters: [
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: {
+            type: "string",
+            minLength: 1,
+          },
+        },
+      ],
+      responses: {
+        "204": {
+          description: "Meter group permanently deleted",
+        },
+        "401": {
+          description: "Unauthorized",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/ErrorResponse",
+              },
+            },
+          },
+        },
+        "403": {
+          description: "Forbidden (requires admin role)",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/ErrorResponse",
+              },
+            },
+          },
+        },
+        "404": {
+          description: "Meter group not found",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/ErrorResponse",
+              },
+            },
+          },
+        },
+        "409": {
+          description: "Meter group is still active — archive it first via DELETE /:id",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/ErrorResponse",
+              },
+            },
+          },
+        },
+        "500": {
+          description: "Internal server error",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/ErrorResponse",
+              },
+            },
+          },
+        },
+      },
+    },
+  },
   "/meter-groups/soft/{id}": {
     delete: {
       tags: ["Meter Groups"],

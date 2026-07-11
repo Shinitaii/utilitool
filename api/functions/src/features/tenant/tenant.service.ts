@@ -223,4 +223,13 @@ export const tenantService = {
     const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
     return cachedRepo.restore(id);
   },
+
+  /**
+   * Permanently delete an already-archived tenant. Second step of the
+   * archive-then-purge lifecycle — throws 409 if the tenant is still active.
+   */
+  async purge(userId: string, id: string): Promise<void> {
+    const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
+    await cachedRepo.purge(id);
+  },
 };
