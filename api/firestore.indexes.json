@@ -4,263 +4,195 @@
       "collectionGroup": "billing_cycles",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "is_deleted",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "created_at",
-          "order": "DESCENDING"
-        }
-      ]
+        { "fieldPath": "billing_start_date", "order": "ASCENDING" },
+        { "fieldPath": "is_deleted", "order": "ASCENDING" },
+        { "fieldPath": "meter_group_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
     },
     {
       "collectionGroup": "billing_cycles",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "billing_start_date",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "is_deleted",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "meter_group_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "created_at",
-          "order": "DESCENDING"
-        }
-      ]
+        { "fieldPath": "is_deleted", "order": "ASCENDING" },
+        { "fieldPath": "billing_start_date", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "billing_cycles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "is_deleted", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
     },
     {
       "collectionGroup": "billings",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "current_reading_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "is_deleted",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "created_at",
-          "order": "DESCENDING"
-        }
-      ]
+        { "fieldPath": "current_reading_id", "order": "ASCENDING" },
+        { "fieldPath": "is_deleted", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
     },
     {
       "collectionGroup": "billings",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "is_deleted",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "property_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "created_at",
-          "order": "DESCENDING"
-        }
-      ]
+        { "fieldPath": "is_deleted", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "billings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "is_deleted", "order": "ASCENDING" },
+        { "fieldPath": "property_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
     },
     {
       "collectionGroup": "meter_groups",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "is_deleted",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "created_at",
-          "order": "DESCENDING"
-        }
-      ]
+        { "fieldPath": "is_deleted", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
     },
     {
       "collectionGroup": "meter_groups",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "is_deleted",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "utility_type",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "created_at",
-          "order": "DESCENDING"
-        }
-      ]
+        { "fieldPath": "is_deleted", "order": "ASCENDING" },
+        { "fieldPath": "utility_type", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
     },
     {
       "collectionGroup": "properties",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "is_deleted",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "room_name",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "created_at",
-          "order": "DESCENDING"
-        }
-      ]
+        { "fieldPath": "is_deleted", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
     },
     {
       "collectionGroup": "properties",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "is_deleted",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "created_at",
-          "order": "DESCENDING"
-        }
-      ]
+        { "fieldPath": "is_deleted", "order": "ASCENDING" },
+        { "fieldPath": "room_name", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
     },
     {
       "collectionGroup": "readings",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "is_deleted",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "created_at",
-          "order": "DESCENDING"
-        }
-      ]
+        { "fieldPath": "is_deleted", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
     },
     {
       "collectionGroup": "readings",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "is_deleted",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "meter_group_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "created_at",
-          "order": "DESCENDING"
-        }
-      ]
+        { "fieldPath": "is_deleted", "order": "ASCENDING" },
+        { "fieldPath": "meter_group_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
     },
     {
       "collectionGroup": "readings",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "is_deleted",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "meter_group_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "property_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "reading_date",
-          "order": "DESCENDING"
-        }
-      ]
+        { "fieldPath": "is_deleted", "order": "ASCENDING" },
+        { "fieldPath": "meter_group_id", "order": "ASCENDING" },
+        { "fieldPath": "property_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
     },
     {
       "collectionGroup": "readings",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "is_deleted",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "meter_group_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "reading_date",
-          "order": "DESCENDING"
-        }
-      ]
+        { "fieldPath": "is_deleted", "order": "ASCENDING" },
+        { "fieldPath": "meter_group_id", "order": "ASCENDING" },
+        { "fieldPath": "property_id", "order": "ASCENDING" },
+        { "fieldPath": "reading_date", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
     },
     {
       "collectionGroup": "readings",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "is_deleted",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "meter_group_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "property_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "created_at",
-          "order": "DESCENDING"
-        }
-      ]
+        { "fieldPath": "is_deleted", "order": "ASCENDING" },
+        { "fieldPath": "meter_group_id", "order": "ASCENDING" },
+        { "fieldPath": "reading_date", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "readings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "is_deleted", "order": "ASCENDING" },
+        { "fieldPath": "property_id", "order": "ASCENDING" },
+        { "fieldPath": "reading_date", "order": "ASCENDING" },
+        { "fieldPath": "__name__", "order": "ASCENDING" }
+      ],
+      "density": "SPARSE_ALL"
     },
     {
       "collectionGroup": "tenants",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "is_deleted",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "created_at",
-          "order": "DESCENDING"
-        }
-      ]
+        { "fieldPath": "is_deleted", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
     },
     {
       "collectionGroup": "tenants",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "is_deleted",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "property_id",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "created_at",
-          "order": "DESCENDING"
-        }
-      ]
+        { "fieldPath": "is_deleted", "order": "ASCENDING" },
+        { "fieldPath": "property_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
     }
   ],
   "fieldOverrides": []

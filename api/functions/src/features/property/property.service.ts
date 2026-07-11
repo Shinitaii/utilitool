@@ -8,7 +8,7 @@ import {readingRepository} from "../reading/reading.repository";
 import {PropertyValidator} from "./property.validator";
 import {listRemove} from "../../utils/list-cache.util";
 import {cacheDel, cacheSet} from "../../utils/cache.util";
-import {cascadeDeleteProperty, cascadeRestoreProperty} from "../../utils/cascade-delete.util";
+import {cascadeDeleteProperty, cascadeRestoreProperty, cascadePurgeProperty} from "../../utils/cascade-delete.util";
 import {CachedRepository} from "../../lib/cached-repository.lib";
 import {Timestamp} from "firebase-admin/firestore";
 
@@ -142,6 +142,15 @@ export const propertyService = {
     const restored = await propertyRepository.getById(id);
     await cacheSet(`utilitool:properties:id:${id}`, restored!, CACHE_TTL);
     return restored!;
+  },
+
+  /**
+   * Permanently delete an already-archived property and its already-archived
+   * readings/billings. Second step of the archive-then-purge lifecycle — throws
+   * 409 if the property is still active. See cascadePurgeProperty.
+   */
+  async purge(id: string): Promise<void> {
+    await cascadePurgeProperty(id);
   },
 
   /**

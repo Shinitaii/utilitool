@@ -191,7 +191,7 @@ export const billingCyclePaths = {
     post: {
       tags: ["Billing Cycles"],
       summary: "Extract billing data from utility bill photo",
-      description: "Uses Gemini vision to extract billing_start_date, billing_end_date, billing_consumption, billing_rate, and raw_amount from a Philippine utility bill (Meralco/Manila Water).",
+      description: "Uses the user's configured llm-config vision model to extract billing_start_date, billing_end_date, billing_consumption, billing_rate, and raw_amount from a Philippine utility bill (Meralco/Manila Water). Returns 404 if no vision_model is configured.",
       requestBody: {
         required: true,
         content: {
@@ -602,6 +602,47 @@ export const billingCyclePaths = {
               },
             },
           },
+        },
+      },
+    },
+  },
+  "/billing-cycles/{id}/purge": {
+    delete: {
+      tags: ["Billing Cycles"],
+      summary: "Permanently delete an archived billing cycle",
+      description:
+        "Second step of the archive-then-purge lifecycle (right-to-erasure). Only works on a " +
+        "billing cycle already soft-deleted via DELETE /:id. Admin-only.",
+      security: [{BearerAuth: []}],
+      parameters: [
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: {type: "string", minLength: 1},
+        },
+      ],
+      responses: {
+        "204": {description: "Billing cycle permanently deleted"},
+        "401": {
+          description: "Unauthorized",
+          content: {"application/json": {schema: {$ref: "#/components/schemas/ErrorResponse"}}},
+        },
+        "403": {
+          description: "Forbidden (requires admin role)",
+          content: {"application/json": {schema: {$ref: "#/components/schemas/ErrorResponse"}}},
+        },
+        "404": {
+          description: "Billing cycle not found",
+          content: {"application/json": {schema: {$ref: "#/components/schemas/ErrorResponse"}}},
+        },
+        "409": {
+          description: "Billing cycle is still active — archive it first via DELETE /:id",
+          content: {"application/json": {schema: {$ref: "#/components/schemas/ErrorResponse"}}},
+        },
+        "500": {
+          description: "Internal server error",
+          content: {"application/json": {schema: {$ref: "#/components/schemas/ErrorResponse"}}},
         },
       },
     },

@@ -127,18 +127,31 @@ export const restoreBillingCycle = async (
   res.status(200).json(result);
 };
 
+export const purgeBillingCycle = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  const {id} = req.params as unknown as BillingCycleByIdParamsDTO;
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
+  await billingCycleService.purge(userId, id);
+  res.status(204).send();
+};
+
 export const ocrBillingCycle = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
   const {image_url} = req.body as OcrBillingCycleDTO;
-  const extracted = await ImageExtractionService.extractBillingFromImage(image_url);
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError(401, "User not authenticated");
+  const extracted = await ImageExtractionService.extractBillingFromImage(image_url, userId);
   const validated = OcrBillingCycleResponseSchema.parse({
     billing_start_date: extracted.billing_start_date,
     billing_end_date: extracted.billing_end_date,
     billing_consumption: extracted.billing_consumption,
     billing_rate: extracted.billing_rate,
-    raw_amount: extracted.billing_rate * extracted.billing_consumption,
+    raw_amount: extracted.raw_amount,
   });
   res.status(200).json(validated);
 };

@@ -56,6 +56,10 @@ This section documents key improvements made during the comprehensive codebase a
 - Removed hard delete endpoints entirely — only soft delete is available
 - No destructive operations on production data
 - `PATCH /:id/restore` to restore deleted resources
+- **Update**: a guarded, admin-only permanent-delete ("purge") endpoint was reintroduced for
+  right-to-erasure compliance — see "Archive-Then-Purge Lifecycle" below. It is a deliberate
+  second step gated on the record already being archived, not a return to the original
+  one-step hard delete this section originally removed.
 
 ### Timestamp Serialization (D2)
 - JSON responses now convert Firestore Timestamps to ISO 8601 strings
@@ -162,15 +166,14 @@ Represents utility type containers (electricity, water).
 | GET | `/meter-groups/:id` | Get single meter group |
 | PATCH | `/meter-groups/:id` | Update meter group |
 | PATCH | `/meter-groups/batch` | Batch update (1–10 items) |
-| POST | `/meter-groups/:id/reset` | **@deprecated** Record a physical meter reset (bumps version, snapshots last reading) — superseded by per-property version tracking; logs a warning on every call |
 | DELETE | `/meter-groups/:id` | Soft delete (set is_deleted flag) |
 | PATCH | `/meter-groups/:id/restore` | Restore deleted meter group (clear is_deleted flag) |
+| DELETE | `/meter-groups/:id/purge` | Permanently delete an already-archived meter group (admin-only, 409 if not archived) |
 
 **Business rules**:
 - Unique meter_name per utility_type
 - utility_type must be "electricity" or "water"
 - Soft delete sets `deleted_at` timestamp
-- **@deprecated**: `current_version`/`versions` and `POST /:id/reset` — version tracking has moved to `Property.meter_groups[entry].current_version`/`.versions` (per-property, supports submeters). These MeterGroup-level fields/endpoint are kept only for backward compatibility and emit `logger.warn` on use. A backfill migration (`src/migrations/backfill-property-meter-versions.ts`) copies existing MeterGroup version data onto property entries; once run in prod, the deprecated fields/endpoint can be removed entirely
 - Reset requires at least one existing reading; uses the latest non-deleted reading as the closing value
 - Requires `admin` or `landlord` role
 - **Cascade delete**: `DELETE /:id` soft-deletes the meter group + all readings for this meter group + all billings referencing those readings (atomic transaction)
@@ -196,6 +199,7 @@ Represents buildings/units that consume utilities.
 | PATCH | `/properties/batch` | Batch update |
 | DELETE | `/properties/:id` | Soft delete (set is_deleted flag) |
 | PATCH | `/properties/:id/restore` | Restore property (clear is_deleted flag) |
+| DELETE | `/properties/:id/purge` | Permanently delete an already-archived property (admin-only, 409 if not archived) |
 
 **Business rules**:
 - Must reference valid meter_group_id(s) via the `meter_groups` map
@@ -222,6 +226,7 @@ Represents individual renters/occupants.
 | PATCH | `/tenants/batch` | Batch update |
 | DELETE | `/tenants/:id` | Soft delete (set is_deleted flag) |
 | PATCH | `/tenants/:id/restore` | Restore tenant (clear is_deleted flag) |
+| DELETE | `/tenants/:id/purge` | Permanently delete an already-archived tenant (admin-only, 409 if not archived) |
 
 **Business rules**:
 - Unique tenant_name per property
@@ -246,6 +251,7 @@ Represents snapshots of meter consumption. **Single create has a critical side e
 | PATCH | `/readings/batch` | Batch update |
 | DELETE | `/readings/:id` | Soft delete (set is_deleted flag) |
 | PATCH | `/readings/:id/restore` | Restore reading (clear is_deleted flag) |
+| DELETE | `/readings/:id/purge` | Permanently delete an already-archived reading (admin-only, 409 if not archived) |
 
 **Business rules**:
 - Must reference valid meter_group_id
@@ -287,6 +293,7 @@ Represents individual bill records linking a property to a reading pair. **Billi
 | PATCH | `/billings/batch` | Batch update |
 | DELETE | `/billings/:id` | Soft delete (set is_deleted flag) |
 | PATCH | `/billings/:id/restore` | Restore billing (clear is_deleted flag) |
+| DELETE | `/billings/:id/purge` | Permanently delete an already-archived billing (admin-only, 409 if not archived) |
 
 **Business rules**:
 - Must reference valid property_id, previous_reading_id, current_reading_id
@@ -310,13 +317,14 @@ Represents billing periods with validation and rate calculation.
 |--------|------|---------|
 | POST | `/billing-cycles` | Create billing cycle + validate |
 | POST | `/billing-cycles/batch` | Batch create |
-| POST | `/billing-cycles/ocr` | Extract billing data from utility bill photo (Gemini vision) |
+| POST | `/billing-cycles/ocr` | Extract billing data from utility bill photo (vision OCR via `llm-config` `vision_model`) |
 | GET | `/billing-cycles` | List with filters (billingStartDate, billingEndDate) + sorting (sortBy=[created_at,billing_start_date], sortOrder=[asc,desc]) + pagination |
 | GET | `/billing-cycles/:id` | Get single cycle |
 | PATCH | `/billing-cycles/:id` | Update cycle — also the correction path for company errors in rate/consumption/dates (UI exposes this via an edit modal on the Billings page) |
 | PATCH | `/billing-cycles/batch` | Batch update |
 | DELETE | `/billing-cycles/:id` | Soft delete (set is_deleted flag) |
 | PATCH | `/billing-cycles/:id/restore` | Restore cycle (clear is_deleted flag) |
+| DELETE | `/billing-cycles/:id/purge` | Permanently delete an already-archived billing cycle (admin-only, 409 if not archived) |
 
 **Business rules**:
 - billing_ids: Record<billingId, consumptionAmount> — all IDs must exist + be valid
@@ -337,7 +345,7 @@ Represents billing periods with validation and rate calculation.
 **OCR endpoint** (`POST /billing-cycles/ocr`):
 - Accepts `{ image_url: string }` (data URL or HTTPS URL of a utility bill photo)
 - Returns `{ billing_start_date, billing_end_date, billing_consumption, billing_rate, raw_amount }`
-- Returns 422 if Gemini cannot extract the data or any numeric field is invalid
+- Returns 404 if the user has no `vision_model` configured in `llm-config` (no fallback), 422 if the vision model cannot extract the data or any numeric field is invalid
 - Requires `admin` or `landlord` role
 
 ---
@@ -346,7 +354,9 @@ Represents billing periods with validation and rate calculation.
 
 Located: `src/features/image-extraction/`
 
-Provides Gemini Vision OCR extraction for two use cases: reading meter photos and utility bill photos.
+Provides vision OCR extraction for two use cases: reading meter photos and utility bill photos.
+Fully driven by the authenticated user's `llm-config` `vision_model` — Groq or Ollama Cloud only,
+no Gemini, no fallback.
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -355,8 +365,8 @@ Provides Gemini Vision OCR extraction for two use cases: reading meter photos an
 
 **Business rules**:
 - Accepts `{ image_url: string }` — data URL or HTTPS URL
-- Returns 400 if extraction fails or image URL is invalid
-- Backed by `src/lib/gemini.lib.ts` (Google Gemini Vision API)
+- Returns 404 if the user has no `vision_model` configured in `llm-config`, 422 if extraction fails, 400 if the image URL is invalid
+- Backed by `src/lib/vision-ocr.lib.ts` (via `src/lib/llm.lib.ts`'s `LlmClient`, same Groq/Ollama Cloud providers as the chatbot)
 - Requires authentication (BearerAuth)
 
 ---
@@ -385,22 +395,41 @@ Read-only analytics endpoints for billing summaries and trends. Accepts optional
 
 Located: `src/features/llm-config/`
 
-Stores the tenant's chosen LLM provider + model + API key for the insight chatbot. The API key is AES-256-GCM encrypted at rest via `src/lib/crypto.lib.ts` (`LLM_CONFIG_MASTER_KEY`) — never stored or returned in plaintext.
+Stores two **independent** provider configs per tenant: a chat config (used by the insight chatbot) and a vision config (used by OCR) — separate because not every provider has a usable free vision model (e.g. Ollama Cloud has none as of this writing, so a common setup is Ollama Cloud for chat + Groq for vision). When the vision provider matches the chat provider, the vision config reuses the chat API key and `apiKey` is optional on upsert; when it differs, `apiKey` is required (first time, or when switching to yet another distinct provider). No Gemini fallback — OCR 404s until a vision config exists. API keys are AES-256-GCM encrypted at rest via `src/lib/crypto.lib.ts` (`LLM_CONFIG_MASTER_KEY`) — never stored or returned in plaintext.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/llm-config` | Fetch the current provider/model config (no API key in response) |
-| PATCH | `/llm-config` | Upsert provider (`groq` \| `ollama_cloud`), model, and API key |
+| GET | `/llm-config` | Fetch both configs: `{provider, model, hasKey, visionProvider, visionModel, visionHasKey}` (no API keys in response) |
+| PATCH | `/llm-config` | Upsert the **chat** config: provider (`groq` \| `ollama_cloud`), model, apiKey (required on first setup) |
+| PATCH | `/llm-config/vision` | Upsert the **vision** config: provider, model, apiKey (optional if provider matches the chat provider — reuses that key; required otherwise). 400 if no chat config exists yet, or if a required apiKey is missing |
 
-### Chatbot (`/chatbot` — protected)
+### Chatbot (`/chatbot` — protected, admin-only)
 
 Located: `src/features/chatbot/`
 
 Conversational insight assistant scoped to the authenticated user's own utility/billing data. Uses `src/lib/llm.lib.ts` (`LlmClient`) — a thin OpenAI-compatible chat-completions client shared by both supported providers — with tool-calling into `chatbot.tools.ts`, which reads properties/readings/billings/billing-cycles by name (never raw Firestore IDs) via existing repositories. `chatbot.guard.ts` regex-filters the final assistant response for jailbreak/off-topic patterns as defense-in-depth behind the system prompt.
 
+Restricted to the `admin` role (`requireRole("admin")` in `chatbot.route.ts`) — `landlord`/`assistant` accounts get `403`. There's no mobile chatbot UI, and the web `ChatWidget` is gated to `role === 'admin'` in `ui/src/routes/(app)/+layout.svelte` to match.
+
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/chatbot` | Send a message (+ optional up-to-20-message history); returns `{ reply }` |
+| POST | `/chatbot` | Send a message (+ optional up-to-20-message history); returns `{ reply }`. Admin-only. |
+
+### Photo Settings (`/photo-settings` — protected)
+
+Located: `src/features/photo-settings/`
+
+Per-user preference for whether meter-reading photos get persisted (`image_url`) when a reading is created — separate collection, same one-doc-per-user pattern as `llm-config`. Unlike `llm-config`, `GET` never 404s: no stored doc just means the default applies.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/photo-settings` | Fetch `{savePhotos: boolean}` — defaults to `false` if never configured |
+| PATCH | `/photo-settings` | Set `{savePhotos: boolean}` |
+
+**Business rules**:
+- Default is `false` (disabled) — a captured/uploaded photo is still used transiently for OCR suggest (`POST /readings/ocr`, `POST /image-extraction/readings`), but web and mobile clients strip `image_url` from the create payload unless this is `true`.
+- Utility-bill / billing-cycle photos are **never** persisted regardless of this setting — there's no `image_url` field on the billing-cycle model to begin with, so this setting only governs meter-reading photos.
+- Enforcement is client-side (web `readings` page, mobile `CaptureReadings`) — the backend doesn't inspect this setting itself; `POST /readings`/`POST /readings/batch` still accept an optional `image_url` as before.
 
 ### Stub & Incomplete Features
 
@@ -408,7 +437,7 @@ The following feature folders exist but are **not fully implemented**:
 
 | Folder | Status | Notes |
 |--------|--------|-------|
-| `bills/` | ⚠️ Partial | `POST /bills/ocr` — OCR via Gemini; no model/service/repository. Functionally overlaps with `image-extraction/billings` |
+| `bills/` | ⚠️ Partial | `POST /bills/ocr` — OCR via `llm-config` `vision_model`; no model/service/repository. Functionally overlaps with `image-extraction/billings` |
 | `user/` | ⚠️ Partial | `POST /users` — create user record; no model/service/repository. Auth covered by `auth/` |
 | `audit/` | ❌ Stub | `audit.model.ts` only — not mounted |
 
@@ -424,6 +453,7 @@ The following feature folders exist but are **not fully implemented**:
 | Batch update | PATCH | `/batch` | Multiple partial modifications |
 | Soft delete | DELETE | `/:id` | Semantic: "delete from user view" (mark as deleted) |
 | Restore | PATCH | `/:id/restore` | Restore from deletion (state change) |
+| Purge (permanent delete) | DELETE | `/:id/purge` | Irreversibly remove an already-archived resource — admin-only |
 
 **Cascade Deletion Strategy**:
 - **Meter Group DELETE** → soft-deletes the meter group + all readings for that meter group + all billings referencing those readings
@@ -438,10 +468,44 @@ The following feature folders exist but are **not fully implemented**:
 
 **Rationale**: 
 - **DELETE** is semantically correct for soft deletion — from the user's perspective, the resource is gone (hidden)
-- No hard delete endpoints — soft delete is the only deletion option, ensuring data safety
+- No one-step hard delete — a resource must be archived (soft-deleted) before it can ever be
+  permanently removed, ensuring data safety
 - **Cascade** prevents orphaned data (e.g., billings referencing deleted readings) and maintains referential integrity
 - **PATCH** is used for all state modifications (updates, restore)
 - Timestamps are serialized to ISO strings in responses (D2 fix) for proper JSON handling
+
+---
+
+## Archive-Then-Purge Lifecycle (Right-to-Erasure)
+
+Every entity's deletion lifecycle has two steps, not one:
+
+1. **Archive**: `DELETE /:id` (soft delete, any `admin`/`landlord` — see per-feature role table
+   above). Reversible via `PATCH /:id/restore`.
+2. **Purge**: `DELETE /:id/purge` — permanently removes the record. **Admin-only.** Throws
+   `409` if the record is not already archived (`is_deleted !== true`), and `404` if it
+   doesn't exist. There is no direct path from an active record to permanent deletion — the
+   two-step gate is enforced at the lowest layer (`Repository.purge()` /
+   `firestore.lib.ts`'s `purgeDocument()`), not just in a controller check, so no service can
+   accidentally expose a one-step irreversible delete.
+
+This exists to support right-to-erasure / data-minimization requests (e.g. a tenant asking
+for their data to be permanently removed) without reintroducing the accidental-data-loss risk
+that the original D1 audit removed hard delete to prevent — purge can only ever act on data a
+staff member has already deliberately archived.
+
+**Cascade purge**: meter-group, property, and reading purges mirror their soft-delete cascade
+scope, but only ever touch children that are *also already archived* — `cascadePurgeMeterGroup`,
+`cascadePurgeProperty`, `cascadePurgeReading` in `src/utils/cascade-delete.util.ts`. Billing,
+billing-cycle, and tenant purges are leaf-only (no cascade), via `Repository.purge()` /
+`CachedRepository.purge()`.
+
+**Key abstraction-layer additions** (`src/lib/`):
+- `firestore.lib.ts`: `getDocumentIncludingDeleted()` (unlike `getDocument`, doesn't filter out
+  archived records), `purgeDocument()` (the guarded hard-delete primitive)
+- `repository.lib.ts`: `Repository.purge(id)` — every feature's repository gets this for free
+- `cached-repository.lib.ts`: `CachedRepository.purge(id)` — invalidates the ID cache (archived
+  items are never in the active list cache, so no list-cache invalidation is needed)
 
 ---
 
@@ -522,7 +586,7 @@ api/functions/src/features/property/
 api/functions/src/features/image-extraction/
 ├── image-extraction.model.ts
 ├── image-extraction.dto.ts
-├── image-extraction.service.ts    → Calls gemini.lib.ts for OCR
+├── image-extraction.service.ts    → Calls vision-ocr.lib.ts (LlmClient) for OCR
 ├── image-extraction.controller.ts
 ├── image-extraction.route.ts
 ├── image-extraction.swagger.ts
@@ -543,7 +607,7 @@ api/functions/src/features/reports/
 ### LLM Config
 ```
 api/functions/src/features/llm-config/
-├── llm-config.model.ts        → LlmConfig (provider, model, encrypted_api_key, iv, auth_tag)
+├── llm-config.model.ts        → LlmConfig (provider, model, encrypted_api_key, iv, auth_tag, vision_provider?, vision_model?, encrypted_vision_api_key?, vision_iv?, vision_auth_tag?)
 ├── llm-config.dto.ts
 ├── llm-config.repository.ts
 ├── llm-config.service.ts      → Encrypts/decrypts API key via lib/crypto.lib.ts
@@ -562,6 +626,18 @@ api/functions/src/features/chatbot/
 ├── chatbot.controller.ts
 ├── chatbot.route.ts
 └── chatbot.swagger.ts
+```
+
+### Photo Settings
+```
+api/functions/src/features/photo-settings/
+├── photo-settings.model.ts    → PhotoSettings (save_photos: boolean)
+├── photo-settings.dto.ts
+├── photo-settings.repository.ts → One doc per user, same pattern as llm-config.repository.ts
+├── photo-settings.service.ts  → get() defaults to {savePhotos: false} when no doc exists (never 404s)
+├── photo-settings.controller.ts
+├── photo-settings.route.ts
+└── photo-settings.swagger.ts
 ```
 
 ### Authentication (special case — public routes)
@@ -591,7 +667,10 @@ api/functions/src/
 │   ├── repository.lib.ts        → Generic Repository<T> class (all CRUD)
 │   ├── firestore.lib.ts         → Low-level Firestore ops (timestamps, batch)
 │   ├── auth.lib.ts              → JWT generation (jsonwebtoken)
-│   ├── llm.lib.ts               → LlmClient — OpenAI-compatible chat-completions client (Groq, Ollama Cloud)
+│   ├── llm.lib.ts               → LlmClient — OpenAI-compatible chat-completions client (Groq, Ollama Cloud); serializes text+image content per-provider
+│   ├── vision-ocr.lib.ts        → Vision OCR (readings, bills) via LlmClient — no Gemini, requires `vision_model`
+│   ├── image-fetch.util.ts      → SSRF-guarded image fetch/decode shared by vision-ocr.lib.ts
+│   ├── ocr-parsing.util.ts      → OCR prompts + response parsing shared by vision-ocr.lib.ts
 │   ├── crypto.lib.ts            → AES-256-GCM encrypt/decryptSecret() for LLM API keys
 │   └── ... (Realtime DB, storage stubs)
 └── utils/
@@ -847,7 +926,6 @@ Dev environment (`APP_ENV=staging`) connects directly to `utilitool-staging` Fir
 APP_ENV=staging
 GCLOUD_PROJECT=utilitool-staging
 GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/utilitool-staging-firebase-adminsdk-fbsvc-1fe128504a.json
-GEMINI_API_KEY=<optional — OCR returns mock data if absent>
 REDIS_URL=<optional — rate limiting falls back to in-memory store if absent>
 LLM_CONFIG_MASTER_KEY=<base64, 32 bytes — required to encrypt/decrypt stored LLM API keys>
 ```
@@ -877,7 +955,7 @@ export APP_ENV=staging
 export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/secrets/utilitool-staging-firebase-adminsdk-fbsvc-50221e4bd0.json
 npm run dev:watch
 ```
-Connects to `utilitool-staging` Firebase project. Loads additional env vars (GCLOUD_PROJECT, GEMINI_API_KEY) from `secrets/.env.staging` — see `API_SETUP.md`.
+Connects to `utilitool-staging` Firebase project. Loads additional env vars (GCLOUD_PROJECT) from `secrets/.env.staging` — see `API_SETUP.md`. OCR now requires each user to configure a `vision_model` via `PATCH /llm-config`, not an env var.
 
 **Docker alternative**: `docker-compose up` from the repo root starts API, UI, and the mobile web preview, each with source bind-mounted and file watching in polling mode (needed for reliable hot reload from a Windows host). See `docker-compose.yml`.
 

@@ -8,7 +8,7 @@ import {meterGroupRepository} from "../meter-group/meter-group.repository";
 import {MeterGroup} from "../meter-group/meter-group.model";
 import {cacheSet, cacheDel} from "../../utils/cache.util";
 import {listRemove} from "../../utils/list-cache.util";
-import {cascadeDeleteReading, cascadeRestoreReading} from "../../utils/cascade-delete.util";
+import {cascadeDeleteReading, cascadeRestoreReading, cascadePurgeReading} from "../../utils/cascade-delete.util";
 import {CachedRepository} from "../../lib/cached-repository.lib";
 import {createReadingWithAutoBilling, createBatchReadingsWithAutoBilling, resolveMeterVersion} from "./reading.util";
 import {propertyRepository} from "../property/property.repository";
@@ -250,5 +250,14 @@ export const readingService = {
     const restored = await readingRepository.getById(id);
     await cacheSet(`utilitool:readings:id:${restored!.id}`, restored!, CACHE_TTL);
     return restored!;
+  },
+
+  /**
+   * Permanently delete an already-archived reading and its already-archived
+   * billings. Second step of the archive-then-purge lifecycle — throws 409 if
+   * the reading is still active. See cascadePurgeReading.
+   */
+  async purge(id: string): Promise<void> {
+    await cascadePurgeReading(id);
   },
 };

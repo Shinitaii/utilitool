@@ -9,4 +9,5 @@
   USERS: "users",
   READING_LOCKS: "reading_locks",
   LLM_CONFIG: "llm_config",
+  PHOTO_SETTINGS: "photo_settings",
 };

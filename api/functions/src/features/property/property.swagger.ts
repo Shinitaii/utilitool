@@ -656,6 +656,48 @@ export const propertyPaths = {
       },
     },
   },
+  "/properties/{id}/purge": {
+    delete: {
+      tags: ["Properties"],
+      summary: "Permanently delete an archived property",
+      description:
+        "Second step of the archive-then-purge lifecycle (right-to-erasure). Only works on a " +
+        "property already soft-deleted via DELETE /:id — permanently removes it and its " +
+        "already-archived readings/billings. Admin-only.",
+      security: [{BearerAuth: []}],
+      parameters: [
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: {type: "string", minLength: 1},
+        },
+      ],
+      responses: {
+        "204": {description: "Property permanently deleted"},
+        "401": {
+          description: "Unauthorized",
+          content: {"application/json": {schema: {$ref: "#/components/schemas/ErrorResponse"}}},
+        },
+        "403": {
+          description: "Forbidden (requires admin role)",
+          content: {"application/json": {schema: {$ref: "#/components/schemas/ErrorResponse"}}},
+        },
+        "404": {
+          description: "Property not found",
+          content: {"application/json": {schema: {$ref: "#/components/schemas/ErrorResponse"}}},
+        },
+        "409": {
+          description: "Property is still active — archive it first via DELETE /:id",
+          content: {"application/json": {schema: {$ref: "#/components/schemas/ErrorResponse"}}},
+        },
+        "500": {
+          description: "Internal server error",
+          content: {"application/json": {schema: {$ref: "#/components/schemas/ErrorResponse"}}},
+        },
+      },
+    },
+  },
   "/properties/{id}/meter-groups/{meterGroupId}/reset": {
     post: {
       tags: ["Properties"],

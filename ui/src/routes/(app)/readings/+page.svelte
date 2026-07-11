@@ -20,6 +20,7 @@
 	import { toDate } from '$lib/utils/timestamp';
 	import { uploadToStorage } from '$lib/utils/firebase-storage';
 	import { compressImage } from '$lib/utils/image-compression';
+	import { getPhotoSettings } from '$lib/api/photo-settings';
 	import {
 		trueReading,
 		resolveCurrentVersion,
@@ -32,6 +33,7 @@
 	import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
 	import SelectionToolbar from '$lib/components/shared/SelectionToolbar.svelte';
 	import ImagePreview from '$lib/components/shared/ImagePreview.svelte';
+	import PhotoDropzone from '$lib/components/shared/PhotoDropzone.svelte';
 	import { createCrudStore } from '$lib/stores/crud.svelte';
 	import { Archive, Plus, X } from 'lucide-svelte';
 
@@ -70,6 +72,7 @@
 	let readingFormOpen = $state(false);
 	let readingFormTab = $state<'batch' | 'manual'>('batch');
 	let manualReadingLoading = $state(false);
+	let manualImageUploading = $state(false);
 	let manualReadingForm = $state<ManualReadingForm>({
 		meter_group_id: '',
 		property_id: '',
@@ -109,8 +112,18 @@
 
 	let isUpdating = $state(false);
 
+	// Defaults to false (don't persist photos to Storage) until loaded — matches the
+	// backend default so there's no window where an unloaded setting reads as "save".
+	let savePhotos = $state(false);
+
 	onMount(async () => {
 		await loadData();
+		try {
+			const settings = await getPhotoSettings();
+			savePhotos = settings.savePhotos;
+		} catch {
+			// Keep the safe default (don't persist) if the setting fails to load.
+		}
 	});
 
 	async function applyFilters() {
@@ -292,7 +305,8 @@
 					_seconds: Math.floor(new Date(manualReadingForm.reading_date).getTime() / 1000),
 					_nanoseconds: 0
 				},
-				image_url: manualReadingForm.image_url || undefined
+				image_url:
+					savePhotos && manualReadingForm.image_url ? manualReadingForm.image_url : undefined
 			} as any;
 
 			const isSeed = await shouldSeedReading(
@@ -330,20 +344,64 @@
 			// Compress image to avoid "request entity too large" errors
 			const compressedDataUrl = await compressImage(file, 800, 0.7);
 
-			// Show preview and enable Suggest immediately — don't wait for Storage
+			// Show preview and run Suggest immediately — don't wait for Storage
 			row.data_url = compressedDataUrl;
 			row.image_url = compressedDataUrl;
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to process image';
-		} finally {
 			row.is_uploading = false;
+			return;
 		}
+		row.is_uploading = false;
 
-		// Silently upgrade to a persistent Storage URL in the background
-		if (row.data_url) {
+		// Auto-suggest a reading value from the photo — no separate Suggest button.
+		await handleSuggestReading(rowIndex);
+
+		// Silently upgrade to a persistent Storage URL in the background — only when the
+		// user has opted in via Photo Settings. Otherwise the data URL stays in-memory
+		// only, long enough to have been OCR'd above, and is never persisted.
+		if (row.data_url && savePhotos) {
 			uploadToStorage(file, `readings/${Date.now()}_${file.name}`)
 				.then((url) => {
 					row.image_url = url;
+				})
+				.catch(() => {
+					/* keep data URL */
+				});
+		}
+	}
+
+	async function handleManualImageUpload(file: File | null) {
+		if (!file) return;
+
+		manualImageUploading = true;
+		try {
+			// Compress image to avoid "request entity too large" errors
+			const compressedDataUrl = await compressImage(file, 800, 0.7);
+			manualReadingForm.image_url = compressedDataUrl;
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to process image';
+			manualImageUploading = false;
+			return;
+		}
+		manualImageUploading = false;
+
+		// Auto-suggest a reading value from the photo — no separate Suggest button.
+		try {
+			const result = await ocrReadingImage(manualReadingForm.image_url);
+			if (result.suggested_reading_amount !== null) {
+				manualReadingForm.reading_amount = result.suggested_reading_amount;
+			}
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to suggest reading';
+		}
+
+		// Silently upgrade to a persistent Storage URL in the background — only when the
+		// user has opted in via Photo Settings.
+		if (savePhotos) {
+			uploadToStorage(file, `readings/${Date.now()}_${file.name}`)
+				.then((url) => {
+					manualReadingForm.image_url = url;
 				})
 				.catch(() => {
 					/* keep data URL */
@@ -377,7 +435,10 @@
 				reading_date: {
 					_seconds: Math.floor(dateObj.getTime() / 1000),
 					_nanoseconds: 0
-				}
+				},
+				// Only attach the photo when the user has opted into saving it —
+				// otherwise it was only ever used in-memory for the Suggest button.
+				image_url: savePhotos && row.image_url ? row.image_url : undefined
 			}));
 
 			const result = await createReadingsBatch(readingsData);
@@ -577,7 +638,7 @@
 										>Reading Amount</th
 									>
 									<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700"
-										>Photo / Suggest</th
+										>Photo (auto-suggests)</th
 									>
 								</tr>
 							</thead>
@@ -615,60 +676,13 @@
 											{/if}
 										</td>
 										<td class="px-6 py-4">
-											<div class="grid grid-cols-3 gap-3">
-												<!-- Preview image (top, spanning all 3 cols) -->
-												<div class="col-span-3 h-48 w-full overflow-hidden rounded">
-													{#if row.image_url}
-														<button
-															type="button"
-															onclick={() => {
-																previewImageUrl = row.image_url;
-															}}
-															class="block h-full w-full cursor-pointer rounded transition hover:opacity-75"
-														>
-															<img
-																src={row.image_url}
-																alt="Meter reading"
-																class="h-full w-full rounded object-cover"
-															/>
-														</button>
-													{:else}
-														<div
-															class="h-full w-full rounded border-2 border-dashed border-gray-300 bg-gray-50"
-														></div>
-													{/if}
-												</div>
-
-												<!-- Upload & Suggest buttons (bottom, side by side) -->
-												<label
-													class={`col-span-2 ${row.is_uploading ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-												>
-													<input
-														type="file"
-														accept="image/*"
-														disabled={row.is_uploading}
-														onchange={(e) => {
-															const file = (e.target as HTMLInputElement).files?.[0];
-															if (file) handleBatchImageUpload(i, file);
-														}}
-														class="hidden"
-													/>
-													<span
-														class="block rounded bg-blue-100 px-3 py-2 text-center text-xs font-medium text-blue-700 hover:bg-blue-200 disabled:opacity-50"
-													>
-														{row.is_uploading ? 'Uploading...' : 'Upload Photo'}
-													</span>
-												</label>
-
-												<!-- Suggest button -->
-												<button
-													type="button"
-													onclick={() => handleSuggestReading(i)}
-													disabled={!row.image_url}
-													class="col-span-1 rounded bg-green-100 px-3 py-2 text-xs font-medium text-green-700 hover:bg-green-200 disabled:cursor-not-allowed disabled:opacity-50"
-												>
-													Suggest
-												</button>
+											<div class="w-48">
+												<PhotoDropzone
+													imageUrl={row.image_url}
+													isBusy={row.is_uploading}
+													onFile={(file) => handleBatchImageUpload(i, file)}
+													onPreview={(url) => (previewImageUrl = url)}
+												/>
 											</div>
 										</td>
 									</tr>
@@ -749,14 +763,15 @@
 						</label>
 					</div>
 					<div class="md:col-span-2">
-						<label class="block text-sm font-medium text-gray-700">
-							<span>Optional Image URL</span>
-							<input
-								bind:value={manualReadingForm.image_url}
-								type="url"
-								class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
+						<span class="block text-sm font-medium text-gray-700">Photo (optional)</span>
+						<div class="mt-1 w-48">
+							<PhotoDropzone
+								imageUrl={manualReadingForm.image_url || null}
+								isBusy={manualImageUploading}
+								onFile={handleManualImageUpload}
+								onPreview={(url) => (previewImageUrl = url)}
 							/>
-						</label>
+						</div>
 					</div>
 				</div>
 				<div class="flex gap-2">

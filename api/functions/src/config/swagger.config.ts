@@ -12,6 +12,7 @@ import {billsPaths} from "../features/bills/bills.swagger";
 import {paths as imageExtractionPaths} from "../features/image-extraction/image-extraction.swagger";
 import {reportsPaths} from "../features/reports/reports.swagger";
 import {llmConfigPaths} from "../features/llm-config/llm-config.swagger";
+import {photoSettingsPaths} from "../features/photo-settings/photo-settings.swagger";
 import {chatbotPaths} from "../features/chatbot/chatbot.swagger";
 
 const swaggerSpec = {
@@ -946,6 +947,7 @@ const swaggerSpec = {
           provider: {
             type: ["string", "null"],
             enum: ["groq", "ollama_cloud", null],
+            description: "Chat provider, used by the insight chatbot.",
           },
           model: {
             type: ["string", "null"],
@@ -953,8 +955,21 @@ const swaggerSpec = {
           hasKey: {
             type: "boolean",
           },
+          visionProvider: {
+            type: ["string", "null"],
+            enum: ["groq", "ollama_cloud", null],
+            description: "Vision (OCR) provider — independent from the chat provider. Some providers have no usable free vision model.",
+          },
+          visionModel: {
+            type: ["string", "null"],
+            description: "Vision-capable model used for OCR (meter readings, bill photos). Required for OCR endpoints — no Gemini fallback.",
+          },
+          visionHasKey: {
+            type: "boolean",
+            description: "True once a vision config is usable — either via its own stored key, or by reusing the chat API key when visionProvider === provider.",
+          },
         },
-        required: ["provider", "model", "hasKey"],
+        required: ["provider", "model", "hasKey", "visionProvider", "visionModel", "visionHasKey"],
       },
       UpsertLlmConfigRequest: {
         type: "object",
@@ -976,6 +991,46 @@ const swaggerSpec = {
           },
         },
         required: ["provider", "model"],
+      },
+      UpsertVisionLlmConfigRequest: {
+        type: "object",
+        properties: {
+          provider: {
+            type: "string",
+            enum: ["groq", "ollama_cloud"],
+          },
+          model: {
+            type: "string",
+            minLength: 1,
+            maxLength: 255,
+          },
+          apiKey: {
+            type: "string",
+            minLength: 0,
+            maxLength: 500,
+            description: "Plaintext API key — encrypted server-side before storage, never returned. Optional when provider matches the chat provider (the chat key is reused); required when it differs and no key is already stored for that provider.",
+          },
+        },
+        required: ["provider", "model"],
+      },
+      PhotoSettingsResponse: {
+        type: "object",
+        properties: {
+          savePhotos: {
+            type: "boolean",
+            description: "Whether meter-reading photos are persisted (image_url) on create. Defaults to false. Bill/billing-cycle photos are never persisted regardless.",
+          },
+        },
+        required: ["savePhotos"],
+      },
+      UpsertPhotoSettingsRequest: {
+        type: "object",
+        properties: {
+          savePhotos: {
+            type: "boolean",
+          },
+        },
+        required: ["savePhotos"],
       },
       ChatHistoryMessage: {
         type: "object",
@@ -1073,6 +1128,7 @@ const swaggerSpec = {
     ...reportsPaths,
     ...llmConfigPaths,
     ...chatbotPaths,
+    ...photoSettingsPaths,
   },
 };
 

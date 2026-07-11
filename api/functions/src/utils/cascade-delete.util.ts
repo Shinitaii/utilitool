@@ -273,6 +273,161 @@ export async function cascadeDeleteReading(readingId: string): Promise<CascadeDe
 }
 
 /**
+ * Permanently delete an already-archived property and its already-archived
+ * readings + billings. Requires the property to be soft-deleted first (409
+ * otherwise) — mirrors cascadeDeleteProperty's blast radius but only ever
+ * touches records that are already archived, so a purge can't reach into
+ * still-active data.
+ */
+export async function cascadePurgeProperty(propertyId: string): Promise<CascadeDeleteSummary> {
+  const summary: CascadeDeleteSummary = {primary: 1, readings: 0, billings: 0};
+  const readingIds: string[] = [];
+  const billingIds: string[] = [];
+
+  await firestore.runTransaction(async (txn) => {
+    const propertyRef = firestore.collection(COLLECTIONS.PROPERTIES).doc(propertyId);
+    const propertySnap = await txn.get(propertyRef);
+
+    if (!propertySnap.exists) {
+      throw new AppError(404, "Property not found");
+    }
+    if (propertySnap.data()?.is_deleted !== true) {
+      throw new AppError(409, "Cannot permanently delete an active property. Archive it first.");
+    }
+
+    txn.delete(propertyRef);
+
+    const readingsSnap = await collectionRef(COLLECTIONS.READINGS)
+      .where("property_id", "==", propertyId)
+      .where("is_deleted", "==", true)
+      .get();
+
+    const foundReadingIds = readingsSnap.docs.map((doc) => doc.id);
+    readingIds.push(...foundReadingIds);
+    summary.readings = foundReadingIds.length;
+    readingsSnap.docs.forEach((doc) => txn.delete(doc.ref));
+
+    const billingsSnap = await collectionRef(COLLECTIONS.BILLINGS)
+      .where("property_id", "==", propertyId)
+      .where("is_deleted", "==", true)
+      .get();
+
+    const foundBillingIds = billingsSnap.docs.map((doc) => doc.id);
+    billingIds.push(...foundBillingIds);
+    summary.billings = foundBillingIds.length;
+    billingsSnap.docs.forEach((doc) => txn.delete(doc.ref));
+  });
+
+  await cacheDel(`utilitool:properties:id:${propertyId}`);
+  await Promise.all(readingIds.map((readingId) => cacheDel(`utilitool:readings:id:${readingId}`)));
+  await Promise.all(billingIds.map((billingId) => cacheDel(`utilitool:billings:id:${billingId}`)));
+
+  return summary;
+}
+
+/**
+ * Permanently delete an already-archived meter group and its already-archived
+ * readings + billings. Requires the meter group to be soft-deleted first (409
+ * otherwise).
+ */
+export async function cascadePurgeMeterGroup(meterGroupId: string): Promise<CascadeDeleteSummary> {
+  const summary: CascadeDeleteSummary = {primary: 1, readings: 0, billings: 0};
+  const readingIds: string[] = [];
+  const billingIds: string[] = [];
+
+  await firestore.runTransaction(async (txn) => {
+    const meterGroupRef = firestore.collection(COLLECTIONS.METER_GROUPS).doc(meterGroupId);
+    const meterGroupSnap = await txn.get(meterGroupRef);
+
+    if (!meterGroupSnap.exists) {
+      throw new AppError(404, "Meter group not found");
+    }
+    if (meterGroupSnap.data()?.is_deleted !== true) {
+      throw new AppError(409, "Cannot permanently delete an active meter group. Archive it first.");
+    }
+
+    txn.delete(meterGroupRef);
+
+    const readingsSnap = await collectionRef(COLLECTIONS.READINGS)
+      .where("meter_group_id", "==", meterGroupId)
+      .where("is_deleted", "==", true)
+      .get();
+
+    const foundReadingIds = readingsSnap.docs.map((doc) => doc.id);
+    readingIds.push(...foundReadingIds);
+    summary.readings = foundReadingIds.length;
+    readingsSnap.docs.forEach((doc) => txn.delete(doc.ref));
+
+    if (foundReadingIds.length > 0) {
+      const billingsSnap = await collectionRef(COLLECTIONS.BILLINGS)
+        .where("is_deleted", "==", true)
+        .get();
+
+      const foundReadingIdSet = new Set(foundReadingIds);
+      const billingsToPurge = billingsSnap.docs.filter((doc) => {
+        const billing = doc.data();
+        return (
+          foundReadingIdSet.has(billing.previous_reading_id) ||
+          foundReadingIdSet.has(billing.current_reading_id)
+        );
+      });
+
+      const foundBillingIds = billingsToPurge.map((doc) => doc.id);
+      billingIds.push(...foundBillingIds);
+      summary.billings = billingsToPurge.length;
+      billingsToPurge.forEach((doc) => txn.delete(doc.ref));
+    }
+  });
+
+  await cacheDel(`utilitool:meter-groups:id:${meterGroupId}`);
+  await Promise.all(readingIds.map((readingId) => cacheDel(`utilitool:readings:id:${readingId}`)));
+  await Promise.all(billingIds.map((billingId) => cacheDel(`utilitool:billings:id:${billingId}`)));
+
+  return summary;
+}
+
+/**
+ * Permanently delete an already-archived reading and its already-archived
+ * billings. Requires the reading to be soft-deleted first (409 otherwise).
+ */
+export async function cascadePurgeReading(readingId: string): Promise<CascadeDeleteSummary> {
+  const summary: CascadeDeleteSummary = {primary: 1, billings: 0};
+  const billingIds: string[] = [];
+
+  await firestore.runTransaction(async (txn) => {
+    const readingRef = firestore.collection(COLLECTIONS.READINGS).doc(readingId);
+    const readingSnap = await txn.get(readingRef);
+
+    if (!readingSnap.exists) {
+      throw new AppError(404, "Reading not found");
+    }
+    if (readingSnap.data()?.is_deleted !== true) {
+      throw new AppError(409, "Cannot permanently delete an active reading. Archive it first.");
+    }
+
+    txn.delete(readingRef);
+
+    const billingsSnap = await collectionRef(COLLECTIONS.BILLINGS)
+      .where("is_deleted", "==", true)
+      .get();
+
+    const billingsToPurge = billingsSnap.docs.filter((doc) => {
+      const billing = doc.data();
+      return billing.previous_reading_id === readingId || billing.current_reading_id === readingId;
+    });
+
+    billingIds.push(...billingsToPurge.map((doc) => doc.id));
+    summary.billings = billingsToPurge.length;
+    billingsToPurge.forEach((doc) => txn.delete(doc.ref));
+  });
+
+  await cacheDel(`utilitool:readings:id:${readingId}`);
+  await Promise.all(billingIds.map((billingId) => cacheDel(`utilitool:billings:id:${billingId}`)));
+
+  return summary;
+}
+
+/**
  * Restore a property and all its soft-deleted readings + billings.
  * Uses a transaction for atomicity.
  */

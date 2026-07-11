@@ -47,10 +47,11 @@ mobile/
 │       ├── api/
 │       │   ├── client.ts           → Base fetch: Bearer token + 401 retry
 │       │   ├── meter-groups.ts     → listMeterGroups, getMeterGroup
-│       │   ├── readings.ts         → listReadings, getReading, createReading, createReadingsBatch
+│       │   ├── readings.ts         → listReadings, getReading, createReading, createReadingsBatch, ocrReadingImage
 │       │   ├── properties.ts       → listProperties, getProperty
 │       │   ├── billings.ts         → listBillings, getBilling, updateBillingStatus
-│       │   └── billing-cycles.ts   → listBillingCycles, getBillingCycle
+│       │   ├── billing-cycles.ts   → listBillingCycles, getBillingCycle
+│       │   └── photo-settings.ts   → getPhotoSettings, upsertPhotoSettings (GET/PATCH /photo-settings)
 │       ├── utils/
 │       │   ├── auth-errors.ts      → getReadableAuthError
 │       │   ├── billing-cycle.util.ts → getStatusSummary, getCyclePaidAmount, getCycleOutstandingAmount
@@ -101,6 +102,7 @@ All API calls go through `src/lib/api/client.ts`:
 | `properties.ts` | `listProperties`, `getProperty` | `GET /properties`, `GET /properties/:id` |
 | `billings.ts` | `listBillings`, `getBilling`, `updateBillingStatus` | `GET /billings`, `GET /billings/:id`, `PATCH /billings/:id` |
 | `billing-cycles.ts` | `listBillingCycles`, `getBillingCycle` | `GET /billing-cycles`, `GET /billing-cycles/:id` |
+| `photo-settings.ts` | `getPhotoSettings`, `upsertPhotoSettings` | `GET /photo-settings`, `PATCH /photo-settings` |
 
 ---
 
@@ -110,10 +112,12 @@ All API calls go through `src/lib/api/client.ts`:
 `src/screens/CaptureReadings.svelte`
 
 1. **Step 1 — Session setup**: Select meter group + reading date
-2. **Step 2 — Property cards**: For each property that has the selected meter group, enter reading amount + optional Capacitor Camera photo
-3. **Step 3 — Confirmation**: Review all entries, submit via `POST /readings/batch`
+2. **Step 2 — Property cards**: For each property that has the selected meter group, enter reading amount + optional Capacitor Camera photo. Capturing a photo automatically calls `POST /readings/ocr` (`ocrReadingImage()`) to suggest the amount — no separate Suggest button.
+3. **Step 3 — Confirmation**: Review all entries, submit via `POST /readings/batch` (or `POST /readings/seed` for main-meter baselines)
 
 Properties are filtered client-side: only properties whose `meter_groups` values include the selected meter group ID.
+
+**Photo persistence**: gated by the `savePhotos` preference from `GET /photo-settings` (defaults to `false`, configurable in Settings). The captured photo is always used in-memory for the OCR suggest call; `image_url` is only included in the create/batch payload when `savePhotos` is `true` — otherwise the photo never leaves the device beyond that one OCR request.
 
 ### ReadingHistory — Filterable List
 `src/screens/ReadingHistory.svelte`
