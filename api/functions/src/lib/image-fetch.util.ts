@@ -1,3 +1,6 @@
+import sharp from "sharp";
+import {logger} from "../utils/logger.util";
+
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB
 const ALLOWED_IMAGE_MIME_TYPES = new Set([
   "image/jpeg",
@@ -28,7 +31,7 @@ function validateImageUrl(imageUrl: string): void {
   }
 }
 
-export async function fetchImageAsBuffer(imageUrl: string): Promise<{ buffer: Buffer; mimeType: string }> {
+async function resolveImage(imageUrl: string): Promise<{ buffer: Buffer; mimeType: string }> {
   // Handle data URLs (e.g., data:image/jpeg;base64,...)
   if (imageUrl.startsWith("data:")) {
     const [header, base64Data] = imageUrl.split(",");
@@ -70,4 +73,24 @@ export async function fetchImageAsBuffer(imageUrl: string): Promise<{ buffer: Bu
   }
 
   return {buffer, mimeType};
+}
+
+/**
+ * Re-encodes through sharp to drop EXIF/GPS metadata before the image ever
+ * reaches the third-party vision provider. `.rotate()` with no args bakes in
+ * the EXIF orientation as actual pixels first, so visual orientation survives
+ * even though the EXIF tag carrying it is then stripped by the re-encode.
+ */
+async function stripMetadata(buffer: Buffer, mimeType: string): Promise<Buffer> {
+  try {
+    return await sharp(buffer).rotate().toBuffer();
+  } catch (error) {
+    logger.warn({error, mimeType}, "Failed to strip image metadata, sending original buffer");
+    return buffer;
+  }
+}
+
+export async function fetchImageAsBuffer(imageUrl: string): Promise<{ buffer: Buffer; mimeType: string }> {
+  const {buffer, mimeType} = await resolveImage(imageUrl);
+  return {buffer: await stripMetadata(buffer, mimeType), mimeType};
 }
