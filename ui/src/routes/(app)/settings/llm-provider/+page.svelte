@@ -145,8 +145,7 @@
 				<p class="text-sm text-gray-600">Used by the insight chatbot.</p>
 
 				<div>
-					<label for="chatProvider" class="block text-sm font-medium text-gray-700">Provider</label
-					>
+					<label for="chatProvider" class="block text-sm font-medium text-gray-700">Provider</label>
 					<select
 						id="chatProvider"
 						bind:value={chatProvider}
@@ -196,8 +195,8 @@
 		{:else}
 			<form class="space-y-4" onsubmit={handleSubmitVision}>
 				<p class="text-sm text-gray-600">
-					Used to read meter photos and utility bill photos. Independent from the chatbot
-					provider above — pick whichever provider actually has a usable vision model for you.
+					Used to read meter photos and utility bill photos. Independent from the chatbot provider
+					above — pick whichever provider actually has a usable vision model for you.
 				</p>
 
 				<div>
@@ -242,8 +241,8 @@
 					/>
 					{#if visionSharesChatProvider}
 						<p class="mt-1 text-xs text-gray-500">
-							Provider matches the chatbot's — leave blank to reuse that API key, or enter one
-							here to use a different key for vision.
+							Provider matches the chatbot's — leave blank to reuse that API key, or enter one here
+							to use a different key for vision.
 						</p>
 					{:else}
 						<p class="mt-1 text-xs text-gray-500">

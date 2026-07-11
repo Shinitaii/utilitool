@@ -305,7 +305,8 @@
 					_seconds: Math.floor(new Date(manualReadingForm.reading_date).getTime() / 1000),
 					_nanoseconds: 0
 				},
-				image_url: savePhotos && manualReadingForm.image_url ? manualReadingForm.image_url : undefined
+				image_url:
+					savePhotos && manualReadingForm.image_url ? manualReadingForm.image_url : undefined
 			} as any;
 
 			const isSeed = await shouldSeedReading(

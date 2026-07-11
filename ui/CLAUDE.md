@@ -407,7 +407,9 @@ export async function getCollectionStatusReport(
 ```ts
 export async function getLlmConfig(): Promise<LlmConfigResponse>;
 export async function upsertLlmConfig(data: UpsertLlmConfigRequest): Promise<LlmConfigResponse>; // chat tab
-export async function upsertVisionLlmConfig(data: UpsertVisionLlmConfigRequest): Promise<LlmConfigResponse>; // vision tab
+export async function upsertVisionLlmConfig(
+	data: UpsertVisionLlmConfigRequest
+): Promise<LlmConfigResponse>; // vision tab
 // Types in src/lib/types/llm-config.types.ts
 ```
 
@@ -425,7 +427,9 @@ export async function sendChatMessage(
 
 ```ts
 export async function getPhotoSettings(): Promise<PhotoSettingsResponse>; // {savePhotos: boolean}
-export async function upsertPhotoSettings(data: UpsertPhotoSettingsRequest): Promise<PhotoSettingsResponse>;
+export async function upsertPhotoSettings(
+	data: UpsertPhotoSettingsRequest
+): Promise<PhotoSettingsResponse>;
 // Types in src/lib/types/photo-settings.types.ts. Read by the readings page (batch + manual
 // tabs) and by /settings/photos; defaults to false server-side if never configured.
 ```

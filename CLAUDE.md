@@ -19,6 +19,7 @@ Welcome to the Utilitool project. This document guides you through the repo stru
 ### Read Once Per Session
 
 When Claude Code starts work on a task:
+
 - **API task?** Read `api/CLAUDE.md` only
 - **UI task?** Read `ui/CLAUDE.md` only
 - **Mobile task?** Read `mobile/CLAUDE.md` only
@@ -64,6 +65,7 @@ utilitool/
 **Utilitool** is a utility meter reading and billing management system. It automates the workflow from capturing readings to generating accurate per-tenant bills.
 
 ### Core Entities
+
 1. **Meter Groups** — Containers for utility types (electricity, water)
 2. **Properties** — Buildings/units that consume utilities
 3. **Tenants** — Individual renters/occupants
@@ -72,6 +74,7 @@ utilitool/
 6. **Billing Cycles** — Periods that validate and rate all readings (enforces 3% tolerance, no meter rollback)
 
 ### The Happy Path
+
 1. Capture readings from meters
 2. Create a billing cycle (date range + total consumption + total charges)
 3. System validates readings + consumption (3% tolerance)
@@ -82,19 +85,20 @@ utilitool/
 
 ## Technology Stack
 
-| Layer | Stack | Details |
-|-------|-------|---------|
-| **Backend** | Express + Firebase Cloud Functions | TypeScript, Firestore, Zod validation, custom JWT auth |
-| **Frontend** | SvelteKit 5 + Svelte 5 runes | TypeScript, Tailwind v4, Playwright E2E |
-| **Mobile** | Svelte 5 SPA + Capacitor 6 | TypeScript, Tailwind v4, Android target, Firebase Auth |
-| **Database** | Firestore (emulated locally) | No-SQL, real-time capabilities |
-| **Deployment** | Firebase (API) + Vercel (UI) | Staging & production aliases configured |
+| Layer          | Stack                              | Details                                                |
+| -------------- | ---------------------------------- | ------------------------------------------------------ |
+| **Backend**    | Express + Firebase Cloud Functions | TypeScript, Firestore, Zod validation, custom JWT auth |
+| **Frontend**   | SvelteKit 5 + Svelte 5 runes       | TypeScript, Tailwind v4, Playwright E2E                |
+| **Mobile**     | Svelte 5 SPA + Capacitor 6         | TypeScript, Tailwind v4, Android target, Firebase Auth |
+| **Database**   | Firestore (emulated locally)       | No-SQL, real-time capabilities                         |
+| **Deployment** | Firebase (API) + Vercel (UI)       | Staging & production aliases configured                |
 
 ---
 
 ## Local Development
 
 ### Quick Start
+
 ```bash
 # Terminal 1 — API (port 5002, watch mode, connected to utilitool-staging)
 cd api/functions
@@ -115,6 +119,7 @@ npm run dev
 ```
 
 ### Docker alternative
+
 ```bash
 docker-compose up
 ```
@@ -126,33 +131,37 @@ Starts API (port 5002), UI (port 5173), and the mobile web preview (port 5174) i
 ## Commands Quick Reference
 
 ### API (`api/functions/`)
-| Task | Command |
-|------|---------|
+
+| Task             | Command             |
+| ---------------- | ------------------- |
 | Dev (watch mode) | `npm run dev:watch` |
-| Type check | `npx tsc --noEmit` |
-| Lint | `npm run lint` |
-| Test | `npm test` |
-| Build | `npm run build` |
+| Type check       | `npx tsc --noEmit`  |
+| Lint             | `npm run lint`      |
+| Test             | `npm test`          |
+| Build            | `npm run build`     |
 
 ### UI (`ui/`)
-| Task | Command |
-|------|---------|
-| Dev server | `npm run dev` |
-| Type check | `npm run check` |
-| Lint | `npm run lint` |
+
+| Task        | Command             |
+| ----------- | ------------------- |
+| Dev server  | `npm run dev`       |
+| Type check  | `npm run check`     |
+| Lint        | `npm run lint`      |
 | Test (unit) | `npm run test:unit` |
-| Test (E2E) | `npm run test:e2e` |
-| Build | `npm run build` |
+| Test (E2E)  | `npm run test:e2e`  |
+| Build       | `npm run build`     |
 
 ---
 
 ## Swagger / API Documentation
 
 **When API is running** (`npm run serve`):
+
 - **Swagger UI**: http://localhost:5002/docs
 - **OpenAPI spec**: http://localhost:5002/docs/swagger.json
 
 Each feature has a `.swagger.ts` file defining its endpoints. Reference Swagger for:
+
 - Request/response shapes
 - Error codes & meanings
 - Business rule constraints (e.g., 3% tolerance)
@@ -164,6 +173,7 @@ Each feature has a `.swagger.ts` file defining its endpoints. Reference Swagger 
 ## CI/CD & Deployment
 
 ### Staging
+
 - **API**: Automatically deploys on push to `main` in `api/functions/**`
   - Project alias: `staging` (utilitool-staging)
   - Requires: `FIREBASE_TOKEN_STAGING` in GitHub secrets
@@ -173,6 +183,7 @@ Each feature has a `.swagger.ts` file defining its endpoints. Reference Swagger 
   - Requires: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`
 
 ### Production
+
 - **Firestore**: utilitool-3fe70
 - **Manual deployment only** — not in CI/CD
 
@@ -183,6 +194,7 @@ See `.github/workflows/` for full pipeline definitions.
 ## File Maps
 
 ### Per-Feature File Map
+
 Each API feature is self-contained in `api/functions/src/features/<feature>/` following this pattern:
 
 ```
@@ -201,7 +213,9 @@ Each API feature is self-contained in `api/functions/src/features/<feature>/` fo
 **Full details**: See `api/CLAUDE.md` → "File & Folder Reference by Feature"
 
 ### Per-Component File Map (UI)
+
 Each page/component is organized by:
+
 - **Pages**: `ui/src/routes/(app)/<feature>/+page.svelte`
 - **API modules**: `ui/src/lib/api/<feature>.ts` (calls backend)
 - **Components**: `ui/src/lib/components/<shared|feature>/`
@@ -214,6 +228,7 @@ Each page/component is organized by:
 ## Feature Status
 
 ### API Features (Complete + Audited May 2026)
+
 - ✅ Meter Groups (CRUD, batch; dynamic sorting; `POST /:id/reset` and its `current_version`/`versions` fields are **@deprecated** — version tracking now lives per-property on `Property.meter_groups[entry]`, see `decisions/`)
 - ✅ Properties (CRUD, batch; dynamic sorting; optimized duplicate detection)
 - ✅ Tenants (CRUD, batch; dynamic sorting)
@@ -230,6 +245,7 @@ Each page/component is organized by:
 - ✅ Photo Settings (`GET`/`PATCH /photo-settings` — per-user `savePhotos` preference, defaults to `false`; web and mobile check it before attaching a meter-reading `image_url` on create. OCR suggest always works regardless; billing-cycle/bill photos are never persisted either way)
 
 **Audit Highlights (25 fixes)**:
+
 - **D1**: Soft-delete pattern — all DELETE endpoints soft-delete (set `is_deleted` flag), no hard delete
 - **D2**: Timestamp serialization — JSON responses use ISO 8601 strings
 - **D3**: Firestore indices — composite indices for soft-delete + filter queries
@@ -240,6 +256,7 @@ Each page/component is organized by:
 - **H1–H4**: Consistent pagination, batch ops, archive/restore semantics
 
 ### UI Pages (Complete + Audited May 2026)
+
 - ✅ Login
 - ✅ Dashboard (stat cards + properties table)
 - ✅ Meter Groups (full CRUD table; archive page — Version column and Reset Meter button removed, version tracking moved to per-property)
@@ -253,6 +270,7 @@ Each page/component is organized by:
 - ✅ Insight Chatbot (`ChatWidget` floating widget, mounted globally on all protected routes)
 
 ### Mobile Screens (May 2026)
+
 - ✅ Login (Firebase Auth)
 - ✅ Home (dashboard + "New Reading Session" CTA)
 - ✅ CaptureReadings (3-step wizard: meter group select → per-property readings + camera with auto OCR suggest → review & batch submit)
@@ -265,6 +283,7 @@ Each page/component is organized by:
 ## Getting Started
 
 ### 1. First Time Setup
+
 ```bash
 # Clone repo
 git clone <repo>
@@ -286,17 +305,20 @@ cd ui && npm ci && npm run dev
 ```
 
 ### 2. Register a User
+
 - Go to http://localhost:5173
 - Click "Sign up"
 - Create test account (e.g., `test@example.com` / `password123`)
 - Login → Dashboard
 
 ### 3. Explore the API
+
 - Visit http://localhost:5002/docs
 - Try endpoints: POST meter-group, POST property, POST tenant, POST reading, etc.
 - See real request/response shapes in Swagger UI
 
 ### 4. Understand Features
+
 - Need to add a **new API feature**? → See `api/CLAUDE.md` → "Adding a New Feature"
 - Need to add a **new UI page**? → See `ui/CLAUDE.md` → "Adding a New Page"
 - Need to understand a **specific business rule**? → See section in this doc or the Business Overview
@@ -305,17 +327,17 @@ cd ui && npm ci && npm run dev
 
 ## Key Files
 
-| File | Why It Matters |
-|------|---|
-| `docker-compose.yml` | Docker alternative for running the full stack (see Local Development) |
-| `api/functions/src/index.ts` | API entry point — all routes mounted here |
-| `api/functions/src/config/swagger.config.ts` | OpenAPI spec generator — aggregates all `.swagger.ts` files |
-| `ui/src/routes/(app)/+layout.ts` | Auth guard for all protected routes |
-| `ui/src/lib/api/client.ts` | JWT token refresh interceptor — handles 401 + retry |
-| `ui/src/lib/stores/auth.svelte.ts` | Authentication state (Svelte writable store) |
-| `mobile/src/App.svelte` | Mobile root: auth guard + hash-based screen router |
-| `mobile/src/lib/api/client.ts` | Mobile fetch client: Bearer token + 401 retry |
-| `mobile/capacitor.config.ts` | Capacitor app ID, webDir, Camera plugin settings |
+| File                                         | Why It Matters                                                        |
+| -------------------------------------------- | --------------------------------------------------------------------- |
+| `docker-compose.yml`                         | Docker alternative for running the full stack (see Local Development) |
+| `api/functions/src/index.ts`                 | API entry point — all routes mounted here                             |
+| `api/functions/src/config/swagger.config.ts` | OpenAPI spec generator — aggregates all `.swagger.ts` files           |
+| `ui/src/routes/(app)/+layout.ts`             | Auth guard for all protected routes                                   |
+| `ui/src/lib/api/client.ts`                   | JWT token refresh interceptor — handles 401 + retry                   |
+| `ui/src/lib/stores/auth.svelte.ts`           | Authentication state (Svelte writable store)                          |
+| `mobile/src/App.svelte`                      | Mobile root: auth guard + hash-based screen router                    |
+| `mobile/src/lib/api/client.ts`               | Mobile fetch client: Bearer token + 401 retry                         |
+| `mobile/capacitor.config.ts`                 | Capacitor app ID, webDir, Camera plugin settings                      |
 
 ---
 

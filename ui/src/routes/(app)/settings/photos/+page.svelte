@@ -70,9 +70,9 @@
 				<div>
 					<h3 class="text-sm font-medium text-gray-900">Save meter-reading photos</h3>
 					<p class="mt-1 text-sm text-gray-600">
-						When off (default), a captured photo is only used in-memory to suggest a reading
-						value — it's discarded before the reading is submitted, never stored. When on, the
-						photo is kept and attached to the reading.
+						When off (default), a captured photo is only used in-memory to suggest a reading value —
+						it's discarded before the reading is submitted, never stored. When on, the photo is kept
+						and attached to the reading.
 					</p>
 					<p class="mt-2 text-xs text-gray-500">
 						Applies to meter-reading photos on web and mobile. Utility-bill photos used for
