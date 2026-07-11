@@ -616,7 +616,7 @@ Multi-select batch action toolbar. Slides in when `selectedIds.size > 0`. Shows 
 
 ### ChatWidget
 
-Floating insight-chatbot widget mounted globally in `(app)/+layout.svelte` (available on every protected route, not a route-scoped component). Sends messages + rolling history via `sendChatMessage()` from `src/lib/api/chat.ts` to `POST /chatbot`.
+Floating insight-chatbot widget mounted in `(app)/+layout.svelte`, gated to `authState.user?.role === 'admin'` (available on every protected route for admins only — not a route-scoped component). Sends messages + rolling history via `sendChatMessage()` from `src/lib/api/chat.ts` to `POST /chatbot`, which itself enforces `admin`-only server-side; the UI gate just avoids showing a widget that would 403 for `landlord`/`assistant` users. There is no mobile chatbot UI.
 
 ---
 

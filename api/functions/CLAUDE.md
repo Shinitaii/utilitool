@@ -56,6 +56,10 @@ This section documents key improvements made during the comprehensive codebase a
 - Removed hard delete endpoints entirely — only soft delete is available
 - No destructive operations on production data
 - `PATCH /:id/restore` to restore deleted resources
+- **Update**: a guarded, admin-only permanent-delete ("purge") endpoint was reintroduced for
+  right-to-erasure compliance — see "Archive-Then-Purge Lifecycle" below. It is a deliberate
+  second step gated on the record already being archived, not a return to the original
+  one-step hard delete this section originally removed.
 
 ### Timestamp Serialization (D2)
 - JSON responses now convert Firestore Timestamps to ISO 8601 strings
@@ -162,15 +166,14 @@ Represents utility type containers (electricity, water).
 | GET | `/meter-groups/:id` | Get single meter group |
 | PATCH | `/meter-groups/:id` | Update meter group |
 | PATCH | `/meter-groups/batch` | Batch update (1–10 items) |
-| POST | `/meter-groups/:id/reset` | **@deprecated** Record a physical meter reset (bumps version, snapshots last reading) — superseded by per-property version tracking; logs a warning on every call |
 | DELETE | `/meter-groups/:id` | Soft delete (set is_deleted flag) |
 | PATCH | `/meter-groups/:id/restore` | Restore deleted meter group (clear is_deleted flag) |
+| DELETE | `/meter-groups/:id/purge` | Permanently delete an already-archived meter group (admin-only, 409 if not archived) |
 
 **Business rules**:
 - Unique meter_name per utility_type
 - utility_type must be "electricity" or "water"
 - Soft delete sets `deleted_at` timestamp
-- **@deprecated**: `current_version`/`versions` and `POST /:id/reset` — version tracking has moved to `Property.meter_groups[entry].current_version`/`.versions` (per-property, supports submeters). These MeterGroup-level fields/endpoint are kept only for backward compatibility and emit `logger.warn` on use. A backfill migration (`src/migrations/backfill-property-meter-versions.ts`) copies existing MeterGroup version data onto property entries; once run in prod, the deprecated fields/endpoint can be removed entirely
 - Reset requires at least one existing reading; uses the latest non-deleted reading as the closing value
 - Requires `admin` or `landlord` role
 - **Cascade delete**: `DELETE /:id` soft-deletes the meter group + all readings for this meter group + all billings referencing those readings (atomic transaction)
@@ -196,6 +199,7 @@ Represents buildings/units that consume utilities.
 | PATCH | `/properties/batch` | Batch update |
 | DELETE | `/properties/:id` | Soft delete (set is_deleted flag) |
 | PATCH | `/properties/:id/restore` | Restore property (clear is_deleted flag) |
+| DELETE | `/properties/:id/purge` | Permanently delete an already-archived property (admin-only, 409 if not archived) |
 
 **Business rules**:
 - Must reference valid meter_group_id(s) via the `meter_groups` map
@@ -222,6 +226,7 @@ Represents individual renters/occupants.
 | PATCH | `/tenants/batch` | Batch update |
 | DELETE | `/tenants/:id` | Soft delete (set is_deleted flag) |
 | PATCH | `/tenants/:id/restore` | Restore tenant (clear is_deleted flag) |
+| DELETE | `/tenants/:id/purge` | Permanently delete an already-archived tenant (admin-only, 409 if not archived) |
 
 **Business rules**:
 - Unique tenant_name per property
@@ -246,6 +251,7 @@ Represents snapshots of meter consumption. **Single create has a critical side e
 | PATCH | `/readings/batch` | Batch update |
 | DELETE | `/readings/:id` | Soft delete (set is_deleted flag) |
 | PATCH | `/readings/:id/restore` | Restore reading (clear is_deleted flag) |
+| DELETE | `/readings/:id/purge` | Permanently delete an already-archived reading (admin-only, 409 if not archived) |
 
 **Business rules**:
 - Must reference valid meter_group_id
@@ -287,6 +293,7 @@ Represents individual bill records linking a property to a reading pair. **Billi
 | PATCH | `/billings/batch` | Batch update |
 | DELETE | `/billings/:id` | Soft delete (set is_deleted flag) |
 | PATCH | `/billings/:id/restore` | Restore billing (clear is_deleted flag) |
+| DELETE | `/billings/:id/purge` | Permanently delete an already-archived billing (admin-only, 409 if not archived) |
 
 **Business rules**:
 - Must reference valid property_id, previous_reading_id, current_reading_id
@@ -317,6 +324,7 @@ Represents billing periods with validation and rate calculation.
 | PATCH | `/billing-cycles/batch` | Batch update |
 | DELETE | `/billing-cycles/:id` | Soft delete (set is_deleted flag) |
 | PATCH | `/billing-cycles/:id/restore` | Restore cycle (clear is_deleted flag) |
+| DELETE | `/billing-cycles/:id/purge` | Permanently delete an already-archived billing cycle (admin-only, 409 if not archived) |
 
 **Business rules**:
 - billing_ids: Record<billingId, consumptionAmount> — all IDs must exist + be valid
@@ -395,15 +403,17 @@ Stores two **independent** provider configs per tenant: a chat config (used by t
 | PATCH | `/llm-config` | Upsert the **chat** config: provider (`groq` \| `ollama_cloud`), model, apiKey (required on first setup) |
 | PATCH | `/llm-config/vision` | Upsert the **vision** config: provider, model, apiKey (optional if provider matches the chat provider — reuses that key; required otherwise). 400 if no chat config exists yet, or if a required apiKey is missing |
 
-### Chatbot (`/chatbot` — protected)
+### Chatbot (`/chatbot` — protected, admin-only)
 
 Located: `src/features/chatbot/`
 
 Conversational insight assistant scoped to the authenticated user's own utility/billing data. Uses `src/lib/llm.lib.ts` (`LlmClient`) — a thin OpenAI-compatible chat-completions client shared by both supported providers — with tool-calling into `chatbot.tools.ts`, which reads properties/readings/billings/billing-cycles by name (never raw Firestore IDs) via existing repositories. `chatbot.guard.ts` regex-filters the final assistant response for jailbreak/off-topic patterns as defense-in-depth behind the system prompt.
 
+Restricted to the `admin` role (`requireRole("admin")` in `chatbot.route.ts`) — `landlord`/`assistant` accounts get `403`. There's no mobile chatbot UI, and the web `ChatWidget` is gated to `role === 'admin'` in `ui/src/routes/(app)/+layout.svelte` to match.
+
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/chatbot` | Send a message (+ optional up-to-20-message history); returns `{ reply }` |
+| POST | `/chatbot` | Send a message (+ optional up-to-20-message history); returns `{ reply }`. Admin-only. |
 
 ### Photo Settings (`/photo-settings` — protected)
 
@@ -443,6 +453,7 @@ The following feature folders exist but are **not fully implemented**:
 | Batch update | PATCH | `/batch` | Multiple partial modifications |
 | Soft delete | DELETE | `/:id` | Semantic: "delete from user view" (mark as deleted) |
 | Restore | PATCH | `/:id/restore` | Restore from deletion (state change) |
+| Purge (permanent delete) | DELETE | `/:id/purge` | Irreversibly remove an already-archived resource — admin-only |
 
 **Cascade Deletion Strategy**:
 - **Meter Group DELETE** → soft-deletes the meter group + all readings for that meter group + all billings referencing those readings
@@ -457,10 +468,44 @@ The following feature folders exist but are **not fully implemented**:
 
 **Rationale**: 
 - **DELETE** is semantically correct for soft deletion — from the user's perspective, the resource is gone (hidden)
-- No hard delete endpoints — soft delete is the only deletion option, ensuring data safety
+- No one-step hard delete — a resource must be archived (soft-deleted) before it can ever be
+  permanently removed, ensuring data safety
 - **Cascade** prevents orphaned data (e.g., billings referencing deleted readings) and maintains referential integrity
 - **PATCH** is used for all state modifications (updates, restore)
 - Timestamps are serialized to ISO strings in responses (D2 fix) for proper JSON handling
+
+---
+
+## Archive-Then-Purge Lifecycle (Right-to-Erasure)
+
+Every entity's deletion lifecycle has two steps, not one:
+
+1. **Archive**: `DELETE /:id` (soft delete, any `admin`/`landlord` — see per-feature role table
+   above). Reversible via `PATCH /:id/restore`.
+2. **Purge**: `DELETE /:id/purge` — permanently removes the record. **Admin-only.** Throws
+   `409` if the record is not already archived (`is_deleted !== true`), and `404` if it
+   doesn't exist. There is no direct path from an active record to permanent deletion — the
+   two-step gate is enforced at the lowest layer (`Repository.purge()` /
+   `firestore.lib.ts`'s `purgeDocument()`), not just in a controller check, so no service can
+   accidentally expose a one-step irreversible delete.
+
+This exists to support right-to-erasure / data-minimization requests (e.g. a tenant asking
+for their data to be permanently removed) without reintroducing the accidental-data-loss risk
+that the original D1 audit removed hard delete to prevent — purge can only ever act on data a
+staff member has already deliberately archived.
+
+**Cascade purge**: meter-group, property, and reading purges mirror their soft-delete cascade
+scope, but only ever touch children that are *also already archived* — `cascadePurgeMeterGroup`,
+`cascadePurgeProperty`, `cascadePurgeReading` in `src/utils/cascade-delete.util.ts`. Billing,
+billing-cycle, and tenant purges are leaf-only (no cascade), via `Repository.purge()` /
+`CachedRepository.purge()`.
+
+**Key abstraction-layer additions** (`src/lib/`):
+- `firestore.lib.ts`: `getDocumentIncludingDeleted()` (unlike `getDocument`, doesn't filter out
+  archived records), `purgeDocument()` (the guarded hard-delete primitive)
+- `repository.lib.ts`: `Repository.purge(id)` — every feature's repository gets this for free
+- `cached-repository.lib.ts`: `CachedRepository.purge(id)` — invalidates the ID cache (archived
+  items are never in the active list cache, so no list-cache invalidation is needed)
 
 ---
 
