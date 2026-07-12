@@ -6,7 +6,6 @@ export interface Reading {
   property_id: string;
   reading_amount: number;
   reading_date: string;
-  image_url?: string;
   meter_version: number;
   created_at: string;
   updated_at: string;
@@ -18,7 +17,6 @@ export interface CreateReadingRequest {
   property_id: string;
   reading_amount: number;
   reading_date: string;
-  image_url?: string;
 }
 
 export interface BatchReadingRequest {
@@ -44,10 +42,6 @@ export async function listReadings(options?: {
 
 export async function getReading(id: string): Promise<Reading> {
   return apiGet(`/readings/${id}`);
-}
-
-export async function createReading(data: CreateReadingRequest) {
-  return apiPost('/readings', data);
 }
 
 export async function createReadingsBatch(data: BatchReadingRequest): Promise<BatchCreateResult<Reading>> {
