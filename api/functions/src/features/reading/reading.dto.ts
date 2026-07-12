@@ -1,5 +1,6 @@
 import {z} from "zod";
 import {parseTimestamp} from "../../utils/firestore.util";
+import {ImageUrlSchema} from "../../utils/image-url.util";
 
 // Create DTOS
 export const CreateReadingDTOSchema = z.object({
@@ -16,7 +17,6 @@ export const CreateReadingDTOSchema = z.object({
       {message: "reading_date must be a valid date"}
     )
     .transform((val) => parseTimestamp(val)),
-  image_url: z.url().optional(),
 });
 export type CreateReadingDTO = z.infer<typeof CreateReadingDTOSchema>;
 
@@ -25,7 +25,7 @@ export type CreateSeedReadingDTO = z.infer<typeof CreateSeedReadingDTOSchema>;
 
 // OCR DTOS
 export const OcrReadingDTOSchema = z.object({
-  image_url: z.url(),
+  image_url: ImageUrlSchema,
 });
 export type OcrReadingDTO = z.infer<typeof OcrReadingDTOSchema>;
 

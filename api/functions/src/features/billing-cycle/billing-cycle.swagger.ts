@@ -202,7 +202,7 @@ export const billingCyclePaths = {
               properties: {
                 image_url: {
                   type: "string",
-                  description: "Data URL (data:image/...) or public HTTPS URL of the utility bill photo",
+                  description: "Base64 data URL of the utility bill photo (data:image/*;base64,...)",
                 },
               },
             },
