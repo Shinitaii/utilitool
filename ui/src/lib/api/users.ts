@@ -1,7 +1,9 @@
 import { apiPost } from './client';
 
 export interface CreateUserRequest {
-	uid: string;
+	email: string;
+	password: string;
+	displayName?: string;
 	role: 'admin' | 'landlord' | 'assistant';
 }
 
