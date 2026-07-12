@@ -7,10 +7,12 @@ import {billingRepository} from "../billing/billing.repository";
 import {billingCycleRepository} from "../billing-cycle/billing-cycle.repository";
 import {calculateTrueReading, resolveVersionsSource} from "../reading/reading.util";
 import {billAmount, sumMoney} from "../../utils/money.util";
+import * as reportsService from "../reports/reports.service";
 import type {LlmToolDefinition} from "../../lib/llm.lib";
 import type {Reading} from "../reading/reading.model";
 import type {Property} from "../property/property.model";
 import type {BillingCycle} from "../billing-cycle/billing-cycle.model";
+import type {ReportQueryDTO} from "../reports/reports.dto";
 
 const DEFAULT_SPIKE_MULTIPLIER = 5; // same threshold as the reading anomaly guard
 const MAX_PROPERTIES_SCANNED = 1000;
@@ -398,6 +400,67 @@ export async function getBillingCost(args: GetBillingCostArgs) {
   };
 }
 
+export interface GetBillingReportsArgs {
+  reportType: "summary" | "consumption" | "billing_trends" | "collection_status";
+  startDate?: string;
+  endDate?: string;
+  meterGroupName?: string;
+  propertyName?: string;
+}
+
+async function buildReportQuery(args: GetBillingReportsArgs): Promise<ReportQueryDTO> {
+  const query: ReportQueryDTO = {};
+  if (args.startDate) query.startDate = startOfDayUtc(args.startDate).toISOString();
+  if (args.endDate) query.endDate = endOfDayUtc(args.endDate).toISOString();
+  if (args.meterGroupName) {
+    const meterGroup = await resolveMeterGroupByName(args.meterGroupName);
+    query.meterGroupId = meterGroup.id;
+  }
+  if (args.propertyName) {
+    const [property] = await resolvePropertiesByNames([args.propertyName]);
+    query.propertyId = property.id;
+  }
+  return query;
+}
+
+/**
+ * Portfolio-level analytics (revenue, collection rate, consumption/billing trends by
+ * month, payment-status breakdown) — the same data backing the Reports page. `userId`
+ * is threaded through only to match reportsService's signature; every report is scoped
+ * by query filters, not by the caller, mirroring how the other chatbot tools already
+ * work against a single-owner dataset. Property identity is masked the same way as
+ * every other tool result (Property.room_name -> propertyName, tokenized by
+ * chatbot.service.ts before reaching the LLM) — raw Firestore property_id is stripped
+ * from consumption-by-property rows so nothing beyond meter numbers and the masked
+ * token ever leaves this function.
+ */
+export async function getBillingReports(args: GetBillingReportsArgs) {
+  const query = await buildReportQuery(args);
+  const userId = "chatbot"; // unused by reportsService — every report is scoped by query filters, not caller
+
+  switch (args.reportType) {
+    case "summary":
+      return reportsService.getSummary(userId, query);
+    case "consumption": {
+      const report = await reportsService.getConsumption(userId, query);
+      return {
+        by_month: report.by_month,
+        by_property: report.by_property.map((p) => ({
+          propertyName: p.room_name,
+          electricity: p.electricity,
+          water: p.water,
+        })),
+      };
+    }
+    case "billing_trends":
+      return reportsService.getBillingTrends(userId, query);
+    case "collection_status":
+      return reportsService.getCollectionStatus(userId, query);
+    default:
+      throw new AppError(400, `Unknown reportType: ${args.reportType}`);
+  }
+}
+
 const propertyNamesParam = {
   type: "array",
   items: {type: "string"},
@@ -495,6 +558,32 @@ export const chatbotToolDefinitions: LlmToolDefinition[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "get_billing_reports",
+      description:
+        "Portfolio-level billing analytics: revenue/collection-rate summary, consumption trends by month or property, billing amounts by month (billed/collected/pending/overdue), or a payment-status breakdown. Optionally scope to a meter group and/or one property; omit both for the whole portfolio.",
+      parameters: {
+        type: "object",
+        properties: {
+          reportType: {
+            type: "string",
+            enum: ["summary", "consumption", "billing_trends", "collection_status"],
+            description:
+              "summary = revenue/collection totals. consumption = usage by month and by property. " +
+              "billing_trends = billed/collected/pending/overdue by month. collection_status = " +
+              "paid/pending/overdue counts and amounts.",
+          },
+          propertyName: {type: "string", description: "Optional single property name to scope to."},
+          meterGroupName: meterGroupNameParam,
+          startDate: {type: "string", format: "date", description: "Start of range, YYYY-MM-DD"},
+          endDate: {type: "string", format: "date", description: "End of range, YYYY-MM-DD"},
+        },
+        required: ["reportType"],
+      },
+    },
+  },
 ];
 
 export const chatbotToolHandlers: Record<string, (args: any) => Promise<unknown>> = {
@@ -502,4 +591,5 @@ export const chatbotToolHandlers: Record<string, (args: any) => Promise<unknown>
   get_accumulated_totals: getAccumulatedTotals,
   get_billing_cost: getBillingCost,
   detect_spikes: detectSpikes,
+  get_billing_reports: getBillingReports,
 };

@@ -55,7 +55,10 @@ async function fetchReportContext(query: ReportQueryDTO) {
   let cycles = cyclesResult.data;
 
   // 2. Additional in-memory filter for endDate range to ensure both bounds are respected
-  if (query.startDate && query.endDate) {
+  // (runs whenever endDate is supplied, not only alongside startDate — an endDate-only
+  // query previously only constrained billing_start_date at query time, letting cycles
+  // that start before endDate but end well after it leak through).
+  if (query.endDate) {
     const endDate = new Date(query.endDate);
     cycles = cycles.filter((c) => c.billing_end_date.toDate() <= endDate);
   }
@@ -185,6 +188,7 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
       billingId: billing.id,
       amount: amount || 0,
       consumption,
+      cycleStartDate: cycle.billing_start_date.toDate(),
       cycleEndDate: cycle.billing_end_date.toDate(),
       utilityType,
       propertyId: billing.property_id,
@@ -224,59 +228,25 @@ export async function getSummary(userId: string, query: ReportQueryDTO): Promise
 }
 
 export async function getConsumption(userId: string, query: ReportQueryDTO): Promise<ConsumptionReport> {
-  const {cycles, validBillings, propertyMap, meterGroupMap} = await fetchReportContext(query);
+  // Reuses buildJoinedData so consumption here is computed the same version-aware way
+  // (calculateTrueReading against Property.meter_groups[entry].versions) as every other
+  // report — previously this endpoint read the raw, non-version-aware number frozen on
+  // cycle.billing_ids at cycle-creation time, so a cycle whose meter reset after creation
+  // (or was backfilled with the old naive number) showed different consumption here than
+  // on the Summary/Billing-Trends/Collection-Status reports for the same underlying data.
+  const joinedData = await buildJoinedData(userId, query);
 
-  // Fetch all current readings to determine meter group for each billing
-  const readingIds = new Set<string>();
-  validBillings.forEach((b) => {
-    if (b.current_reading_id && b.current_reading_id.trim()) {
-      readingIds.add(b.current_reading_id);
-    }
-  });
-
-  const readings = await readingRepository.getByIds(Array.from(readingIds));
-
-  const readingMap = new Map(readings.filter((r): r is NonNullable<typeof r> => r !== null).map((r) => [r.id, r]));
-
-  // Group by month
   const monthMap = new Map<string, Record<string, number>>();
-  const billingById = new Map(validBillings.map((b) => [b.id, b]));
-
-  for (const cycle of cycles) {
-    const month = cycle.billing_start_date.toDate().toISOString().slice(0, 7);
-
-    for (const [billingId, consumption] of Object.entries(cycle.billing_ids)) {
-      const billing = billingById.get(billingId);
-      if (!billing) continue;
-
-      const property = propertyMap.get(billing.property_id);
-      if (!property) continue;
-
-      // Get utility type from the reading's meter group (accurate source)
-      let utilityType = "unknown";
-      const reading = readingMap.get(billing.current_reading_id);
-      if (reading) {
-        const readingMeterGroup = meterGroupMap.get(reading.meter_group_id);
-        if (readingMeterGroup) {
-          utilityType = readingMeterGroup.utility_type;
-        }
-      }
-
-      // Apply meter group filter if specified
-      if (query.meterGroupId && reading?.meter_group_id !== query.meterGroupId) {
-        continue;
-      }
-
-      if (!monthMap.has(month)) {
-        monthMap.set(month, {electricity: 0, water: 0});
-      }
-
-      const monthData = monthMap.get(month)!;
-      if (utilityType === "electricity") {
-        monthData.electricity += consumption;
-      } else if (utilityType === "water") {
-        monthData.water += consumption;
-      }
+  for (const j of joinedData) {
+    const month = j.cycleStartDate.toISOString().slice(0, 7);
+    if (!monthMap.has(month)) {
+      monthMap.set(month, {electricity: 0, water: 0});
+    }
+    const monthData = monthMap.get(month)!;
+    if (j.utilityType === "electricity") {
+      monthData.electricity += j.consumption;
+    } else if (j.utilityType === "water") {
+      monthData.water += j.consumption;
     }
   }
 
@@ -288,54 +258,29 @@ export async function getConsumption(userId: string, query: ReportQueryDTO): Pro
     }))
     .sort((a, b) => a.period.localeCompare(b.period));
 
-  // Group by property
   const propertyConsumption = new Map<string, Record<string, number>>();
-
-  for (const cycle of cycles) {
-    for (const [billingId, consumption] of Object.entries(cycle.billing_ids)) {
-      const billing = billingById.get(billingId);
-      if (!billing) continue;
-
-      const property = propertyMap.get(billing.property_id);
-      if (!property) continue;
-
-      if (query.propertyId && billing.property_id !== query.propertyId) continue;
-
-      // Get utility type from the reading's meter group (accurate source)
-      let utilityType = "unknown";
-      const reading = readingMap.get(billing.current_reading_id);
-      if (reading) {
-        const readingMeterGroup = meterGroupMap.get(reading.meter_group_id);
-        if (readingMeterGroup) {
-          utilityType = readingMeterGroup.utility_type;
-        }
-      }
-
-      // Apply meter group filter if specified
-      if (query.meterGroupId && reading?.meter_group_id !== query.meterGroupId) {
-        continue;
-      }
-
-      if (!propertyConsumption.has(billing.property_id)) {
-        propertyConsumption.set(billing.property_id, {electricity: 0, water: 0});
-      }
-
-      const propData = propertyConsumption.get(billing.property_id)!;
-      if (utilityType === "electricity") {
-        propData.electricity += consumption;
-      } else if (utilityType === "water") {
-        propData.water += consumption;
-      }
+  for (const j of joinedData) {
+    if (!propertyConsumption.has(j.propertyId)) {
+      propertyConsumption.set(j.propertyId, {electricity: 0, water: 0});
+    }
+    const propData = propertyConsumption.get(j.propertyId)!;
+    if (j.utilityType === "electricity") {
+      propData.electricity += j.consumption;
+    } else if (j.utilityType === "water") {
+      propData.water += j.consumption;
     }
   }
 
   const by_property = Array.from(propertyConsumption.entries())
-    .map(([propId, data]) => ({
-      property_id: propId,
-      room_name: propertyMap.get(propId)?.room_name || "Unknown",
-      electricity: Math.round(data.electricity * 100) / 100,
-      water: Math.round(data.water * 100) / 100,
-    }))
+    .map(([propId, data]) => {
+      const j = joinedData.find((jb) => jb.propertyId === propId);
+      return {
+        property_id: propId,
+        room_name: j?.roomName || "Unknown",
+        electricity: Math.round(data.electricity * 100) / 100,
+        water: Math.round(data.water * 100) / 100,
+      };
+    })
     .sort((a, b) => a.room_name.localeCompare(b.room_name));
 
   return {by_month, by_property};
@@ -348,7 +293,11 @@ export async function getBillingTrends(userId: string, query: ReportQueryDTO): P
   const monthMap = new Map<string, { billed: number; collected: number; pending: number; overdue: number }>();
 
   for (const billing of joinedData) {
-    const month = billing.cycleEndDate.toISOString().slice(0, 7);
+    // Bucketed by cycle start date to match getConsumption's grouping (both use
+    // billing_start_date) — bucketing by end date instead put the same cycle in a
+    // different month on this chart vs. the Consumption chart whenever a cycle spans
+    // a month boundary.
+    const month = billing.cycleStartDate.toISOString().slice(0, 7);
 
     if (!monthMap.has(month)) {
       monthMap.set(month, {billed: 0, collected: 0, pending: 0, overdue: 0});
