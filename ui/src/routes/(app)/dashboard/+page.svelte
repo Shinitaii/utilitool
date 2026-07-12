@@ -5,7 +5,7 @@
 	import { getBillings } from '$lib/api/billings';
 	import { getBillingCycles } from '$lib/api/billing-cycles';
 	import { getMeterGroups } from '$lib/api/meter-groups';
-	import { formatCurrency, formatDate, getReadingUnit } from '$lib/utils/format';
+	import { formatCurrency, formatFirestoreDate, getReadingUnit } from '$lib/utils/format';
 	import { toDate } from '$lib/utils/timestamp';
 	import { getCyclePaidAmount, getCycleOutstandingAmount } from '$lib/utils/billing-cycle.util';
 	import { getUtilityTypeBadgeClasses } from '$lib/utils/utility-colors';
@@ -186,8 +186,8 @@
 						{@const meterGroup = meterGroups.find((m) => m.id === cycle.meter_group_id)}
 						<tr class="border-b border-gray-50">
 							<td class="py-2 text-gray-700">
-								{formatDate(toDate(cycle.billing_start_date))} – {formatDate(
-									toDate(cycle.billing_end_date)
+								{formatFirestoreDate(cycle.billing_start_date)} – {formatFirestoreDate(
+									cycle.billing_end_date
 								)}
 							</td>
 							<td class="py-2">

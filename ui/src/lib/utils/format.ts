@@ -1,4 +1,6 @@
 import { format, parse } from 'date-fns';
+import type { FirestoreTimestamp } from '$lib/types/api.types';
+import { toDate } from '$lib/utils/timestamp';
 
 export function formatCurrency(amount: number): string {
 	return new Intl.NumberFormat('en-PH', {
@@ -23,6 +25,10 @@ export function formatKwh(kwh: number): string {
 
 export function formatDate(date: Date): string {
 	return format(date, 'MMM d, yyyy');
+}
+
+export function formatFirestoreDate(timestamp: FirestoreTimestamp | string): string {
+	return formatDate(toDate(timestamp));
 }
 
 export function formatLongDate(date: Date): string {
