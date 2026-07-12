@@ -12,3 +12,16 @@ export class AppError extends Error {
     this.name = "AppError";
   }
 }
+
+/** Fetch by id via the given lookup, or throw a 404 AppError with a consistent message. */
+export async function getOrThrow<T>(
+  getById: (id: string) => Promise<T | null>,
+  id: string,
+  label: string
+): Promise<T> {
+  const entity = await getById(id);
+  if (!entity) {
+    throw new AppError(404, `${label} not found`);
+  }
+  return entity;
+}
