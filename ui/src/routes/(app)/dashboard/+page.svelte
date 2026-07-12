@@ -5,7 +5,7 @@
 	import { getBillings } from '$lib/api/billings';
 	import { getBillingCycles } from '$lib/api/billing-cycles';
 	import { getMeterGroups } from '$lib/api/meter-groups';
-	import { formatCurrency, formatDate } from '$lib/utils/format';
+	import { formatCurrency, formatDate, getReadingUnit } from '$lib/utils/format';
 	import { toDate } from '$lib/utils/timestamp';
 	import { getCyclePaidAmount, getCycleOutstandingAmount } from '$lib/utils/billing-cycle.util';
 	import { getUtilityTypeBadgeClasses } from '$lib/utils/utility-colors';
@@ -19,47 +19,74 @@
 
 	let propertyCount = $state(0);
 	let tenantCount = $state(0);
-	let totalBilled = $state(0);
-	let totalCollected = $state(0);
-	let totalOutstanding = $state(0);
-	let recentCycles = $state<BillingCycle[]>([]);
+	let allCycles = $state<BillingCycle[]>([]);
 	let meterGroups = $state<MeterGroup[]>([]);
 	let billingMap = $state<Map<string, Billing>>(new Map());
+	let recentCyclesRangeMonths = $state<3 | 6 | 12>(3);
+
+	const recentCycles = $derived.by(() => {
+		const cutoff = new Date();
+		cutoff.setMonth(cutoff.getMonth() - recentCyclesRangeMonths);
+		return allCycles
+			.filter((cycle) => toDate(cycle.billing_start_date) >= cutoff)
+			.sort(
+				(a, b) => toDate(b.billing_start_date).getTime() - toDate(a.billing_start_date).getTime()
+			);
+	});
+
+	// Stat boxes are scoped to the same selected range as the cycles table below them —
+	// otherwise "Billed"/"Collected"/"Outstanding" silently summed every cycle ever
+	// regardless of which range tab was selected, which read as internally inconsistent.
+	const totalBilled = $derived.by(() =>
+		recentCycles.reduce((sum, cycle) => {
+			const cycleTotal = Object.values(cycle.billing_ids).reduce(
+				(s, consumption) => s + consumption * cycle.billing_rate,
+				0
+			);
+			return sum + cycleTotal;
+		}, 0)
+	);
+	const totalCollected = $derived.by(() =>
+		recentCycles.reduce((sum, cycle) => sum + getCyclePaidAmount(cycle, billingMap), 0)
+	);
+	const totalOutstanding = $derived.by(() =>
+		recentCycles.reduce((sum, cycle) => sum + getCycleOutstandingAmount(cycle, billingMap), 0)
+	);
+
+	// Cycles/billings can number in the hundreds (historical backfill) — a single capped
+	// page would silently under-count older cycles/billings, so page through with cursors
+	// (mirrors the same fix applied to the Billings page).
+	async function fetchAllPages<T>(
+		fetchPage: (cursor?: string) => Promise<{ data: T[]; hasMore: boolean; nextCursor: string | null }>
+	): Promise<T[]> {
+		const all: T[] = [];
+		let cursor: string | undefined;
+		do {
+			const page = await fetchPage(cursor);
+			all.push(...page.data);
+			cursor = page.hasMore ? (page.nextCursor ?? undefined) : undefined;
+		} while (cursor);
+		return all;
+	}
 
 	onMount(async () => {
 		try {
-			const [
-				propertiesResult,
-				tenantsResult,
-				billingCyclesResult,
-				billingsResult,
-				meterGroupsResult
-			] = await Promise.all([
-				getProperties({ limit: 100 }),
-				getTenants({ limit: 100 }),
-				getBillingCycles({ limit: 50 }),
-				getBillings({ limit: 100 }),
-				getMeterGroups({ limit: 100 })
-			]);
+			const [propertiesResult, tenantsResult, cyclesData, allBillings, meterGroupsResult] =
+				await Promise.all([
+					getProperties({ limit: 100 }),
+					getTenants({ limit: 100 }),
+					fetchAllPages((cursor) => getBillingCycles({ limit: 100, cursor })),
+					fetchAllPages((cursor) => getBillings({ limit: 100, cursor })),
+					getMeterGroups({ limit: 100 })
+				]);
 
 			propertyCount = propertiesResult.data.length;
 			tenantCount = tenantsResult.data.length;
-			recentCycles = billingCyclesResult.data;
+			allCycles = cyclesData;
 			meterGroups = meterGroupsResult.data;
 
 			// Build billing map for lookup
-			const allBillings: Billing[] = billingsResult.data;
 			billingMap = new Map(allBillings.map((b) => [b.id, b]));
-
-			// Calculate global totals and per-cycle amounts
-			recentCycles.forEach((cycle) => {
-				const cycleTotal = Object.values(cycle.billing_ids).reduce((sum, consumption) => {
-					return sum + consumption * cycle.billing_rate;
-				}, 0);
-				totalBilled += cycleTotal;
-				totalCollected += getCyclePaidAmount(cycle, billingMap);
-				totalOutstanding += getCycleOutstandingAmount(cycle, billingMap);
-			});
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load dashboard data';
 		} finally {
@@ -91,12 +118,12 @@
 	{:else}
 		<div class="grid grid-cols-4 gap-4">
 			<div class="rounded-lg border border-gray-200 bg-white p-6">
-				<p class="text-sm font-medium text-gray-600">This Month Billed</p>
+				<p class="text-sm font-medium text-gray-600">{recentCyclesRangeMonths} Month(s) Billed</p>
 				<p class="mt-2 text-3xl font-bold">{formatCurrency(totalBilled)}</p>
-				<p class="mt-1 text-xs text-gray-500">From recent cycles</p>
+				<p class="mt-1 text-xs text-gray-500">{recentCycles.length} cycle(s) in range</p>
 			</div>
 			<div class="rounded-lg border border-gray-200 bg-white p-6">
-				<p class="text-sm font-medium text-gray-600">Collected</p>
+				<p class="text-sm font-medium text-gray-600">Collected (same range)</p>
 				<p class="mt-2 text-3xl font-bold">{formatCurrency(totalCollected)}</p>
 				<p class="mt-1 text-xs text-gray-500">
 					{totalBilled > 0 ? Math.round((totalCollected / totalBilled) * 100) : 0}%
@@ -106,7 +133,7 @@
 				class="rounded-lg border border-gray-200 bg-white p-6"
 				style="background-color: var(--color-status-unpaid-bg)"
 			>
-				<p class="text-sm font-medium text-gray-600">Outstanding</p>
+				<p class="text-sm font-medium text-gray-600">Outstanding (same range)</p>
 				<p class="mt-2 text-3xl font-bold">{formatCurrency(totalOutstanding)}</p>
 				<p class="mt-1 text-xs text-gray-500">Pending payments</p>
 			</div>
@@ -119,7 +146,23 @@
 	{/if}
 
 	<div class="rounded-lg border border-gray-200 bg-white p-6">
-		<h2 class="font-semibold">Recent Billing Cycles</h2>
+		<div class="flex items-center justify-between">
+			<h2 class="font-semibold">Recent Billing Cycles</h2>
+			<div class="flex gap-1 rounded-lg border border-gray-200 p-1">
+				{#each [3, 6, 12] as months (months)}
+					<button
+						type="button"
+						onclick={() => (recentCyclesRangeMonths = months as 3 | 6 | 12)}
+						class="rounded px-3 py-1 text-sm font-medium transition {recentCyclesRangeMonths ===
+						months
+							? 'bg-gray-900 text-white'
+							: 'text-gray-600 hover:bg-gray-100'}"
+					>
+						{months}mo
+					</button>
+				{/each}
+			</div>
+		</div>
 		{#if isLoading}
 			<TableSkeleton rows={4} cols={4} />
 		{:else if recentCycles.length === 0}
@@ -159,7 +202,10 @@
 									{/if}
 								</div>
 							</td>
-							<td class="py-2">{cycle.billing_consumption.toLocaleString()}</td>
+							<td class="py-2"
+								>{cycle.billing_consumption.toLocaleString()}
+								{getReadingUnit(meterGroup?.utility_type || 'electricity')}</td
+							>
 							<td class="py-2 text-right font-semibold text-green-700"
 								>{formatCurrency(getCyclePaidAmount(cycle, billingMap))}</td
 							>
