@@ -2,7 +2,6 @@ import {Response} from "express";
 import type {AuthenticatedRequest} from "../../utils/auth.util";
 import {ImageExtractionService} from "../image-extraction/image-extraction.service";
 import {OcrBillDTO, OcrBillResponse} from "./bills.dto";
-import {AppError} from "../../utils/error.util";
 
 /**
  * Thin wrapper around the shared image-extraction service — this endpoint and
@@ -13,8 +12,7 @@ import {AppError} from "../../utils/error.util";
  */
 export const ocrBill = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   const data = req.body as OcrBillDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
 
   const extracted = await ImageExtractionService.extractBillingFromImage(data.image_url, userId);
 

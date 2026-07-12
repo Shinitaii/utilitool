@@ -18,8 +18,7 @@ export const createProperty = async (
   res: Response
 ): Promise<void> => {
   const data = req.body as CreatePropertyDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await propertyService.create(userId, data);
   res.status(201).json(result);
 };
@@ -29,8 +28,7 @@ export const createBatchProperties = async (
   res: Response
 ): Promise<void> => {
   const data = req.body as CreatePropertyBatchDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await propertyService.createBatch(userId, data);
   res.status(201).json(result);
 };
@@ -40,8 +38,7 @@ export const getPropertyById = async (
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as PropertyByIdParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const property = await propertyService.getById(userId, id);
 
   if (!property) {
@@ -56,8 +53,7 @@ export const getProperties = async (
   res: Response
 ): Promise<void> => {
   const query = req.query as unknown as GetPropertiesQueryDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
 
   const result = await propertyService.search(userId, {
     roomName: query.roomName,
@@ -78,8 +74,7 @@ export const updateProperty = async (
 ): Promise<void> => {
   const {id} = req.params as unknown as PropertyByIdParamsDTO;
   const data = req.body as UpdatePropertyDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await propertyService.update(userId, id, data);
   res.status(200).json(result);
 };
@@ -89,8 +84,7 @@ export const updateBatchProperties = async (
   res: Response
 ): Promise<void> => {
   const updates = req.body as UpdatePropertyBatchDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await propertyService.updateBatch(userId, updates);
   res.status(200).json(result);
 };
@@ -100,8 +94,7 @@ export const deleteProperty = async (
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as PropertyByIdParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   await propertyService.delete(userId, id);
   res.status(204).send();
 };
@@ -111,8 +104,7 @@ export const softDeleteProperty = async (
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as PropertyByIdParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await propertyService.softDelete(userId, id);
   res.status(200).json(result);
 };
@@ -122,8 +114,7 @@ export const restoreProperty = async (
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as PropertyByIdParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await propertyService.restore(userId, id);
   res.status(200).json(result);
 };
@@ -133,8 +124,6 @@ export const purgeProperty = async (
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as PropertyByIdParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
   await propertyService.purge(id);
   res.status(204).send();
 };
@@ -144,8 +133,7 @@ export const recordPropertyMeterGroupReset = async (
   res: Response
 ): Promise<void> => {
   const {id, meterGroupId} = req.params as unknown as PropertyMeterGroupResetParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await propertyService.recordMeterGroupReset(userId, id, meterGroupId);
   res.status(200).json(result);
 };
