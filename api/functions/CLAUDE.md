@@ -258,7 +258,7 @@ Represents snapshots of meter consumption. **Single create has a critical side e
 - reading_amount must be non-negative
 - reading_date cannot be in the future
 - No duplicate readings per meter group per month (enforced at write time)
-- `image_url` is optional
+- Readings have no `image_url` field — meter photos are only ever used transiently for OCR suggest (`POST /readings/ocr`), never persisted
 - `meter_version` is server-set from the meter group's `current_version` at creation time (not provided by client)
 - Anomaly guard: if the reading delta exceeds 5× the rolling average for that meter group, returns 422 with a descriptive message — record a meter group reset first if the meter was physically replaced
 - **Cascade delete**: `DELETE /:id` soft-deletes the reading + all billings that reference it (as previous or current reading) (atomic transaction)
@@ -343,7 +343,7 @@ Represents billing periods with validation and rate calculation.
 5. Reject if cycle-level total is outside ±3% of `billing_consumption`
 
 **OCR endpoint** (`POST /billing-cycles/ocr`):
-- Accepts `{ image_url: string }` (data URL or HTTPS URL of a utility bill photo)
+- Accepts `{ image_url: string }` — a base64 `data:image/*;base64,...` URL of a utility bill photo (no fetchable URLs — see SSRF note below)
 - Returns `{ billing_start_date, billing_end_date, billing_consumption, billing_rate, raw_amount }`
 - Returns 404 if the user has no `vision_model` configured in `llm-config` (no fallback), 422 if the vision model cannot extract the data or any numeric field is invalid
 - Requires `admin` or `landlord` role
@@ -364,7 +364,7 @@ no Gemini, no fallback.
 | POST | `/image-extraction/billings` | OCR utility bill photo → `{ billing_start_date, billing_end_date, billing_consumption, billing_rate, raw_amount }` |
 
 **Business rules**:
-- Accepts `{ image_url: string }` — data URL or HTTPS URL
+- Accepts `{ image_url: string }` — base64 `data:image/*;base64,...` only (no fetchable URLs — see SSRF note below)
 - Returns 404 if the user has no `vision_model` configured in `llm-config`, 422 if extraction fails, 400 if the image URL is invalid
 - Backed by `src/lib/vision-ocr.lib.ts` (via `src/lib/llm.lib.ts`'s `LlmClient`, same Groq/Ollama Cloud providers as the chatbot)
 - Requires authentication (BearerAuth)
@@ -414,22 +414,6 @@ Restricted to the `admin` role (`requireRole("admin")` in `chatbot.route.ts`) �
 | Method | Path | Purpose |
 |--------|------|---------|
 | POST | `/chatbot` | Send a message (+ optional up-to-20-message history); returns `{ reply }`. Admin-only. |
-
-### Photo Settings (`/photo-settings` — protected)
-
-Located: `src/features/photo-settings/`
-
-Per-user preference for whether meter-reading photos get persisted (`image_url`) when a reading is created — separate collection, same one-doc-per-user pattern as `llm-config`. Unlike `llm-config`, `GET` never 404s: no stored doc just means the default applies.
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| GET | `/photo-settings` | Fetch `{savePhotos: boolean}` — defaults to `false` if never configured |
-| PATCH | `/photo-settings` | Set `{savePhotos: boolean}` |
-
-**Business rules**:
-- Default is `false` (disabled) — a captured/uploaded photo is still used transiently for OCR suggest (`POST /readings/ocr`, `POST /image-extraction/readings`), but web and mobile clients strip `image_url` from the create payload unless this is `true`.
-- Utility-bill / billing-cycle photos are **never** persisted regardless of this setting — there's no `image_url` field on the billing-cycle model to begin with, so this setting only governs meter-reading photos.
-- Enforcement is client-side (web `readings` page, mobile `CaptureReadings`) — the backend doesn't inspect this setting itself; `POST /readings`/`POST /readings/batch` still accept an optional `image_url` as before.
 
 ### Stub & Incomplete Features
 
@@ -628,18 +612,6 @@ api/functions/src/features/chatbot/
 └── chatbot.swagger.ts
 ```
 
-### Photo Settings
-```
-api/functions/src/features/photo-settings/
-├── photo-settings.model.ts    → PhotoSettings (save_photos: boolean)
-├── photo-settings.dto.ts
-├── photo-settings.repository.ts → One doc per user, same pattern as llm-config.repository.ts
-├── photo-settings.service.ts  → get() defaults to {savePhotos: false} when no doc exists (never 404s)
-├── photo-settings.controller.ts
-├── photo-settings.route.ts
-└── photo-settings.swagger.ts
-```
-
 ### Authentication (special case — public routes)
 ```
 api/functions/src/features/auth/
@@ -669,7 +641,7 @@ api/functions/src/
 │   ├── auth.lib.ts              → JWT generation (jsonwebtoken)
 │   ├── llm.lib.ts               → LlmClient — OpenAI-compatible chat-completions client (Groq, Ollama Cloud); serializes text+image content per-provider
 │   ├── vision-ocr.lib.ts        → Vision OCR (readings, bills) via LlmClient — no Gemini, requires `vision_model`
-│   ├── image-fetch.util.ts      → SSRF-guarded image fetch/decode shared by vision-ocr.lib.ts
+│   ├── image-fetch.util.ts      → Decodes base64 `data:image/*;base64,...` payloads shared by vision-ocr.lib.ts — no server-side URL fetch exists, eliminating SSRF entirely (all OCR endpoints reject non-`data:` image_url via the shared `ImageUrlSchema`)
 │   ├── ocr-parsing.util.ts      → OCR prompts + response parsing shared by vision-ocr.lib.ts
 │   ├── crypto.lib.ts            → AES-256-GCM encrypt/decryptSecret() for LLM API keys
 │   └── ... (Realtime DB, storage stubs)

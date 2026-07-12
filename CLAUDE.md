@@ -239,10 +239,9 @@ Each page/component is organized by:
 - ✅ Image Extraction (`POST /image-extraction/readings` + `POST /image-extraction/billings` — vision OCR via the user's configured `llm-config` vision provider, Groq or Ollama Cloud only; no Gemini)
 - ✅ Reports (`GET /reports/summary`, `/consumption`, `/billing-trends`, `/collection-status`)
 - ✅ Bills (`POST /bills/ocr` — functional 3-step UI wizard; overlaps with image-extraction)
-- ⚠️ Users (`POST /users` — partial stub for user role management)
+- ✅ Users (`POST /users` — creates both the Firebase Auth account and Firestore profile server-side via the Admin SDK in one call; the client never touches Firebase Auth for this flow, so the acting admin's own session is never hijacked by the newly created account)
 - ✅ LLM Config (`GET`/`PATCH /llm-config` for the chatbot provider/model/API key + `PATCH /llm-config/vision` for an **independent** vision provider/model/API key used by OCR — separate because not every provider has a usable free vision model; reuses the chatbot's API key when both configs use the same provider; API keys AES-256-GCM encrypted at rest via `lib/crypto.lib.ts`)
 - ✅ Chatbot (`POST /chatbot` — insight assistant scoped to the authenticated user's data, tool-calling via `lib/llm.lib.ts` against Groq/Ollama Cloud; regex jailbreak guard in `chatbot.guard.ts`)
-- ✅ Photo Settings (`GET`/`PATCH /photo-settings` — per-user `savePhotos` preference, defaults to `false`; web and mobile check it before attaching a meter-reading `image_url` on create. OCR suggest always works regardless; billing-cycle/bill photos are never persisted either way)
 
 **Audit Highlights (25 fixes)**:
 
@@ -276,7 +275,7 @@ Each page/component is organized by:
 - ✅ CaptureReadings (3-step wizard: meter group select → per-property readings + camera with auto OCR suggest → review & batch submit)
 - ✅ ReadingHistory (filterable by utility type + property)
 - ✅ Billings (grouped by status: overdue/pending/paid; mark-as-paid action)
-- ✅ Settings (account info + sign out; save-photos preference toggle)
+- ✅ Settings (account info + sign out)
 
 ---
 
