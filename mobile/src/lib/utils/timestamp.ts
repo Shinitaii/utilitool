@@ -34,13 +34,3 @@ export function formatTimestampDate(timestamp: FirestoreTimestamp | string | any
   });
 }
 
-export function formatTimestampDateTime(timestamp: FirestoreTimestamp | string | any): string {
-  const date = toDate(timestamp);
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-}

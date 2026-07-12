@@ -18,7 +18,3 @@ export interface Property {
 export async function listProperties() {
   return apiGet('/properties');
 }
-
-export async function getProperty(id: string) {
-  return apiGet(`/properties/${id}`);
-}
