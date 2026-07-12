@@ -17,11 +17,12 @@
 	import type { Billing, UpdateBillingRequest } from '$lib/types/billing.types';
 	import type { Reading } from '$lib/types/reading.types';
 	import type { Property, MeterGroupEntry } from '$lib/types/property.types';
-	import type { MeterGroup, MeterGroupVersionEntry } from '$lib/types/meter-group.types';
+	import type { MeterGroup } from '$lib/types/meter-group.types';
 	import type { PaginatedResult } from '$lib/types/api.types';
 	import { formatDate, formatCurrency, formatReading, getReadingUnit } from '$lib/utils/format';
 	import { billAmount, sumMoney } from '$lib/utils/money';
 	import { toDate } from '$lib/utils/timestamp';
+	import { trueReading } from '$lib/utils/true-reading';
 	import { getUtilityTypeBadgeClasses } from '$lib/utils/utility-colors';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import TableSkeleton from '$lib/components/shared/TableSkeleton.svelte';
@@ -112,47 +113,8 @@
 	const round = (value: number, decimals = 2) =>
 		Math.round(value * Math.pow(10, decimals)) / Math.pow(10, decimals);
 
-	// Version-aware "true reading" — mirrors the API's billing-cycle validator so consumption
-	// previews stay correct across meter resets (cumulative offset of prior versions + raw amount).
-	function getCumulativeOffset(
-		versions: Record<string, MeterGroupVersionEntry> | undefined,
-		version: number
-	): number {
-		if (!versions) return 0;
-		let offset = 0;
-		for (let v = 1; v < version; v++) {
-			const versionData = versions[String(v)];
-			if (versionData) offset += versionData.last_reading;
-		}
-		return offset;
-	}
-
-	function getVersionsSource(
-		meterGroup: MeterGroup | undefined,
-		property: Property | undefined,
-		meterGroupId: string
-	): Record<string, MeterGroupVersionEntry> | undefined {
-		let versionsSource = meterGroup?.versions;
-		if (property) {
-			const entry = Object.values(property.meter_groups).find(
-				(e): e is MeterGroupEntry => typeof e === 'object' && e?.meter_group_id === meterGroupId
-			);
-			if (entry && !entry.is_main_meter) {
-				versionsSource = entry.versions;
-			}
-		}
-		return versionsSource;
-	}
-
-	function trueReading(
-		reading: Reading,
-		meterGroup: MeterGroup | undefined,
-		property: Property | undefined
-	): number {
-		const versionsSource = getVersionsSource(meterGroup, property, reading.meter_group_id);
-		return getCumulativeOffset(versionsSource, reading.meter_version ?? 1) + reading.reading_amount;
-	}
-
+	// Version-aware "true reading" (imported from $lib/utils/true-reading) mirrors the
+	// API's billing-cycle validator so consumption previews stay correct across meter resets.
 	function readingConsumption(
 		currReading: Reading,
 		prevReading: Reading | undefined,
