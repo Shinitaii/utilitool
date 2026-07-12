@@ -130,20 +130,6 @@
 					Go to settings →
 				</div>
 			</a>
-
-			<!-- Photo Settings Card -->
-			<a
-				href={resolve('/settings/photos')}
-				class="rounded-lg border border-gray-200 bg-white p-6 transition-colors hover:border-gray-300 hover:bg-gray-50"
-			>
-				<h3 class="text-lg font-semibold text-gray-900">Photo Settings</h3>
-				<p class="mt-2 text-sm text-gray-600">
-					Control whether meter-reading photos are saved after OCR, on web and mobile
-				</p>
-				<div class="mt-4 text-sm font-medium" style="color: var(--color-accent)">
-					Go to settings →
-				</div>
-			</a>
 		</div>
 	</section>
 </div>

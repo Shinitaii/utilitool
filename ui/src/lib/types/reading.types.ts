@@ -5,7 +5,6 @@ export interface Reading extends BaseModel {
 	property_id: string;
 	reading_amount: number;
 	reading_date: FirestoreTimestamp;
-	image_url?: string;
 	meter_version: number;
 }
 
@@ -14,7 +13,6 @@ export interface CreateReadingRequest {
 	property_id: string;
 	reading_amount: number;
 	reading_date: FirestoreTimestamp | string;
-	image_url?: string;
 }
 
 export interface CreateSeedReadingRequest {
@@ -22,12 +20,10 @@ export interface CreateSeedReadingRequest {
 	property_id: string;
 	reading_amount: number;
 	reading_date: FirestoreTimestamp | string;
-	image_url?: string;
 }
 
 export interface UpdateReadingRequest {
 	meter_group_id?: string;
 	reading_amount?: number;
 	reading_date?: FirestoreTimestamp | string;
-	image_url?: string;
 }
