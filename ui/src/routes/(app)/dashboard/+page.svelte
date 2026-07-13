@@ -25,8 +25,12 @@
 	let recentCyclesRangeMonths = $state<3 | 6 | 12>(3);
 
 	const recentCycles = $derived.by(() => {
-		const cutoff = new Date();
-		cutoff.setMonth(cutoff.getMonth() - recentCyclesRangeMonths);
+		const now = new Date();
+		const cutoff = new Date(
+			now.getFullYear(),
+			now.getMonth() - recentCyclesRangeMonths,
+			now.getDate()
+		);
 		return allCycles
 			.filter((cycle) => toDate(cycle.billing_start_date) >= cutoff)
 			.sort(
@@ -57,7 +61,9 @@
 	// page would silently under-count older cycles/billings, so page through with cursors
 	// (mirrors the same fix applied to the Billings page).
 	async function fetchAllPages<T>(
-		fetchPage: (cursor?: string) => Promise<{ data: T[]; hasMore: boolean; nextCursor: string | null }>
+		fetchPage: (
+			cursor?: string
+		) => Promise<{ data: T[]; hasMore: boolean; nextCursor: string | null }>
 	): Promise<T[]> {
 		const all: T[] = [];
 		let cursor: string | undefined;

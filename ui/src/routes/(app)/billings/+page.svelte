@@ -790,14 +790,15 @@
 				return true;
 			})
 			.sort(
-				(a, b) =>
-					toDate(b.billing_start_date).getTime() - toDate(a.billing_start_date).getTime()
+				(a, b) => toDate(b.billing_start_date).getTime() - toDate(a.billing_start_date).getTime()
 			);
 	});
 
 	const cyclesPageSize = 20;
 	let currentPage = $state(1);
-	const totalPages = $derived.by(() => Math.max(1, Math.ceil(filteredCycles.length / cyclesPageSize)));
+	const totalPages = $derived.by(() =>
+		Math.max(1, Math.ceil(filteredCycles.length / cyclesPageSize))
+	);
 	const pagedCycles = $derived.by(() => {
 		const start = (currentPage - 1) * cyclesPageSize;
 		return filteredCycles.slice(start, start + cyclesPageSize);
@@ -1356,9 +1357,7 @@
 				<div class="flex gap-2">
 					<button
 						onclick={async () => {
-							const cyclesToPrint = cycles.filter((c) =>
-								selectedCyclesForPrint.includes(c.id)
-							);
+							const cyclesToPrint = cycles.filter((c) => selectedCyclesForPrint.includes(c.id));
 							// Load billings for any cycles that don't have data yet
 							for (const cycle of cyclesToPrint) {
 								if (!billings.has(cycle.id)) {
@@ -1469,9 +1468,7 @@
 				/>
 			</div>
 			<div>
-				<label for="filter-date-to" class="mb-1 block text-xs font-medium text-gray-600"
-					>To</label
-				>
+				<label for="filter-date-to" class="mb-1 block text-xs font-medium text-gray-600">To</label>
 				<input
 					id="filter-date-to"
 					type="date"
@@ -1564,11 +1561,14 @@
 															{formatDate(toDate(cycle.billing_start_date))} –
 															{formatDate(toDate(cycle.billing_end_date))}
 														</span>
-														<span class="text-sm text-gray-500">{getCycleMeterGroupName(cycle)}</span>
+														<span class="text-sm text-gray-500"
+															>{getCycleMeterGroupName(cycle)}</span
+														>
 														<span
 															class="rounded {getUtilityTypeBadgeClasses(
 																cycleUtilityType
-															)} px-1.5 py-0.5 text-xs font-medium capitalize">{cycleUtilityType}</span
+															)} px-1.5 py-0.5 text-xs font-medium capitalize"
+															>{cycleUtilityType}</span
 														>
 													</div>
 													<div class="text-sm text-gray-500">
@@ -1581,266 +1581,257 @@
 												</div>
 											</div>
 										</div>
-											<div class="ml-6 grid grid-cols-4 gap-8 text-right">
-												<div>
-													<div class="text-xs font-medium text-gray-600">Consumption</div>
-													<div class="font-mono font-semibold text-gray-900">
-														{cycle.billing_consumption.toLocaleString()}
-														{getReadingUnit(getCycleUtilityType(cycle))}
-													</div>
+										<div class="ml-6 grid grid-cols-4 gap-8 text-right">
+											<div>
+												<div class="text-xs font-medium text-gray-600">Consumption</div>
+												<div class="font-mono font-semibold text-gray-900">
+													{cycle.billing_consumption.toLocaleString()}
+													{getReadingUnit(getCycleUtilityType(cycle))}
 												</div>
-												<div>
-													<div class="text-xs font-medium text-gray-600">Rate</div>
-													<div class="font-mono font-semibold text-gray-900">
-														₱{cycle.billing_rate.toFixed(2)}/{getReadingUnit(
-															getCycleUtilityType(cycle)
-														)}
-													</div>
+											</div>
+											<div>
+												<div class="text-xs font-medium text-gray-600">Rate</div>
+												<div class="font-mono font-semibold text-gray-900">
+													₱{cycle.billing_rate.toFixed(2)}/{getReadingUnit(
+														getCycleUtilityType(cycle)
+													)}
 												</div>
-												<div>
-													<div class="text-xs font-medium text-gray-600">Total Amount</div>
-													<div class="font-mono font-semibold text-gray-900">
-														{formatCurrency(
-															billAmount(cycle.billing_consumption, cycle.billing_rate)
-														)}
-													</div>
+											</div>
+											<div>
+												<div class="text-xs font-medium text-gray-600">Total Amount</div>
+												<div class="font-mono font-semibold text-gray-900">
+													{formatCurrency(
+														billAmount(cycle.billing_consumption, cycle.billing_rate)
+													)}
 												</div>
-												<div>
-													<div class="text-xs font-medium text-gray-600">Currently Paid</div>
-													<div class="font-mono font-semibold text-green-700">
-														{formatCurrency(getCyclePaidAmount(cycle))}
-													</div>
+											</div>
+											<div>
+												<div class="text-xs font-medium text-gray-600">Currently Paid</div>
+												<div class="font-mono font-semibold text-green-700">
+													{formatCurrency(getCyclePaidAmount(cycle))}
 												</div>
 											</div>
 										</div>
-									</button>
-								</div>
-								<div class="flex gap-1">
-									<button
-										onclick={(e) => {
-											e.stopPropagation();
-											const cyclesToPrint = [cycle];
-											if (!billings.has(cycle.id)) {
-												const cycleBillings = allBillings.filter((b) => b.id in cycle.billing_ids);
-												billings.set(cycle.id, cycleBillings);
-											}
-											printReceipts(cyclesToPrint);
-										}}
-										class="rounded p-2 text-blue-600 hover:bg-blue-100"
-										title="Print this cycle"
-									>
-										<Printer size={18} />
-									</button>
-									<button
-										onclick={(e) => {
-											e.stopPropagation();
-											openCycleEditModal(cycle);
-										}}
-										class="rounded p-2 text-gray-600 hover:bg-gray-100"
-										title="Edit cycle (correct rate, consumption, or dates)"
-									>
-										<Pencil size={18} />
-									</button>
-									<button
-										onclick={(e) => {
-											e.stopPropagation();
-											openStragglerModal(cycle);
-										}}
-										class="rounded p-2 text-gray-600 hover:bg-gray-100"
-										title="Add a late-arriving billing to this cycle"
-									>
-										<Plus size={18} />
-									</button>
-									<button
-										onclick={(e) => {
-											e.stopPropagation();
-											if (
-												confirm(
-													'Archive this billing cycle and all its billings? They can be restored from the archive.'
-												)
-											) {
-												softDeleteBillingCycle(cycle.id)
-													.then(() => loadData())
-													.catch((err) => {
-														error =
-															err instanceof Error
-																? err.message
-																: 'Failed to archive billing cycle';
-													});
-											}
-										}}
-										class="rounded p-2 text-red-700 hover:bg-red-100"
-										title="Archive billing cycle"
-									>
-										<Archive size={18} />
-									</button>
-								</div>
+									</div>
+								</button>
 							</div>
-
-							<!-- Expanded Billings Table -->
-							{#if expandedCycleId === cycle.id}
-								<div id={`cycle-detail-${cycle.id}`} class="border-t border-gray-200 bg-gray-50">
-									{#if cycleBillings?.length === 0}
-										<div class="px-6 py-4">
-											<EmptyState title="No billings" message="No billings in this cycle yet" />
-										</div>
-									{:else if cycleBillings}
-										<div class="overflow-x-auto">
-											<table class="w-full text-sm">
-												<thead class="border-b border-gray-200 bg-gray-50">
-													<tr>
-														<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700"
-															>Property</th
-														>
-														<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700"
-															>Previous Reading</th
-														>
-														<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700"
-															>Current Reading</th
-														>
-														<th
-															scope="col"
-															class="px-6 py-3 text-right font-semibold text-gray-700"
-														>
-															Consumption
-														</th>
-														<th scope="col" class="px-6 py-3 text-right font-semibold text-gray-700"
-															>Amount</th
-														>
-														<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700"
-															>Status</th
-														>
-														<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700"
-															>Actions</th
-														>
-													</tr>
-												</thead>
-												<tbody>
-													{#each cycleBillings || [] as billing (billing.id)}
-														{@const billingProperty = properties.find(
-															(p) => p.id === billing.property_id
-														)}
-														{@const cycleMeterGroup = cycle.meter_group_id
-															? meterGroupMap.get(cycle.meter_group_id)
-															: undefined}
-														{@const meterEntry = cycle.meter_group_id
-															? cycleMeterGroup?.utility_type === 'water'
-																? billingProperty?.meter_groups.water
-																: billingProperty?.meter_groups.electricity
-															: null}
-														{@const isMainMeter =
-															typeof meterEntry === 'string'
-																? false
-																: (meterEntry?.is_main_meter ?? false)}
-														{@const previousReading = readingMap.get(billing.previous_reading_id)}
-														{@const currentReading = readingMap.get(billing.current_reading_id)}
-														{@const previousMeterGroup = previousReading
-															? meterGroupMap.get(previousReading.meter_group_id)
-															: undefined}
-														{@const currentMeterGroup = currentReading
-															? meterGroupMap.get(currentReading.meter_group_id)
-															: undefined}
-														<tr class="border-b border-gray-100 hover:bg-white">
-															<td class="px-6 py-3 text-gray-900">
-																<div class="flex items-center gap-2">
-																	<span>{billingProperty?.room_name ?? 'Unknown Property'}</span>
-																</div>
-															</td>
-															<td class="px-6 py-3 font-mono text-gray-700">
-																{#if previousReading}
-																	{formatReading(
-																		trueReading(
-																			previousReading,
-																			previousMeterGroup,
-																			billingProperty
-																		),
-																		previousMeterGroup?.utility_type || 'electricity'
-																	)}
-																{:else}
-																	N/A
-																{/if}
-															</td>
-															<td class="px-6 py-3 font-mono text-gray-700">
-																{#if currentReading}
-																	{formatReading(
-																		trueReading(currentReading, currentMeterGroup, billingProperty),
-																		currentMeterGroup?.utility_type || 'electricity'
-																	)}
-																{:else}
-																	N/A
-																{/if}
-															</td>
-															<td class="px-6 py-3 text-right font-mono text-gray-700">
-																{#if currentReading}
-																	{(cycle.billing_ids[billing.id] ?? 0).toLocaleString()}
-																	{getReadingUnit(currentMeterGroup?.utility_type || 'electricity')}
-																{:else}
-																	N/A
-																{/if}
-															</td>
-															<td
-																class="px-6 py-3 text-right font-semibold {isMainMeter
-																	? 'text-purple-800'
-																	: 'text-gray-900'}"
-															>
-																{formatCurrency(
-																	(cycle.billing_ids[billing.id] ?? 0) * cycle.billing_rate
-																)}
-															</td>
-															<td class="px-6 py-3">
-																<StatusPill status={billing.payment_status} />
-															</td>
-															<td class="px-6 py-3">
-																<div class="flex gap-1">
-																	{#if billing.payment_status === 'pending'}
-																		<button
-																			onclick={() => handleMarkAsPaid(billing.id)}
-																			disabled={isLoading || markingAsPaidId === billing.id}
-																			class="rounded p-2 text-green-700 hover:bg-green-100 disabled:opacity-50"
-																			title="Mark as paid"
-																		>
-																			<CheckCircle2 size={18} />
-																		</button>
-																	{/if}
-																	<button
-																		onclick={() => openEditModal(billing)}
-																		disabled={isLoading || isUpdating}
-																		class="rounded p-2 text-blue-700 hover:bg-blue-100 disabled:opacity-50"
-																		title="Edit billing"
-																	>
-																		<Pencil size={18} />
-																	</button>
-																	<button
-																		onclick={() =>
-																			crud.handleSoftDelete(
-																				billing.id,
-																				softDeleteBilling,
-																				loadData,
-																				() =>
-																					confirm(
-																						'Archive this billing? It can be restored from the archive.'
-																					)
-																			)}
-																		disabled={isLoading || crud.deletingId === billing.id}
-																		class="rounded p-2 text-red-700 hover:bg-red-100 disabled:opacity-50"
-																		title="Archive billing"
-																	>
-																		<Archive size={18} />
-																	</button>
-																</div>
-															</td>
-														</tr>
-													{/each}
-												</tbody>
-											</table>
-										</div>
-									{:else}
-										<TableSkeleton rows={3} cols={5} />
-									{/if}
-								</div>
-							{/if}
+							<div class="flex gap-1">
+								<button
+									onclick={(e) => {
+										e.stopPropagation();
+										const cyclesToPrint = [cycle];
+										if (!billings.has(cycle.id)) {
+											const cycleBillings = allBillings.filter((b) => b.id in cycle.billing_ids);
+											billings.set(cycle.id, cycleBillings);
+										}
+										printReceipts(cyclesToPrint);
+									}}
+									class="rounded p-2 text-blue-600 hover:bg-blue-100"
+									title="Print this cycle"
+								>
+									<Printer size={18} />
+								</button>
+								<button
+									onclick={(e) => {
+										e.stopPropagation();
+										openCycleEditModal(cycle);
+									}}
+									class="rounded p-2 text-gray-600 hover:bg-gray-100"
+									title="Edit cycle (correct rate, consumption, or dates)"
+								>
+									<Pencil size={18} />
+								</button>
+								<button
+									onclick={(e) => {
+										e.stopPropagation();
+										openStragglerModal(cycle);
+									}}
+									class="rounded p-2 text-gray-600 hover:bg-gray-100"
+									title="Add a late-arriving billing to this cycle"
+								>
+									<Plus size={18} />
+								</button>
+								<button
+									onclick={(e) => {
+										e.stopPropagation();
+										if (
+											confirm(
+												'Archive this billing cycle and all its billings? They can be restored from the archive.'
+											)
+										) {
+											softDeleteBillingCycle(cycle.id)
+												.then(() => loadData())
+												.catch((err) => {
+													error =
+														err instanceof Error ? err.message : 'Failed to archive billing cycle';
+												});
+										}
+									}}
+									class="rounded p-2 text-red-700 hover:bg-red-100"
+									title="Archive billing cycle"
+								>
+									<Archive size={18} />
+								</button>
+							</div>
 						</div>
-					{/each}
+
+						<!-- Expanded Billings Table -->
+						{#if expandedCycleId === cycle.id}
+							<div id={`cycle-detail-${cycle.id}`} class="border-t border-gray-200 bg-gray-50">
+								{#if cycleBillings?.length === 0}
+									<div class="px-6 py-4">
+										<EmptyState title="No billings" message="No billings in this cycle yet" />
+									</div>
+								{:else if cycleBillings}
+									<div class="overflow-x-auto">
+										<table class="w-full text-sm">
+											<thead class="border-b border-gray-200 bg-gray-50">
+												<tr>
+													<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700"
+														>Property</th
+													>
+													<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700"
+														>Previous Reading</th
+													>
+													<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700"
+														>Current Reading</th
+													>
+													<th scope="col" class="px-6 py-3 text-right font-semibold text-gray-700">
+														Consumption
+													</th>
+													<th scope="col" class="px-6 py-3 text-right font-semibold text-gray-700"
+														>Amount</th
+													>
+													<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700"
+														>Status</th
+													>
+													<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700"
+														>Actions</th
+													>
+												</tr>
+											</thead>
+											<tbody>
+												{#each cycleBillings || [] as billing (billing.id)}
+													{@const billingProperty = properties.find(
+														(p) => p.id === billing.property_id
+													)}
+													{@const cycleMeterGroup = cycle.meter_group_id
+														? meterGroupMap.get(cycle.meter_group_id)
+														: undefined}
+													{@const meterEntry = cycle.meter_group_id
+														? cycleMeterGroup?.utility_type === 'water'
+															? billingProperty?.meter_groups.water
+															: billingProperty?.meter_groups.electricity
+														: null}
+													{@const isMainMeter =
+														typeof meterEntry === 'string'
+															? false
+															: (meterEntry?.is_main_meter ?? false)}
+													{@const previousReading = readingMap.get(billing.previous_reading_id)}
+													{@const currentReading = readingMap.get(billing.current_reading_id)}
+													{@const previousMeterGroup = previousReading
+														? meterGroupMap.get(previousReading.meter_group_id)
+														: undefined}
+													{@const currentMeterGroup = currentReading
+														? meterGroupMap.get(currentReading.meter_group_id)
+														: undefined}
+													<tr class="border-b border-gray-100 hover:bg-white">
+														<td class="px-6 py-3 text-gray-900">
+															<div class="flex items-center gap-2">
+																<span>{billingProperty?.room_name ?? 'Unknown Property'}</span>
+															</div>
+														</td>
+														<td class="px-6 py-3 font-mono text-gray-700">
+															{#if previousReading}
+																{formatReading(
+																	trueReading(previousReading, previousMeterGroup, billingProperty),
+																	previousMeterGroup?.utility_type || 'electricity'
+																)}
+															{:else}
+																N/A
+															{/if}
+														</td>
+														<td class="px-6 py-3 font-mono text-gray-700">
+															{#if currentReading}
+																{formatReading(
+																	trueReading(currentReading, currentMeterGroup, billingProperty),
+																	currentMeterGroup?.utility_type || 'electricity'
+																)}
+															{:else}
+																N/A
+															{/if}
+														</td>
+														<td class="px-6 py-3 text-right font-mono text-gray-700">
+															{#if currentReading}
+																{(cycle.billing_ids[billing.id] ?? 0).toLocaleString()}
+																{getReadingUnit(currentMeterGroup?.utility_type || 'electricity')}
+															{:else}
+																N/A
+															{/if}
+														</td>
+														<td
+															class="px-6 py-3 text-right font-semibold {isMainMeter
+																? 'text-purple-800'
+																: 'text-gray-900'}"
+														>
+															{formatCurrency(
+																(cycle.billing_ids[billing.id] ?? 0) * cycle.billing_rate
+															)}
+														</td>
+														<td class="px-6 py-3">
+															<StatusPill status={billing.payment_status} />
+														</td>
+														<td class="px-6 py-3">
+															<div class="flex gap-1">
+																{#if billing.payment_status === 'pending'}
+																	<button
+																		onclick={() => handleMarkAsPaid(billing.id)}
+																		disabled={isLoading || markingAsPaidId === billing.id}
+																		class="rounded p-2 text-green-700 hover:bg-green-100 disabled:opacity-50"
+																		title="Mark as paid"
+																	>
+																		<CheckCircle2 size={18} />
+																	</button>
+																{/if}
+																<button
+																	onclick={() => openEditModal(billing)}
+																	disabled={isLoading || isUpdating}
+																	class="rounded p-2 text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+																	title="Edit billing"
+																>
+																	<Pencil size={18} />
+																</button>
+																<button
+																	onclick={() =>
+																		crud.handleSoftDelete(
+																			billing.id,
+																			softDeleteBilling,
+																			loadData,
+																			() =>
+																				confirm(
+																					'Archive this billing? It can be restored from the archive.'
+																				)
+																		)}
+																	disabled={isLoading || crud.deletingId === billing.id}
+																	class="rounded p-2 text-red-700 hover:bg-red-100 disabled:opacity-50"
+																	title="Archive billing"
+																>
+																	<Archive size={18} />
+																</button>
+															</div>
+														</td>
+													</tr>
+												{/each}
+											</tbody>
+										</table>
+									</div>
+								{:else}
+									<TableSkeleton rows={3} cols={5} />
+								{/if}
+							</div>
+						{/if}
+					</div>
+				{/each}
 			</div>
 			{#if totalPages > 1}
 				<div class="flex items-center justify-between py-2">
