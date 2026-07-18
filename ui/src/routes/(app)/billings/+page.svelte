@@ -1735,6 +1735,11 @@
 													{@const currentMeterGroup = currentReading
 														? meterGroupMap.get(currentReading.meter_group_id)
 														: undefined}
+													{@const meterWasReset =
+														previousReading &&
+														currentReading &&
+														(previousReading.meter_version ?? 1) !==
+															(currentReading.meter_version ?? 1)}
 													<tr class="border-b border-gray-100 hover:bg-white">
 														<td class="px-6 py-3 text-gray-900">
 															<div class="flex items-center gap-2">
@@ -1744,7 +1749,7 @@
 														<td class="px-6 py-3 font-mono text-gray-700">
 															{#if previousReading}
 																{formatReading(
-																	trueReading(previousReading, previousMeterGroup, billingProperty),
+																	previousReading.reading_amount,
 																	previousMeterGroup?.utility_type || 'electricity'
 																)}
 															{:else}
@@ -1754,9 +1759,16 @@
 														<td class="px-6 py-3 font-mono text-gray-700">
 															{#if currentReading}
 																{formatReading(
-																	trueReading(currentReading, currentMeterGroup, billingProperty),
+																	currentReading.reading_amount,
 																	currentMeterGroup?.utility_type || 'electricity'
 																)}
+																{#if meterWasReset}
+																	<span
+																		class="ml-1 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700"
+																		title="Meter was replaced/reset between these two readings"
+																		>meter reset</span
+																	>
+																{/if}
 															{:else}
 																N/A
 															{/if}

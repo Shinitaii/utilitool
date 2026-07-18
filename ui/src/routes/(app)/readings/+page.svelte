@@ -16,20 +16,10 @@
 	import type { MeterGroup } from '$lib/types/meter-group.types';
 	import type { Property } from '$lib/types/property.types';
 	import type { PaginatedResult } from '$lib/types/api.types';
-	import {
-		formatFirestoreDate,
-		formatLongDate,
-		formatReading,
-		getReadingUnit
-	} from '$lib/utils/format';
+	import { formatFirestoreDate, formatLongDate, formatReading } from '$lib/utils/format';
 	import { toDate } from '$lib/utils/timestamp';
 	import { compressImage } from '$lib/utils/image-compression';
-	import {
-		trueReading,
-		resolveCurrentVersion,
-		getVersionsSource,
-		getCumulativeOffset
-	} from '$lib/utils/true-reading';
+	import { resolveCurrentVersion, getVersionsSource } from '$lib/utils/true-reading';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import TableSkeleton from '$lib/components/shared/TableSkeleton.svelte';
 	import EditModal from '$lib/components/shared/EditModal.svelte';
@@ -630,11 +620,13 @@
 													row.property,
 													selectedMeterGroup
 												)}
-												{@const offset = getCumulativeOffset(versionsSource, version)}
-												{@const unit = getReadingUnit(selectedMg?.utility_type || 'electricity')}
+												{@const resetInfo =
+													version > 1 ? versionsSource?.[String(version - 1)] : undefined}
 												<p class="mt-1 text-xs text-gray-400">
-													True total: {(offset + row.reading_amount).toLocaleString()}
-													{unit}
+													Meter v{version}
+													{#if resetInfo}
+														(reset {formatFirestoreDate(resetInfo.reset_at)} from {resetInfo.last_reading.toLocaleString()})
+													{/if}
 												</p>
 											{/if}
 										</td>
@@ -879,7 +871,7 @@
 						<th class="px-6 py-3 text-left font-semibold text-gray-700">Property</th>
 						<th class="px-6 py-3 text-left font-semibold text-gray-700">Meter Group</th>
 						<th scope="col" class="px-6 py-3 text-right font-semibold text-gray-700">Reading</th>
-						<th scope="col" class="px-6 py-3 text-right font-semibold text-gray-700">True Total</th>
+						<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Meter Cycle</th>
 						<th class="px-6 py-3 text-left font-semibold text-gray-700">Date</th>
 						<th class="px-6 py-3 text-left font-semibold text-gray-700">Created</th>
 						<th class="px-6 py-3 text-left font-semibold text-gray-700">Actions</th>
@@ -889,6 +881,14 @@
 					{#each readings.data as item (item.id)}
 						{@const itemProperty = propertyMap.get(item.property_id)}
 						{@const itemMeterGroup = meterGroupMap.get(item.meter_group_id)}
+						{@const itemMeterVersion = item.meter_version ?? 1}
+						{@const itemVersionsSource = getVersionsSource(
+							itemMeterGroup,
+							itemProperty,
+							item.meter_group_id
+						)}
+						{@const itemResetInfo =
+							itemMeterVersion > 1 ? itemVersionsSource?.[String(itemMeterVersion - 1)] : undefined}
 						<tr class="border-b border-gray-200 hover:bg-gray-50">
 							<td class="w-8 px-4 py-4">
 								<input
@@ -907,9 +907,13 @@
 							<td class="px-6 py-4 text-right font-mono text-gray-700">
 								{formatReading(item.reading_amount, itemMeterGroup?.utility_type || 'electricity')}
 							</td>
-							<td class="px-6 py-4 text-right font-mono text-xs text-gray-400">
-								{trueReading(item, itemMeterGroup, itemProperty).toLocaleString()}
-								{getReadingUnit(itemMeterGroup?.utility_type || 'electricity')}
+							<td class="px-6 py-4 text-xs text-gray-500">
+								<span class="font-medium text-gray-700">v{itemMeterVersion}</span>
+								{#if itemResetInfo}
+									<span class="block text-gray-400"
+										>reset {formatFirestoreDate(itemResetInfo.reset_at)}, prior meter ended at {itemResetInfo.last_reading.toLocaleString()}</span
+									>
+								{/if}
 							</td>
 							<td class="px-6 py-4 text-gray-600">{formatFirestoreDate(item.reading_date)}</td>
 							<td class="px-6 py-4 text-gray-600">{formatFirestoreDate(item.created_at)}</td>
