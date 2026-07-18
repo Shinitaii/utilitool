@@ -470,11 +470,6 @@ const swaggerSpec = {
               reading_date: {
                 $ref: "#/components/schemas/Timestamp",
               },
-              image_url: {
-                type: "string",
-                format: "uri",
-                description: "Optional photo of the meter (requires Firebase Storage)",
-              },
               meter_version: {
                 type: "integer",
                 minimum: 1,
@@ -503,11 +498,6 @@ const swaggerSpec = {
           reading_date: {
             $ref: "#/components/schemas/Timestamp",
           },
-          image_url: {
-            type: "string",
-            format: "uri",
-            description: "Optional photo URL (requires Firebase Storage to be configured)",
-          },
         },
         required: ["meter_group_id", "property_id", "reading_amount", "reading_date"],
       },
@@ -528,10 +518,6 @@ const swaggerSpec = {
           },
           reading_date: {
             $ref: "#/components/schemas/Timestamp",
-          },
-          image_url: {
-            type: "string",
-            format: "uri",
           },
         },
       },
@@ -934,9 +920,8 @@ const swaggerSpec = {
         properties: {
           image_url: {
             type: "string",
-            format: "uri",
-            description: "URL of the bill image to process",
-            example: "https://storage.googleapis.com/bucket/bills/bill.jpg",
+            description: "Base64 data URL of the bill image to process (data:image/*;base64,...)",
+            example: "data:image/jpeg;base64,/9j/4AAQSkZJRg...",
           },
         },
       },
@@ -946,6 +931,7 @@ const swaggerSpec = {
           provider: {
             type: ["string", "null"],
             enum: ["groq", "ollama_cloud", null],
+            description: "Chat provider, used by the insight chatbot.",
           },
           model: {
             type: ["string", "null"],
@@ -953,8 +939,21 @@ const swaggerSpec = {
           hasKey: {
             type: "boolean",
           },
+          visionProvider: {
+            type: ["string", "null"],
+            enum: ["groq", "ollama_cloud", null],
+            description: "Vision (OCR) provider — independent from the chat provider. Some providers have no usable free vision model.",
+          },
+          visionModel: {
+            type: ["string", "null"],
+            description: "Vision-capable model used for OCR (meter readings, bill photos). Required for OCR endpoints — no Gemini fallback.",
+          },
+          visionHasKey: {
+            type: "boolean",
+            description: "True once a vision config is usable — either via its own stored key, or by reusing the chat API key when visionProvider === provider.",
+          },
         },
-        required: ["provider", "model", "hasKey"],
+        required: ["provider", "model", "hasKey", "visionProvider", "visionModel", "visionHasKey"],
       },
       UpsertLlmConfigRequest: {
         type: "object",
@@ -973,6 +972,27 @@ const swaggerSpec = {
             minLength: 0,
             maxLength: 500,
             description: "Plaintext API key — encrypted server-side before storage, never returned. Optional: omit to keep the existing stored key.",
+          },
+        },
+        required: ["provider", "model"],
+      },
+      UpsertVisionLlmConfigRequest: {
+        type: "object",
+        properties: {
+          provider: {
+            type: "string",
+            enum: ["groq", "ollama_cloud"],
+          },
+          model: {
+            type: "string",
+            minLength: 1,
+            maxLength: 255,
+          },
+          apiKey: {
+            type: "string",
+            minLength: 0,
+            maxLength: 500,
+            description: "Plaintext API key — encrypted server-side before storage, never returned. Optional when provider matches the chat provider (the chat key is reused); required when it differs and no key is already stored for that provider.",
           },
         },
         required: ["provider", "model"],

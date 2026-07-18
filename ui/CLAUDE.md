@@ -107,7 +107,8 @@ ui/src/
 │           ├── +page.svelte        (Account settings root)
 │           ├── payment/+page.svelte (Payment settings)
 │           ├── users/+page.svelte  (User management — create users, assign roles)
-│           └── llm-provider/+page.svelte (LLM provider/model/API key config for the insight chatbot)
+│           ├── llm-provider/+page.svelte (Two tabs — Chatbot and Vision (OCR) — each with independent provider/model/API key; vision reuses the chatbot's key when providers match)
+│           └── photos/+page.svelte (Save-photos preference toggle — off by default)
 │
 ├── lib/
 │   ├── api/                         (API client modules — one per feature)
@@ -122,7 +123,7 @@ ui/src/
 │   │   ├── bills.ts                (ocrBill — POST /bills/ocr)
 │   │   ├── users.ts                (createUser — POST /users)
 │   │   ├── reports.ts              (getSummaryReport, getConsumptionReport, getBillingTrendsReport, getCollectionStatusReport)
-│   │   ├── llm-config.ts           (getLlmConfig, upsertLlmConfig — GET/PATCH /llm-config)
+│   │   ├── llm-config.ts           (getLlmConfig, upsertLlmConfig, upsertVisionLlmConfig — GET /llm-config, PATCH /llm-config, PATCH /llm-config/vision)
 │   │   ├── chat.ts                 (sendChatMessage — POST /chatbot)
 │   │   └── cache.ts                (clearAllCaches — clears all feature caches in parallel)
 │   │
@@ -161,7 +162,8 @@ ui/src/
 │           ├── ArchivePageTemplate.svelte (Reusable layout for all archive/restore pages)
 │           ├── EditModal.svelte         (Generic edit modal — wraps form with save/cancel)
 │           ├── EmptyState.svelte        (No data placeholder)
-│           ├── ImagePreview.svelte      (Inline image preview widget)
+│           ├── ImagePreview.svelte      (Full-size image preview overlay — pinch/scroll zoom, rotate)
+│           ├── PhotoDropzone.svelte     (Click-or-drag photo box — merges upload+preview into one control, used by readings batch/manual tabs)
 │           ├── SelectionToolbar.svelte  (Multi-select batch action toolbar)
 │           ├── ChatWidget.svelte        (Floating insight chatbot — mounted globally in (app)/+layout.svelte)
 │           ├── StatCard.svelte          (Metric card with value + sub)
@@ -250,11 +252,13 @@ ui/src/
   - `GET /meter-groups?limit=100` ← `getMeterGroups()` — for filter dropdown + version data
   - `GET /readings?meterGroupId=X&limit=100` ← `getReadings()` — paginated list
   - `POST /readings/batch` ← `createReadingsBatch()` — batch create (no auto-billing)
-  - `POST /readings/ocr` ← `ocrReadingImage()` — triggered by "Suggest" button per row
+  - `POST /readings` ← `createReading()` / `POST /readings/seed` ← `createSeedReading()` — manual tab
+  - `POST /readings/ocr` ← `ocrReadingImage()` — auto-triggered as soon as a photo is selected/dropped, on both the batch and manual tabs
 - **Displays**:
-  - Meter group filter + paginated table: reading_amount, **True Total** (version-aware cumulative), photo, date, created_at
-  - Batch create form: per-property rows with reading_amount input + "True total: X" hint; combined "Photo / Suggest" column (upload image → click Suggest to run OCR separately)
-- **Note**: `meter_version` is server-set from the property entry's `current_version` (per-property version tracking — see the Meter Groups note above on the deprecated MeterGroup-level fields). `image_url` is optional; silently falls back to local data URL when Firebase Storage is not configured.
+  - Meter group filter + paginated table: reading_amount, **True Total** (version-aware cumulative), date, created_at
+  - Batch create form: per-property rows with reading_amount input + "True total: X" hint; a `PhotoDropzone` per row (click or drag a photo onto the box — no separate Upload/Suggest buttons, OCR runs automatically on selection)
+  - Manual create form: same `PhotoDropzone` for its optional photo (previously a plain image-URL text input)
+- **Note**: `meter_version` is server-set from the property entry's `current_version` (per-property version tracking — see the Meter Groups note above on the deprecated MeterGroup-level fields). A photo is only ever used in-memory to drive the OCR-suggest call — it's sent to the API as a base64 `data:` URI, never persisted, and never attached to the create/batch payload. Readings have no `image_url` field.
 - **Status**: ✅ Complete
 
 #### Billings (`/billings`) — Cycle-Centric
@@ -296,9 +300,9 @@ All archive pages: `GET /<feature>?archived=true` to list soft-deleted items, th
 - **Sub-routes**:
   - `/settings/payment` — payment config
   - `/settings/users` — user management: `POST /users` ← `createUser()` to create accounts with role (`admin`, `landlord`, `assistant`)
-  - `/settings/llm-provider` — configure the insight chatbot's LLM provider (`groq` | `ollama_cloud`), model, and API key
-    - **API calls**: `GET /llm-config` ← `getLlmConfig()`, `PATCH /llm-config` ← `upsertLlmConfig()` from `src/lib/api/llm-config.ts`
-- **Status**: Create-only — full create-user flow (role select, password validation, Firebase error-code mapping, partial-failure handling); no listing/edit of existing users
+  - `/settings/llm-provider` — two tabs, each an independent provider (`groq` | `ollama_cloud`) + model + API key config: **Chatbot** (used by the insight chatbot) and **Vision (OCR)** (used by photo OCR for readings/bills). Providers can differ — e.g. Ollama Cloud for chat, Groq for vision, since not every provider has a usable free vision model. When the vision tab's provider matches the chatbot tab's, its API key field is optional and the chatbot's key is reused; when it differs, an API key is required. No vision config set means OCR endpoints 404, no Gemini fallback.
+    - **API calls**: `GET /llm-config` ← `getLlmConfig()`, `PATCH /llm-config` ← `upsertLlmConfig()` (chat tab), `PATCH /llm-config/vision` ← `upsertVisionLlmConfig()` (vision tab), all from `src/lib/api/llm-config.ts`
+- **Status**: Create-only — full create-user flow (role select, password validation, backend error mapping, partial-failure handling); no listing/edit of existing users. User creation is fully server-side: `POST /users` (Firebase Admin SDK) creates both the Auth account and the Firestore profile in one call — the client never touches Firebase Auth for this flow, so the acting admin's own session is never affected.
 
 #### Bills / OCR Upload (`/bills`)
 
@@ -398,7 +402,10 @@ export async function getCollectionStatusReport(
 
 ```ts
 export async function getLlmConfig(): Promise<LlmConfigResponse>;
-export async function upsertLlmConfig(data: UpsertLlmConfigRequest): Promise<LlmConfigResponse>;
+export async function upsertLlmConfig(data: UpsertLlmConfigRequest): Promise<LlmConfigResponse>; // chat tab
+export async function upsertVisionLlmConfig(
+	data: UpsertVisionLlmConfigRequest
+): Promise<LlmConfigResponse>; // vision tab
 // Types in src/lib/types/llm-config.types.ts
 ```
 
@@ -584,6 +591,12 @@ Inline image preview widget used in readings and billings forms. Shows a thumbna
 
 **Props**: `src: string`, `alt?: string`
 
+### PhotoDropzone
+
+Click-or-drag photo input used by the readings batch and manual tabs. Replaces the old separate Upload/Suggest buttons — clicking or dropping a file onto the box calls `onFile`, and the caller is expected to run OCR suggest immediately from that callback (no dedicated Suggest button anywhere). Shows the selected photo as its own background once set; clicking it again reopens the file picker to replace it. An optional small "view" icon triggers `onPreview` for a full-size look via `ImagePreview`.
+
+**Props**: `imageUrl: string | null`, `isBusy?: boolean`, `disabled?: boolean`, `onFile: (file: File) => void`, `onPreview?: (imageUrl: string) => void`
+
 ### SelectionToolbar
 
 Multi-select batch action toolbar. Slides in when `selectedIds.size > 0`. Shows count + "Archive selected" button.
@@ -592,7 +605,7 @@ Multi-select batch action toolbar. Slides in when `selectedIds.size > 0`. Shows 
 
 ### ChatWidget
 
-Floating insight-chatbot widget mounted globally in `(app)/+layout.svelte` (available on every protected route, not a route-scoped component). Sends messages + rolling history via `sendChatMessage()` from `src/lib/api/chat.ts` to `POST /chatbot`.
+Floating insight-chatbot widget mounted in `(app)/+layout.svelte`, gated to `authState.user?.role === 'admin'` (available on every protected route for admins only — not a route-scoped component). Sends messages + rolling history via `sendChatMessage()` from `src/lib/api/chat.ts` to `POST /chatbot`, which itself enforces `admin`-only server-side; the UI gate just avoids showing a widget that would 403 for `landlord`/`assistant` users. There is no mobile chatbot UI.
 
 ---
 

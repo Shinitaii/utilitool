@@ -15,8 +15,7 @@ export const createMeterGroup = async (
   res: Response
 ): Promise<void> => {
   const data = req.body as CreateMeterGroupDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await meterGroupService.create(userId, data);
   res.status(201).json(result);
 };
@@ -26,8 +25,7 @@ export const createBatchMeterGroups = async (
   res: Response
 ): Promise<void> => {
   const data = req.body as CreateMeterGroupDTO[];
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await meterGroupService.createBatch(userId, data);
   res.status(201).json(result);
 };
@@ -37,8 +35,7 @@ export const getMeterGroupById = async (
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as MeterGroupByIdParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const meterGroup = await meterGroupService.getById(userId, id);
 
   if (!meterGroup) {
@@ -53,8 +50,7 @@ export const getMeterGroups = async (
   res: Response
 ): Promise<void> => {
   const query = req.query as unknown as GetMeterGroupsQueryDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
 
   const result = await meterGroupService.search(userId, {
     meterName: query.meterName,
@@ -75,8 +71,7 @@ export const updateMeterGroup = async (
 ): Promise<void> => {
   const {id} = req.params as unknown as MeterGroupByIdParamsDTO;
   const data = req.body as Partial<UpdateMeterGroupDTO>;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await meterGroupService.update(userId, id, data);
   res.status(200).json(result);
 };
@@ -86,8 +81,7 @@ export const updateBatchMeterGroups = async (
   res: Response
 ): Promise<void> => {
   const updates = req.body as { id: string; data: Partial<UpdateMeterGroupDTO> }[];
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await meterGroupService.updateBatch(userId, updates);
   res.status(200).json(result);
 };
@@ -97,8 +91,7 @@ export const deleteMeterGroup = async (
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as MeterGroupByIdParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   await meterGroupService.delete(userId, id);
   res.status(204).send();
 };
@@ -108,8 +101,7 @@ export const softDeleteMeterGroup = async (
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as MeterGroupByIdParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await meterGroupService.softDelete(userId, id);
   res.status(200).json(result);
 };
@@ -119,10 +111,18 @@ export const restoreMeterGroup = async (
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as MeterGroupByIdParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await meterGroupService.restore(userId, id);
   res.status(200).json(result);
+};
+
+export const purgeMeterGroup = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  const {id} = req.params as unknown as MeterGroupByIdParamsDTO;
+  await meterGroupService.purge(id);
+  res.status(204).send();
 };
 
 export const recordMeterGroupReset = async (
@@ -130,8 +130,7 @@ export const recordMeterGroupReset = async (
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as MeterGroupByIdParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await meterGroupService.recordReset(userId, id);
   res.status(200).json(result);
 };

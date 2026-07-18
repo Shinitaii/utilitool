@@ -220,6 +220,16 @@ export class CachedRepository<T extends BaseModel> {
   }
 
   /**
+   * Purge (permanent delete of an already-archived item). The item was never
+   * in the active list cache (archived items are excluded from it), so only
+   * the ID cache needs invalidating.
+   */
+  async purge(id: string): Promise<void> {
+    await this.repo.purge(id);
+    await cacheDel(this.idCacheKey(id));
+  }
+
+  /**
    * Batch hard delete. Invalidates both cache tiers for all items.
    */
   async deleteBatch(ids: string[]): Promise<void> {

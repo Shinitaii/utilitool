@@ -54,6 +54,7 @@ export interface JoinedBilling {
   billingId: string;
   amount: number;
   consumption: number;
+  cycleStartDate: Date;
   cycleEndDate: Date;
   utilityType: string;
   propertyId: string;

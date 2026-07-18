@@ -46,16 +46,16 @@ mobile/
 │   └── lib/
 │       ├── api/
 │       │   ├── client.ts           → Base fetch: Bearer token + 401 retry
-│       │   ├── meter-groups.ts     → listMeterGroups, getMeterGroup
-│       │   ├── readings.ts         → listReadings, getReading, createReading, createReadingsBatch
-│       │   ├── properties.ts       → listProperties, getProperty
-│       │   ├── billings.ts         → listBillings, getBilling, updateBillingStatus
-│       │   └── billing-cycles.ts   → listBillingCycles, getBillingCycle
+│       │   ├── meter-groups.ts     → listMeterGroups
+│       │   ├── readings.ts         → listReadings, getReading, createReadingsBatch, ocrReadingImage
+│       │   ├── properties.ts       → listProperties
+│       │   ├── billings.ts         → listBillings, updateBillingStatus
+│       │   └── billing-cycles.ts   → listBillingCycles
 │       ├── utils/
 │       │   ├── auth-errors.ts      → getReadableAuthError
 │       │   ├── billing-cycle.util.ts → getStatusSummary, getCyclePaidAmount, getCycleOutstandingAmount
 │       │   ├── format.ts           → getReadingUnit, formatReading
-│       │   ├── timestamp.ts        → toDate, formatTimestampDate, formatTimestampDateTime (Firestore timestamp handling)
+│       │   ├── timestamp.ts        → toDate, formatTimestampDate (Firestore timestamp handling)
 │       │   └── utility-colors.ts   → getUtilityTypeBadgeClasses
 │       └── stores/
 │           └── session.ts          → sessionCache: module-level cache for meterGroups + properties (survives screen nav, cleared on sign-out)
@@ -96,11 +96,11 @@ All API calls go through `src/lib/api/client.ts`:
 
 | Module | Functions | API Endpoints |
 |--------|-----------|---------------|
-| `meter-groups.ts` | `listMeterGroups`, `getMeterGroup` | `GET /meter-groups?summary=true`, `GET /meter-groups/:id` |
-| `readings.ts` | `listReadings`, `getReading`, `createReading`, `createReadingsBatch` | `GET /readings`, `GET /readings/:id`, `POST /readings`, `POST /readings/batch` |
-| `properties.ts` | `listProperties`, `getProperty` | `GET /properties`, `GET /properties/:id` |
-| `billings.ts` | `listBillings`, `getBilling`, `updateBillingStatus` | `GET /billings`, `GET /billings/:id`, `PATCH /billings/:id` |
-| `billing-cycles.ts` | `listBillingCycles`, `getBillingCycle` | `GET /billing-cycles`, `GET /billing-cycles/:id` |
+| `meter-groups.ts` | `listMeterGroups` | `GET /meter-groups?summary=true` |
+| `readings.ts` | `listReadings`, `getReading`, `createReadingsBatch` | `GET /readings`, `GET /readings/:id`, `POST /readings/batch` |
+| `properties.ts` | `listProperties` | `GET /properties` |
+| `billings.ts` | `listBillings`, `updateBillingStatus` | `GET /billings`, `PATCH /billings/:id` |
+| `billing-cycles.ts` | `listBillingCycles` | `GET /billing-cycles` |
 
 ---
 
@@ -110,10 +110,12 @@ All API calls go through `src/lib/api/client.ts`:
 `src/screens/CaptureReadings.svelte`
 
 1. **Step 1 — Session setup**: Select meter group + reading date
-2. **Step 2 — Property cards**: For each property that has the selected meter group, enter reading amount + optional Capacitor Camera photo
-3. **Step 3 — Confirmation**: Review all entries, submit via `POST /readings/batch`
+2. **Step 2 — Property cards**: For each property that has the selected meter group, enter reading amount + optional Capacitor Camera photo. Capturing a photo automatically calls `POST /readings/ocr` (`ocrReadingImage()`) to suggest the amount — no separate Suggest button.
+3. **Step 3 — Confirmation**: Review all entries, submit via `POST /readings/batch` (or `POST /readings/seed` for main-meter baselines)
 
 Properties are filtered client-side: only properties whose `meter_groups` values include the selected meter group ID.
+
+**Photo handling**: a captured photo is only ever used in-memory for the OCR suggest call (`POST /readings/ocr`) — it is never included in the create/batch payload and is never persisted anywhere. Photos are sent to the API as base64 `data:` URIs, not fetchable URLs.
 
 ### ReadingHistory — Filterable List
 `src/screens/ReadingHistory.svelte`

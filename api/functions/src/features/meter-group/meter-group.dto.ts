@@ -1,10 +1,20 @@
 ﻿import {UTILITY_TYPES} from "../../constants/utility.constants";
 import {z} from "zod";
-import {stripHtml} from "../../utils/sanitize.util";
+import {stripHtml, isSafeName, isSafeAgainstPromptInjection} from "../../utils/sanitize.util";
+
+const NAME_ERROR = "Name cannot contain quotes, backticks, backslashes, or control characters";
+const INJECTION_ERROR = "Name cannot contain instruction-like phrases";
 
 // Create DTOS
 export const CreateMeterGroupDTOSchema = z.object({
-  meter_name: z.string().trim().min(1).max(255).transform(stripHtml),
+  meter_name: z
+    .string()
+    .trim()
+    .min(1)
+    .max(255)
+    .transform(stripHtml)
+    .refine(isSafeName, NAME_ERROR)
+    .refine(isSafeAgainstPromptInjection, INJECTION_ERROR),
   utility_type: z.enum(Object.values(UTILITY_TYPES)),
 });
 export type CreateMeterGroupDTO = z.infer<typeof CreateMeterGroupDTOSchema>;

@@ -6,6 +6,5 @@ export interface Reading extends BaseModel {
     property_id: string;
     reading_amount: number;
     reading_date: Timestamp;
-    image_url?: string;
     meter_version: number;
 }

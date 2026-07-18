@@ -1,16 +1,21 @@
 <script lang="ts">
   import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
-  import { listMeterGroups, type MeterGroup } from '../lib/api/meter-groups';
-  import { listProperties, type Property } from '../lib/api/properties';
-  import { createReadingsBatch, createSeedReading, listReadings, type CreateReadingRequest, type Reading } from '../lib/api/readings';
+  import type { MeterGroup } from '../lib/api/meter-groups';
+  import type { Property } from '../lib/api/properties';
+  import { createReadingsBatch, createSeedReading, listReadings, ocrReadingImage, type CreateReadingRequest, type Reading } from '../lib/api/readings';
   import { getReadingUnit } from '../lib/utils/format';
   import { getUtilityTypeBadgeClasses } from '../lib/utils/utility-colors';
+  import { findMeterGroupEntry, needsSeedReading } from '../lib/utils/readings-wizard.util';
   import { sessionCache } from '../lib/stores/session';
   import BottomNav from '../components/BottomNav.svelte';
 
   let step = $state(1);
   let isLoading = $state(false);
   let error: string | null = $state(null);
+
+  // A captured photo is only ever used in-memory to suggest a reading value via OCR —
+  // it's never included in the submit payload.
+  let suggestingFor: string | null = $state(null);
 
   // Step 1: Session setup
   let meterGroups: MeterGroup[] = $state([]);
@@ -35,13 +40,7 @@
     if (!meterGroupsLoaded) {
       (async () => {
         try {
-          let cached = sessionCache.getMeterGroups();
-          if (!cached) {
-            const res = await listMeterGroups();
-            cached = res.data || [];
-            sessionCache.setMeterGroups(cached);
-          }
-          meterGroups = cached ?? [];
+          meterGroups = await sessionCache.getOrFetchMeterGroups();
           meterGroupsLoaded = true;
         } catch (e) {
           error = 'Failed to load meter groups';
@@ -63,12 +62,7 @@
     try {
       isLoading = true;
       error = null;
-      let allProperties = sessionCache.getProperties();
-      if (!allProperties) {
-        const res = await listProperties();
-        allProperties = res.data || [];
-        sessionCache.setProperties(allProperties);
-      }
+      const allProperties = await sessionCache.getOrFetchProperties();
 
       const currentVersion = selectedMeterGroup?.current_version ?? 1;
       const existingReadingsRes = await listReadings({ meterGroupId: selectedMeterGroupId, limit: 1000 });
@@ -81,11 +75,9 @@
       // show up if they haven't been seeded yet at the current meter version — once
       // seeded, their readings are derived automatically at billing-cycle creation.
       properties = (allProperties ?? []).filter((p: Property) => {
-        const meterGroupEntry = Object.entries(p.meter_groups).find(
-          ([_, entry]) => entry.meter_group_id === selectedMeterGroupId
-        );
-        if (!meterGroupEntry) return false;
-        if (meterGroupEntry[1].is_main_meter !== true) return true;
+        const entry = findMeterGroupEntry(p, selectedMeterGroupId);
+        if (!entry) return false;
+        if (entry.is_main_meter !== true) return true;
         return !hasCurrentVersionReading(p.id);
       });
 
@@ -94,10 +86,7 @@
       propertyNeedsSeed = {};
       properties.forEach((p: Property) => {
         propertyReadings[p.id] = { amount: 0, image_url: '' };
-        const meterGroupEntry = Object.entries(p.meter_groups).find(
-          ([_, entry]) => entry.meter_group_id === selectedMeterGroupId
-        );
-        propertyNeedsSeed[p.id] = meterGroupEntry?.[1].is_main_meter === true;
+        propertyNeedsSeed[p.id] = needsSeedReading(p, selectedMeterGroupId);
       });
 
       step = 2;
@@ -117,10 +106,24 @@
         source: CameraSource.Camera
       });
 
-      // In production, upload to Cloud Storage and get URL
-      // For now, use data URL
-      if (image.base64String) {
-        propertyReadings[propertyId].image_url = `data:image/${image.format};base64,${image.base64String}`;
+      if (!image.base64String) return;
+
+      const dataUrl = `data:image/${image.format};base64,${image.base64String}`;
+      propertyReadings[propertyId].image_url = dataUrl;
+
+      // Auto-suggest a reading value from the photo — no separate Suggest button.
+      // The photo itself is only kept in the payload later if savePhotos is on;
+      // this OCR call works either way since it never persists anything.
+      suggestingFor = propertyId;
+      try {
+        const result = await ocrReadingImage(dataUrl);
+        if (result.suggested_reading_amount !== null) {
+          propertyReadings[propertyId].amount = result.suggested_reading_amount;
+        }
+      } catch (e) {
+        // Non-fatal — the photo is still captured, user can enter the amount manually.
+      } finally {
+        suggestingFor = null;
       }
     } catch (e) {
       error = 'Failed to capture photo';
@@ -151,8 +154,7 @@
         meter_group_id: selectedMeterGroupId,
         property_id: propertyId,
         reading_amount: data.amount,
-        reading_date: `${readingDate}T00:00:00Z`,
-        image_url: data.image_url || undefined
+        reading_date: `${readingDate}T00:00:00Z`
       });
 
       const failedSummaries: string[] = [];
@@ -306,13 +308,25 @@
 
           <button
             onclick={() => capturePhoto(property.id)}
-            class="w-full p-4 border-2 border-dashed rounded-lg font-semibold text-center"
+            disabled={suggestingFor === property.id}
+            class="w-full p-4 border-2 border-dashed rounded-lg font-semibold text-center disabled:opacity-60"
             style={propertyReadings[property.id]?.image_url
               ? `background-color: var(--color-accent); color: white`
               : `border-color: var(--color-border); background-color: #f5eee5; color: var(--color-text-primary)`}
           >
-            {propertyReadings[property.id]?.image_url ? '📷 Retake' : '📷 Capture Photo'}
+            {#if suggestingFor === property.id}
+              Suggesting reading...
+            {:else if propertyReadings[property.id]?.image_url}
+              📷 Retake
+            {:else}
+              📷 Capture Photo
+            {/if}
           </button>
+          {#if propertyReadings[property.id]?.image_url}
+            <p class="text-xs" style="color: var(--color-text-secondary)">
+              Photo used only to suggest the amount above — it isn't saved.
+            </p>
+          {/if}
 
           <div>
             <label for={`amount-${property.id}`} class="label-base mb-1">
@@ -362,7 +376,7 @@
           <p class="text-sm" style="color: var(--color-text-secondary)">
             Amount: <strong style="color: var(--color-accent)">{propertyReadings[property.id]?.amount}</strong>
             {#if propertyReadings[property.id]?.image_url}
-              <span class="ml-2" style="color: var(--color-status-good)">📷 Photo attached</span>
+              <span class="ml-2" style="color: var(--color-text-tertiary)">📷 Photo used for suggestion only</span>
             {/if}
           </p>
         </div>

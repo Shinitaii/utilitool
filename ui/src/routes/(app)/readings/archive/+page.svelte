@@ -2,24 +2,24 @@
 	import { onMount } from 'svelte';
 	import { getReadings, restoreReading, clearCache } from '$lib/api/readings';
 	import { getMeterGroups } from '$lib/api/meter-groups';
-	import type { Reading } from '$lib/types/reading.types';
 	import type { MeterGroup } from '$lib/types/meter-group.types';
-	import type { PaginatedResult } from '$lib/types/api.types';
-	import { formatDate } from '$lib/utils/format';
-	import { toDate } from '$lib/utils/timestamp';
+	import { formatFirestoreDate } from '$lib/utils/format';
 	import ArchivePageTemplate from '$lib/components/shared/ArchivePageTemplate.svelte';
-	import { Trash2 } from 'lucide-svelte';
+	import ClearCacheButton from '$lib/components/shared/ClearCacheButton.svelte';
+	import { createArchivePageState } from '$lib/stores/archive-page.svelte';
 
-	let data = $state<PaginatedResult<Reading>>({
-		data: [],
-		nextCursor: null,
-		hasMore: false
-	});
 	let meterGroups = $state<Map<string, string>>(new Map());
-	let isLoading = $state(false);
-	let error = $state('');
-	let restoringId = $state<string | null>(null);
-	let isClearing = $state(false);
+
+	const page = createArchivePageState({
+		listFn: getReadings,
+		restoreFn: restoreReading,
+		clearCacheFn: clearCache,
+		entityLabel: 'reading',
+		loadExtra: async () => {
+			const result = await getMeterGroups({ limit: 100 });
+			meterGroups = new Map(result.data.map((mg: MeterGroup) => [mg.id, mg.meter_name]));
+		}
+	});
 
 	const columns = [
 		{
@@ -35,79 +35,26 @@
 		{
 			key: 'reading_date',
 			label: 'Reading Date',
-			format: (v: any) => formatDate(toDate(v))
+			format: (v: any) => formatFirestoreDate(v)
 		}
 	];
 
 	onMount(async () => {
-		await loadData();
+		await page.loadData();
 	});
-
-	async function loadData() {
-		isLoading = true;
-		error = '';
-		try {
-			const [readingsResult, meterGroupsResult] = await Promise.all([
-				getReadings({ limit: 100, archived: true }),
-				getMeterGroups({ limit: 100 })
-			]);
-
-			// Build meter group name map
-			meterGroups = new Map(meterGroupsResult.data.map((mg: MeterGroup) => [mg.id, mg.meter_name]));
-
-			data = readingsResult;
-		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to load archived readings';
-		} finally {
-			isLoading = false;
-		}
-	}
-
-	async function handleRestore(id: string) {
-		restoringId = id;
-		try {
-			await restoreReading(id);
-			await loadData();
-		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to restore reading';
-		} finally {
-			restoringId = null;
-		}
-	}
-
-	async function handleClearCache() {
-		isClearing = true;
-		try {
-			const result = await clearCache();
-			error = result.message;
-		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to clear cache';
-		} finally {
-			isClearing = false;
-		}
-	}
 </script>
 
 <div class="space-y-4">
-	<div class="flex justify-end">
-		<button
-			onclick={handleClearCache}
-			disabled={isClearing}
-			class="flex items-center gap-2 rounded bg-red-100 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-200 disabled:opacity-50"
-		>
-			<Trash2 size={16} />
-			{isClearing ? 'Clearing...' : 'Clear Cache'}
-		</button>
-	</div>
+	<ClearCacheButton isClearing={page.isClearing} onClick={page.handleClearCache} />
 
 	<ArchivePageTemplate
 		title="Readings"
-		isEmpty={data.data.length === 0}
-		{isLoading}
-		{error}
-		items={data.data}
+		isEmpty={page.data.data.length === 0}
+		isLoading={page.isLoading}
+		error={page.error}
+		items={page.data.data}
 		{columns}
-		onRestore={handleRestore}
-		{restoringId}
+		onRestore={page.handleRestore}
+		restoringId={page.restoringId}
 	/>
 </div>

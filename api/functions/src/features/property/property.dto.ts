@@ -1,6 +1,9 @@
 import {z} from "zod";
-import {stripHtml} from "../../utils/sanitize.util";
+import {stripHtml, isSafeName, isSafeAgainstPromptInjection} from "../../utils/sanitize.util";
 import {UTILITY_TYPES} from "../../constants/utility.constants";
+
+const NAME_ERROR = "Name cannot contain quotes, backticks, backslashes, or control characters";
+const INJECTION_ERROR = "Name cannot contain instruction-like phrases";
 
 const MeterGroupEntrySchema = z.object({
   meter_group_id: z.string().trim().min(1),
@@ -9,7 +12,14 @@ const MeterGroupEntrySchema = z.object({
 
 export const CreatePropertyDTOSchema = z
   .object({
-    room_name: z.string().trim().min(1).max(255).transform(stripHtml),
+    room_name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(255)
+      .transform(stripHtml)
+      .refine(isSafeName, NAME_ERROR)
+      .refine(isSafeAgainstPromptInjection, INJECTION_ERROR),
     tenant_amount: z.number().int().min(1),
     meter_groups: z.record(
       z.enum(Object.values(UTILITY_TYPES) as [string, ...string[]]),
@@ -44,7 +54,15 @@ export const PropertyMeterGroupResetParamsDTOSchema = z.object({
 export type PropertyMeterGroupResetParamsDTO = z.infer<typeof PropertyMeterGroupResetParamsDTOSchema>;
 
 const UpdatePropertyBaseDTOSchema = z.object({
-  room_name: z.string().trim().min(1).max(255).transform(stripHtml).optional(),
+  room_name: z
+    .string()
+    .trim()
+    .min(1)
+    .max(255)
+    .transform(stripHtml)
+    .refine(isSafeName, NAME_ERROR)
+    .refine(isSafeAgainstPromptInjection, INJECTION_ERROR)
+    .optional(),
   tenant_amount: z.number().int().min(1).optional(),
   meter_groups: z.record(
     z.enum(Object.values(UTILITY_TYPES) as [string, ...string[]]),

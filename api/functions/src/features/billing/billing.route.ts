@@ -6,6 +6,7 @@ import {
   updateBilling,
   softDeleteBilling,
   restoreBilling,
+  purgeBilling,
   createBatchBillings,
   updateBatchBillings,
   clearCache,
@@ -79,6 +80,15 @@ router.patch(
   validateRequest({params: BillingByIdParamsDTOSchema}),
   requireRole("admin", "landlord"),
   restoreBilling
+);
+
+// Second step of the archive-then-purge lifecycle (right-to-erasure): only
+// works on an already-archived (is_deleted=true) billing, admin-only.
+router.delete(
+  "/:id/purge",
+  validateRequest({params: BillingByIdParamsDTOSchema}),
+  requireRole("admin"),
+  purgeBilling
 );
 
 export const billingRouter = router;

@@ -31,7 +31,3 @@ export async function listBillingCycles(params?: {
   const path = query.toString() ? `/billing-cycles?${query}` : '/billing-cycles';
   return apiGet<BillingCyclesResponse>(path);
 }
-
-export async function getBillingCycle(id: string): Promise<BillingCycle> {
-  return apiGet<BillingCycle>(`/billing-cycles/${id}`);
-}

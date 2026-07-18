@@ -2,7 +2,7 @@ export const billsPaths = {
   "/bills/ocr": {
     post: {
       summary: "Extract data from utility bill image via OCR",
-      description: "Processes a utility bill image (Meralco or Manila Water) and extracts billing period, consumption, and rate information using Gemini AI.",
+      description: "Processes a utility bill image (Meralco or Manila Water) and extracts billing period, consumption, and rate information using the user's configured llm-config vision model. Returns 404 if no vision_model is configured.",
       tags: ["Bills"],
       requestBody: {
         required: true,
@@ -44,9 +44,8 @@ export const schemas = {
     properties: {
       image_url: {
         type: "string",
-        format: "uri",
-        description: "URL of the bill image to process",
-        example: "https://storage.googleapis.com/bucket/bills/bill.jpg",
+        description: "Base64 data URL of the bill image to process (data:image/*;base64,...)",
+        example: "data:image/jpeg;base64,/9j/4AAQSkZJRg...",
       },
     },
   },

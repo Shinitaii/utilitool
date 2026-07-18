@@ -6,7 +6,6 @@ export interface Reading {
   property_id: string;
   reading_amount: number;
   reading_date: string;
-  image_url?: string;
   meter_version: number;
   created_at: string;
   updated_at: string;
@@ -18,7 +17,6 @@ export interface CreateReadingRequest {
   property_id: string;
   reading_amount: number;
   reading_date: string;
-  image_url?: string;
 }
 
 export interface BatchReadingRequest {
@@ -46,10 +44,6 @@ export async function getReading(id: string): Promise<Reading> {
   return apiGet(`/readings/${id}`);
 }
 
-export async function createReading(data: CreateReadingRequest) {
-  return apiPost('/readings', data);
-}
-
 export async function createReadingsBatch(data: BatchReadingRequest): Promise<BatchCreateResult<Reading>> {
   if (!data.readings || data.readings.length === 0) {
     throw new Error('Cannot submit an empty batch — add at least one reading.');
@@ -59,4 +53,10 @@ export async function createReadingsBatch(data: BatchReadingRequest): Promise<Ba
 
 export async function createSeedReading(data: CreateReadingRequest) {
   return apiPost('/readings/seed', data);
+}
+
+export async function ocrReadingImage(
+  imageUrl: string
+): Promise<{ suggested_reading_amount: number | null }> {
+  return apiPost('/readings/ocr', { image_url: imageUrl });
 }

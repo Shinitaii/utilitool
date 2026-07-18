@@ -5,17 +5,20 @@ import {CreateMeterGroupDTO} from "./meter-group.dto";
 import {readingRepository} from "../reading/reading.repository";
 import {PaginatedResult} from "../../utils/pagination.util";
 import {MeterGroupValidator} from "./meter-group.validator";
-import {AppError} from "../../utils/error.util";
+import {AppError, getOrThrow} from "../../utils/error.util";
 import {collectionRef} from "../../lib/firestore.lib";
 import {COLLECTIONS} from "../../constants/collection.constants";
 import {listRemove} from "../../utils/list-cache.util";
 import {cacheDel, cacheSet} from "../../utils/cache.util";
-import {cascadeDeleteMeterGroup, cascadeRestoreMeterGroup} from "../../utils/cascade-delete.util";
+import {cascadeDeleteMeterGroup, cascadeRestoreMeterGroup, cascadePurgeMeterGroup} from "../../utils/cascade-delete.util";
 import {CachedRepository} from "../../lib/cached-repository.lib";
-import {logger} from "../../utils/logger.util";
 
 const validator = new MeterGroupValidator();
 const CACHE_TTL = 30 * 60; // 30 minutes
+
+function repoFor(userId: string): CachedRepository<MeterGroup> {
+  return new CachedRepository(meterGroupRepository, userId, "meter-groups", CACHE_TTL);
+}
 
 type MeterGroupSearchOptions = {
   meterName?: string;
@@ -66,8 +69,7 @@ function applyProjections(
 export const meterGroupService = {
   async create(userId: string, data: CreateMeterGroupDTO): Promise<MeterGroup> {
     await validator.validateCreate(data);
-    const cachedRepo = new CachedRepository(meterGroupRepository, userId, "meter-groups", CACHE_TTL);
-    return cachedRepo.create({
+    return repoFor(userId).create({
       ...data,
       current_version: 1,
       versions: {},
@@ -76,8 +78,7 @@ export const meterGroupService = {
 
   async createBatch(userId: string, data: CreateMeterGroupDTO[]): Promise<MeterGroup[]> {
     await validator.validateBatch(data);
-    const cachedRepo = new CachedRepository(meterGroupRepository, userId, "meter-groups", CACHE_TTL);
-    return cachedRepo.createBatch(
+    return repoFor(userId).createBatch(
       data.map((item) => ({
         ...item,
         current_version: 1,
@@ -90,8 +91,7 @@ export const meterGroupService = {
     userId: string,
     options: MeterGroupSearchOptions
   ): Promise<PaginatedResult<MeterGroup | MinimalMeterGroup | SummaryMeterGroup>> {
-    const cachedRepo = new CachedRepository(meterGroupRepository, userId, "meter-groups", CACHE_TTL);
-    const result = await cachedRepo.search({
+    const result = await repoFor(userId).search({
       limit: options.limit,
       orderBy: (options.sortBy ?? "created_at") as any,
       orderDirection: options.sortOrder ?? "desc",
@@ -106,22 +106,16 @@ export const meterGroupService = {
   },
 
   async getById(userId: string, id: string): Promise<MeterGroup | null> {
-    const cachedRepo = new CachedRepository(meterGroupRepository, userId, "meter-groups", CACHE_TTL);
-    return cachedRepo.getById(id);
+    return repoFor(userId).getById(id);
   },
 
   async update(userId: string, id: string, data: Partial<CreateMeterGroupDTO>): Promise<MeterGroup> {
-    const meterGroup = await meterGroupRepository.getById(id);
-    if (!meterGroup) {
-      throw new AppError(404, "Meter group not found");
-    }
-    const cachedRepo = new CachedRepository(meterGroupRepository, userId, "meter-groups", CACHE_TTL);
-    return cachedRepo.update(id, data);
+    await getOrThrow(meterGroupRepository.getById.bind(meterGroupRepository), id, "Meter group");
+    return repoFor(userId).update(id, data);
   },
 
   async updateBatch(userId: string, updates: {id: string, data: Partial<CreateMeterGroupDTO>}[]): Promise<MeterGroup[]> {
-    const cachedRepo = new CachedRepository(meterGroupRepository, userId, "meter-groups", CACHE_TTL);
-    return cachedRepo.updateBatch(updates);
+    return repoFor(userId).updateBatch(updates);
   },
 
   async delete(userId: string, id: string): Promise<void> {
@@ -136,15 +130,11 @@ export const meterGroupService = {
       throw new AppError(409, "Cannot delete meter group: it has active readings. Archive readings first.");
     }
 
-    const cachedRepo = new CachedRepository(meterGroupRepository, userId, "meter-groups", CACHE_TTL);
-    await cachedRepo.delete(id);
+    await repoFor(userId).delete(id);
   },
 
   async softDelete(userId: string, id: string): Promise<MeterGroup> {
-    const meterGroup = await meterGroupRepository.getById(id);
-    if (!meterGroup) {
-      throw new AppError(404, "Meter group not found");
-    }
+    await getOrThrow(meterGroupRepository.getById.bind(meterGroupRepository), id, "Meter group");
 
     await cascadeDeleteMeterGroup(id);
     const deleted = await meterGroupRepository.getById(id);
@@ -154,10 +144,7 @@ export const meterGroupService = {
   },
 
   async restore(userId: string, id: string): Promise<MeterGroup> {
-    const meterGroup = await meterGroupRepository.getById(id);
-    if (!meterGroup) {
-      throw new AppError(404, "Meter group not found");
-    }
+    await getOrThrow(meterGroupRepository.getById.bind(meterGroupRepository), id, "Meter group");
     // cascadeRestoreMeterGroup already refreshes id caches and invalidates list
     // caches (wholesale, for all users) for meter-groups/readings/billings —
     // appending here would race with that invalidation and risk duplicates.
@@ -168,21 +155,14 @@ export const meterGroupService = {
   },
 
   /**
-   * @deprecated Meter-group-level version tracking is being replaced by per-property version
-   * tracking on `Property.meter_groups[entry]` (submeters already migrated; main meters pending
-   * backfill). This endpoint remains functional for main meters in the interim, but new
-   * integrations should not depend on `MeterGroup.current_version`/`versions`.
+   * Submeter version tracking has moved to `Property.meter_groups[entry]`
+   * (see `propertyService.recordMeterGroupReset`) — main-meter resets still
+   * route through this endpoint and remain the active source of truth for
+   * `Reading.meter_version` (see `reading.service.ts`), so it is not
+   * deprecated despite the field-level `@deprecated` notes on the model.
    */
   async recordReset(userId: string, id: string): Promise<MeterGroup> {
-    logger.warn(
-      {userId, meterGroupId: id},
-      "[Deprecated] meterGroupService.recordReset: meter-group-level version tracking is being replaced by per-property tracking on Property.meter_groups[entry]"
-    );
-
-    const meterGroup = await meterGroupRepository.getById(id);
-    if (!meterGroup) {
-      throw new AppError(404, "Meter group not found");
-    }
+    const meterGroup = await getOrThrow(meterGroupRepository.getById.bind(meterGroupRepository), id, "Meter group");
 
     const latestReadingsResult = await readingRepository.search({
       limit: 1,
@@ -211,7 +191,15 @@ export const meterGroupService = {
       current_version: currentVersion + 1,
       versions: updatedVersions,
     };
-    const cachedRepo = new CachedRepository(meterGroupRepository, userId, "meter-groups", CACHE_TTL);
-    return cachedRepo.update(id, updatePayload);
+    return repoFor(userId).update(id, updatePayload);
+  },
+
+  /**
+   * Permanently delete an already-archived meter group and its already-archived
+   * readings/billings. Second step of the archive-then-purge lifecycle — throws
+   * 409 if the meter group is still active. See cascadePurgeMeterGroup.
+   */
+  async purge(id: string): Promise<void> {
+    await cascadePurgeMeterGroup(id);
   },
 };

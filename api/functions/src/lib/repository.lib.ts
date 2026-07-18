@@ -11,6 +11,7 @@ import {
   softDeleteDocuments,
   deleteDocuments,
   restoreDocument,
+  purgeDocument,
   collectionRef,
 } from "./firestore.lib";
 import {PaginatedResult} from "../utils/pagination.util";
@@ -162,5 +163,15 @@ export class Repository<T extends BaseModel> {
 
   async deleteBatch(ids: string[]) {
     return deleteDocuments(this.collectionName, ids);
+  }
+
+  /**
+   * Permanently deletes a record — but only one already soft-deleted (archived).
+   * Throws 404 if the record doesn't exist, 409 if it's still active. This is
+   * the second step of the archive-then-purge lifecycle used for right-to-erasure
+   * requests; there is no direct hard-delete-from-active path.
+   */
+  async purge(id: string): Promise<void> {
+    return purgeDocument(this.collectionName, id);
   }
 }

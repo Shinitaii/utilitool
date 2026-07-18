@@ -6,6 +6,7 @@ import {
   getPropertyById,
   softDeleteProperty,
   restoreProperty,
+  purgeProperty,
   updateProperty,
   updateBatchProperties,
   recordPropertyMeterGroupReset,
@@ -88,6 +89,15 @@ router.patch(
   validateRequest({params: PropertyByIdParamsDTOSchema}),
   requireRole("admin", "landlord"),
   restoreProperty
+);
+
+// Second step of the archive-then-purge lifecycle (right-to-erasure): only
+// works on an already-archived (is_deleted=true) property, admin-only.
+router.delete(
+  "/:id/purge",
+  validateRequest({params: PropertyByIdParamsDTOSchema}),
+  requireRole("admin"),
+  purgeProperty
 );
 
 export const propertyRouter = router;

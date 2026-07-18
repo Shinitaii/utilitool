@@ -6,7 +6,7 @@
 	import { getMeterGroups } from '$lib/api/meter-groups';
 	import { getBillings } from '$lib/api/billings';
 	import { createBillingCycle } from '$lib/api/billing-cycles';
-	import { uploadToStorage } from '$lib/utils/firebase-storage';
+	import { compressImage } from '$lib/utils/image-compression';
 	import { formatCurrency, formatDate } from '$lib/utils/format';
 	import { billAmount } from '$lib/utils/money';
 	import type { OcrBillResponse } from '$lib/types/bill.types';
@@ -62,9 +62,7 @@
 		isUploadingFile = true;
 		error = '';
 		try {
-			const timestamp = Date.now();
-			const path = `bills/${timestamp}_${file.name}`;
-			billImageUrl = await uploadToStorage(file, path);
+			billImageUrl = await compressImage(file, 800, 0.7);
 
 			ocrResult = await ocrBill(billImageUrl);
 			reviewForm.billing_start_date = ocrResult.billing_start_date;

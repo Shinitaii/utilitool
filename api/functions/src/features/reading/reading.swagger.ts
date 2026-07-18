@@ -578,6 +578,48 @@ export const readingPaths = {
       },
     },
   },
+  "/readings/{id}/purge": {
+    delete: {
+      tags: ["Readings"],
+      summary: "Permanently delete an archived reading",
+      description:
+        "Second step of the archive-then-purge lifecycle (right-to-erasure). Only works on a " +
+        "reading already soft-deleted via DELETE /:id — permanently removes it and its " +
+        "already-archived billings. Admin-only.",
+      security: [{BearerAuth: []}],
+      parameters: [
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: {type: "string", minLength: 1},
+        },
+      ],
+      responses: {
+        "204": {description: "Reading permanently deleted"},
+        "401": {
+          description: "Unauthorized",
+          content: {"application/json": {schema: {$ref: "#/components/schemas/ErrorResponse"}}},
+        },
+        "403": {
+          description: "Forbidden (requires admin role)",
+          content: {"application/json": {schema: {$ref: "#/components/schemas/ErrorResponse"}}},
+        },
+        "404": {
+          description: "Reading not found",
+          content: {"application/json": {schema: {$ref: "#/components/schemas/ErrorResponse"}}},
+        },
+        "409": {
+          description: "Reading is still active — archive it first via DELETE /:id",
+          content: {"application/json": {schema: {$ref: "#/components/schemas/ErrorResponse"}}},
+        },
+        "500": {
+          description: "Internal server error",
+          content: {"application/json": {schema: {$ref: "#/components/schemas/ErrorResponse"}}},
+        },
+      },
+    },
+  },
   "/readings/soft/{id}": {
     delete: {
       tags: ["Readings"],

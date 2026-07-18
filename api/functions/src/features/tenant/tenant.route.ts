@@ -6,6 +6,7 @@ import {
   getTenants,
   softDeleteTenant,
   restoreTenant,
+  purgeTenant,
   updateTenant,
   updateBatchTenants,
   clearCache,
@@ -79,6 +80,15 @@ router.patch(
   validateRequest({params: TenantByIdParamsDTOSchema}),
   requireRole("admin", "landlord"),
   restoreTenant
+);
+
+// Second step of the archive-then-purge lifecycle (right-to-erasure): only
+// works on an already-archived (is_deleted=true) tenant, admin-only.
+router.delete(
+  "/:id/purge",
+  validateRequest({params: TenantByIdParamsDTOSchema}),
+  requireRole("admin"),
+  purgeTenant
 );
 
 export const tenantRouter = router;

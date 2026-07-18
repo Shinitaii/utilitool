@@ -284,4 +284,13 @@ export const billingCycleService = {
     const cachedRepo = new CachedRepository(billingCycleRepository, userId, "billing-cycles", CACHE_TTL);
     return cachedRepo.restore(id);
   },
+
+  /**
+   * Permanently delete an already-archived billing cycle. Second step of the
+   * archive-then-purge lifecycle — throws 409 if the cycle is still active.
+   */
+  async purge(userId: string, id: string): Promise<void> {
+    const cachedRepo = new CachedRepository(billingCycleRepository, userId, "billing-cycles", CACHE_TTL);
+    await cachedRepo.purge(id);
+  },
 };

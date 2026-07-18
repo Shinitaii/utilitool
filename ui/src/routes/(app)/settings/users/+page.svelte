@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-	import { auth } from '$lib/firebase';
 	import { createUser } from '$lib/api/users';
+	import type { ApiError } from '$lib/types/api.types';
 
 	let email = $state('');
 	let displayName = $state('');
@@ -10,14 +9,12 @@
 	let isLoading = $state(false);
 	let error = $state('');
 	let success = $state('');
-	let warning = $state('');
 
 	async function handleCreateUser(e: SubmitEvent) {
 		e.preventDefault();
 		isLoading = true;
 		error = '';
 		success = '';
-		warning = '';
 
 		if (password.length < 8) {
 			error = 'Password must be at least 8 characters';
@@ -26,35 +23,18 @@
 		}
 
 		try {
-			const credential = await createUserWithEmailAndPassword(auth, email, password);
-			if (displayName) {
-				await updateProfile(credential.user, { displayName });
-			}
-
-			// Pre-seed the user profile with the selected role
-			try {
-				await createUser({
-					uid: credential.user.uid,
-					role
-				});
-				success = `User "${displayName || email}" created successfully`;
-			} catch (roleErr) {
-				console.error('Failed to set user role:', roleErr);
-				warning = `User "${displayName || email}" was created but role assignment failed. Retry setting the role from the users list.`;
-			}
+			// Account creation happens entirely server-side (Firebase Admin SDK via
+			// POST /users) — the client never touches Firebase Auth for this flow, so
+			// the acting admin's own session is never affected by the new account.
+			await createUser({ email, password, displayName: displayName || undefined, role });
+			success = `User "${displayName || email}" created successfully`;
 
 			email = '';
 			displayName = '';
 			password = '';
 			role = 'assistant';
 		} catch (err: unknown) {
-			const code = (err as { code?: string })?.code ?? '';
-			const messages: Record<string, string> = {
-				'auth/email-already-in-use': 'An account with this email already exists.',
-				'auth/weak-password': 'Password is too weak. Use at least 8 characters.',
-				'auth/invalid-email': 'Invalid email address.'
-			};
-			error = messages[code] ?? 'Failed to create user. Please try again.';
+			error = (err as ApiError)?.message ?? 'Failed to create user. Please try again.';
 		} finally {
 			isLoading = false;
 		}
@@ -79,12 +59,6 @@
 		{#if success}
 			<div class="mb-4 rounded-lg bg-green-50 p-4 text-sm text-green-700">
 				{success}
-			</div>
-		{/if}
-
-		{#if warning}
-			<div class="mb-4 rounded-lg bg-yellow-50 p-4 text-sm text-yellow-800">
-				{warning}
 			</div>
 		{/if}
 

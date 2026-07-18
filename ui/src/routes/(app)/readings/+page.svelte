@@ -16,22 +16,17 @@
 	import type { MeterGroup } from '$lib/types/meter-group.types';
 	import type { Property } from '$lib/types/property.types';
 	import type { PaginatedResult } from '$lib/types/api.types';
-	import { formatDate, formatLongDate, formatReading, getReadingUnit } from '$lib/utils/format';
+	import { formatFirestoreDate, formatLongDate, formatReading } from '$lib/utils/format';
 	import { toDate } from '$lib/utils/timestamp';
-	import { uploadToStorage } from '$lib/utils/firebase-storage';
 	import { compressImage } from '$lib/utils/image-compression';
-	import {
-		trueReading,
-		resolveCurrentVersion,
-		getVersionsSource,
-		getCumulativeOffset
-	} from '$lib/utils/true-reading';
+	import { resolveCurrentVersion, getVersionsSource } from '$lib/utils/true-reading';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import TableSkeleton from '$lib/components/shared/TableSkeleton.svelte';
 	import EditModal from '$lib/components/shared/EditModal.svelte';
 	import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
 	import SelectionToolbar from '$lib/components/shared/SelectionToolbar.svelte';
 	import ImagePreview from '$lib/components/shared/ImagePreview.svelte';
+	import PhotoDropzone from '$lib/components/shared/PhotoDropzone.svelte';
 	import { createCrudStore } from '$lib/stores/crud.svelte';
 	import { Archive, Plus, X } from 'lucide-svelte';
 
@@ -70,6 +65,7 @@
 	let readingFormOpen = $state(false);
 	let readingFormTab = $state<'batch' | 'manual'>('batch');
 	let manualReadingLoading = $state(false);
+	let manualImageUploading = $state(false);
 	let manualReadingForm = $state<ManualReadingForm>({
 		meter_group_id: '',
 		property_id: '',
@@ -291,8 +287,7 @@
 				reading_date: {
 					_seconds: Math.floor(new Date(manualReadingForm.reading_date).getTime() / 1000),
 					_nanoseconds: 0
-				},
-				image_url: manualReadingForm.image_url || undefined
+				}
 			} as any;
 
 			const isSeed = await shouldSeedReading(
@@ -330,24 +325,43 @@
 			// Compress image to avoid "request entity too large" errors
 			const compressedDataUrl = await compressImage(file, 800, 0.7);
 
-			// Show preview and enable Suggest immediately — don't wait for Storage
+			// Photo is only ever used transiently for OCR suggest — never persisted.
 			row.data_url = compressedDataUrl;
 			row.image_url = compressedDataUrl;
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to process image';
-		} finally {
 			row.is_uploading = false;
+			return;
 		}
+		row.is_uploading = false;
 
-		// Silently upgrade to a persistent Storage URL in the background
-		if (row.data_url) {
-			uploadToStorage(file, `readings/${Date.now()}_${file.name}`)
-				.then((url) => {
-					row.image_url = url;
-				})
-				.catch(() => {
-					/* keep data URL */
-				});
+		// Auto-suggest a reading value from the photo — no separate Suggest button.
+		await handleSuggestReading(rowIndex);
+	}
+
+	async function handleManualImageUpload(file: File | null) {
+		if (!file) return;
+
+		manualImageUploading = true;
+		try {
+			// Compress image to avoid "request entity too large" errors
+			const compressedDataUrl = await compressImage(file, 800, 0.7);
+			manualReadingForm.image_url = compressedDataUrl;
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to process image';
+			manualImageUploading = false;
+			return;
+		}
+		manualImageUploading = false;
+
+		// Auto-suggest a reading value from the photo — no separate Suggest button.
+		try {
+			const result = await ocrReadingImage(manualReadingForm.image_url);
+			if (result.suggested_reading_amount !== null) {
+				manualReadingForm.reading_amount = result.suggested_reading_amount;
+			}
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to suggest reading';
 		}
 	}
 
@@ -577,7 +591,7 @@
 										>Reading Amount</th
 									>
 									<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700"
-										>Photo / Suggest</th
+										>Photo (auto-suggests)</th
 									>
 								</tr>
 							</thead>
@@ -606,69 +620,24 @@
 													row.property,
 													selectedMeterGroup
 												)}
-												{@const offset = getCumulativeOffset(versionsSource, version)}
-												{@const unit = getReadingUnit(selectedMg?.utility_type || 'electricity')}
+												{@const resetInfo =
+													version > 1 ? versionsSource?.[String(version - 1)] : undefined}
 												<p class="mt-1 text-xs text-gray-400">
-													True total: {(offset + row.reading_amount).toLocaleString()}
-													{unit}
+													Meter v{version}
+													{#if resetInfo}
+														(reset {formatFirestoreDate(resetInfo.reset_at)} from {resetInfo.last_reading.toLocaleString()})
+													{/if}
 												</p>
 											{/if}
 										</td>
 										<td class="px-6 py-4">
-											<div class="grid grid-cols-3 gap-3">
-												<!-- Preview image (top, spanning all 3 cols) -->
-												<div class="col-span-3 h-48 w-full overflow-hidden rounded">
-													{#if row.image_url}
-														<button
-															type="button"
-															onclick={() => {
-																previewImageUrl = row.image_url;
-															}}
-															class="block h-full w-full cursor-pointer rounded transition hover:opacity-75"
-														>
-															<img
-																src={row.image_url}
-																alt="Meter reading"
-																class="h-full w-full rounded object-cover"
-															/>
-														</button>
-													{:else}
-														<div
-															class="h-full w-full rounded border-2 border-dashed border-gray-300 bg-gray-50"
-														></div>
-													{/if}
-												</div>
-
-												<!-- Upload & Suggest buttons (bottom, side by side) -->
-												<label
-													class={`col-span-2 ${row.is_uploading ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-												>
-													<input
-														type="file"
-														accept="image/*"
-														disabled={row.is_uploading}
-														onchange={(e) => {
-															const file = (e.target as HTMLInputElement).files?.[0];
-															if (file) handleBatchImageUpload(i, file);
-														}}
-														class="hidden"
-													/>
-													<span
-														class="block rounded bg-blue-100 px-3 py-2 text-center text-xs font-medium text-blue-700 hover:bg-blue-200 disabled:opacity-50"
-													>
-														{row.is_uploading ? 'Uploading...' : 'Upload Photo'}
-													</span>
-												</label>
-
-												<!-- Suggest button -->
-												<button
-													type="button"
-													onclick={() => handleSuggestReading(i)}
-													disabled={!row.image_url}
-													class="col-span-1 rounded bg-green-100 px-3 py-2 text-xs font-medium text-green-700 hover:bg-green-200 disabled:cursor-not-allowed disabled:opacity-50"
-												>
-													Suggest
-												</button>
+											<div class="w-48">
+												<PhotoDropzone
+													imageUrl={row.image_url}
+													isBusy={row.is_uploading}
+													onFile={(file) => handleBatchImageUpload(i, file)}
+													onPreview={(url) => (previewImageUrl = url)}
+												/>
 											</div>
 										</td>
 									</tr>
@@ -749,14 +718,15 @@
 						</label>
 					</div>
 					<div class="md:col-span-2">
-						<label class="block text-sm font-medium text-gray-700">
-							<span>Optional Image URL</span>
-							<input
-								bind:value={manualReadingForm.image_url}
-								type="url"
-								class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
+						<span class="block text-sm font-medium text-gray-700">Photo (optional)</span>
+						<div class="mt-1 w-48">
+							<PhotoDropzone
+								imageUrl={manualReadingForm.image_url || null}
+								isBusy={manualImageUploading}
+								onFile={handleManualImageUpload}
+								onPreview={(url) => (previewImageUrl = url)}
 							/>
-						</label>
+						</div>
 					</div>
 				</div>
 				<div class="flex gap-2">
@@ -869,7 +839,7 @@
 
 	<div class="overflow-x-auto rounded-lg border border-gray-200">
 		{#if isLoading}
-			<TableSkeleton rows={6} cols={8} />
+			<TableSkeleton rows={6} cols={7} />
 		{:else if readings.data.length === 0}
 			<div class="p-6">
 				<EmptyState title="No readings" message="Create readings to track meter consumption" />
@@ -901,8 +871,7 @@
 						<th class="px-6 py-3 text-left font-semibold text-gray-700">Property</th>
 						<th class="px-6 py-3 text-left font-semibold text-gray-700">Meter Group</th>
 						<th scope="col" class="px-6 py-3 text-right font-semibold text-gray-700">Reading</th>
-						<th scope="col" class="px-6 py-3 text-right font-semibold text-gray-700">True Total</th>
-						<th class="px-6 py-3 text-left font-semibold text-gray-700">Photo</th>
+						<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Meter Cycle</th>
 						<th class="px-6 py-3 text-left font-semibold text-gray-700">Date</th>
 						<th class="px-6 py-3 text-left font-semibold text-gray-700">Created</th>
 						<th class="px-6 py-3 text-left font-semibold text-gray-700">Actions</th>
@@ -912,6 +881,14 @@
 					{#each readings.data as item (item.id)}
 						{@const itemProperty = propertyMap.get(item.property_id)}
 						{@const itemMeterGroup = meterGroupMap.get(item.meter_group_id)}
+						{@const itemMeterVersion = item.meter_version ?? 1}
+						{@const itemVersionsSource = getVersionsSource(
+							itemMeterGroup,
+							itemProperty,
+							item.meter_group_id
+						)}
+						{@const itemResetInfo =
+							itemMeterVersion > 1 ? itemVersionsSource?.[String(itemMeterVersion - 1)] : undefined}
 						<tr class="border-b border-gray-200 hover:bg-gray-50">
 							<td class="w-8 px-4 py-4">
 								<input
@@ -930,26 +907,16 @@
 							<td class="px-6 py-4 text-right font-mono text-gray-700">
 								{formatReading(item.reading_amount, itemMeterGroup?.utility_type || 'electricity')}
 							</td>
-							<td class="px-6 py-4 text-right font-mono text-xs text-gray-400">
-								{trueReading(item, itemMeterGroup, itemProperty).toLocaleString()}
-								{getReadingUnit(itemMeterGroup?.utility_type || 'electricity')}
-							</td>
-							<td class="px-6 py-4">
-								{#if item.image_url}
-									<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- external/data-URL image, not an app route -->
-									<a href={item.image_url} target="_blank" rel="noreferrer">
-										<img
-											src={item.image_url}
-											alt="Meter reading"
-											class="h-12 w-12 rounded object-cover hover:opacity-75"
-										/>
-									</a>
-								{:else}
-									<span class="text-gray-400">No image</span>
+							<td class="px-6 py-4 text-xs text-gray-500">
+								<span class="font-medium text-gray-700">v{itemMeterVersion}</span>
+								{#if itemResetInfo}
+									<span class="block text-gray-400"
+										>reset {formatFirestoreDate(itemResetInfo.reset_at)}, prior meter ended at {itemResetInfo.last_reading.toLocaleString()}</span
+									>
 								{/if}
 							</td>
-							<td class="px-6 py-4 text-gray-600">{formatDate(toDate(item.reading_date))}</td>
-							<td class="px-6 py-4 text-gray-600">{formatDate(toDate(item.created_at))}</td>
+							<td class="px-6 py-4 text-gray-600">{formatFirestoreDate(item.reading_date)}</td>
+							<td class="px-6 py-4 text-gray-600">{formatFirestoreDate(item.created_at)}</td>
 							<td class="px-6 py-4">
 								<ActionButtons
 									onEdit={() => {

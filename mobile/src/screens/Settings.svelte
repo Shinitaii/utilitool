@@ -70,14 +70,6 @@
         </button>
       </div>
     </div>
-
-    <!-- Configuration Section -->
-    <div>
-      <h2 class="text-lg font-semibold mb-3" style="color: var(--color-text-primary)">Configuration</h2>
-      <div class="card-base">
-        <p class="text-sm" style="color: var(--color-text-secondary)">Reserved for future settings</p>
-      </div>
-    </div>
   </div>
 
   <BottomNav active="settings" />

@@ -3,7 +3,7 @@ export const paths = {
     post: {
       tags: ["Image Extraction"],
       summary: "Extract meter reading data from image",
-      description: "Uses Gemini Vision to extract structured reading data from a meter photo",
+      description: "Uses the user's configured llm-config vision model to extract structured reading data from a meter photo. Returns 404 if no vision_model is configured.",
       requestBody: {
         required: true,
         content: {
@@ -13,8 +13,7 @@ export const paths = {
               properties: {
                 image_url: {
                   type: "string",
-                  format: "uri",
-                  description: "URL of the meter photo (data URL or HTTPS)",
+                  description: "Base64 data URL of the meter photo (data:image/*;base64,...)",
                 },
               },
               required: ["image_url"],
@@ -51,7 +50,7 @@ export const paths = {
     post: {
       tags: ["Image Extraction"],
       summary: "Extract billing data from utility bill photo",
-      description: "Uses Gemini Vision to extract dates, consumption, and rate from a utility bill",
+      description: "Uses the user's configured llm-config vision model to extract dates, consumption, and rate from a utility bill. Returns 404 if no vision_model is configured.",
       requestBody: {
         required: true,
         content: {
@@ -61,8 +60,7 @@ export const paths = {
               properties: {
                 image_url: {
                   type: "string",
-                  format: "uri",
-                  description: "URL of the utility bill photo (data URL or HTTPS)",
+                  description: "Base64 data URL of the utility bill photo (data:image/*;base64,...)",
                 },
               },
               required: ["image_url"],

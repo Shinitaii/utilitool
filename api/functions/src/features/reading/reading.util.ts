@@ -80,22 +80,21 @@ export function getCumulativeOffset(
 
 /**
  * Resolve the version-history map that governs a reading's meter_version.
- * Submeter entries on a property track their own versions independently;
- * main meters defer to the meter group's version history.
+ * Property.meter_groups[entry].versions is the source of truth for both main
+ * meters and submeters (MeterGroup.versions is deprecated — see MeterGroup model).
  */
 export function resolveVersionsSource(
   meterGroup: MeterGroup | null | undefined,
   property: Property | null | undefined,
   meterGroupId: string
 ): Record<string, MeterGroupVersionEntry> | undefined {
-  let versionsSource = meterGroup?.versions;
   if (property) {
     const entry = Object.values(property.meter_groups).find((e) => e?.meter_group_id === meterGroupId);
-    if (entry && !entry.is_main_meter) {
-      versionsSource = entry.versions;
+    if (entry?.versions !== undefined) {
+      return entry.versions;
     }
   }
-  return versionsSource;
+  return meterGroup?.versions;
 }
 
 /**
@@ -168,9 +167,9 @@ export async function findCurrentMonthReading(
 
 /**
  * Resolve the meter_version that should be stamped on a new reading for the
- * given property + meter group. Main-meter properties resolve from the meter
- * group's scope (current_version is authoritative there). Submeter properties
- * track their own version independently on their MeterGroupEntry.
+ * given property + meter group. Property.meter_groups[entry].current_version is
+ * the source of truth for both main meters and submeters (MeterGroup.current_version
+ * is deprecated — see MeterGroup model).
  */
 export function resolveMeterVersion(
   property: Property | null | undefined,
@@ -181,8 +180,8 @@ export function resolveMeterVersion(
     Object.values(property.meter_groups).find((e) => e.meter_group_id === meterGroupId) :
     undefined;
 
-  if (entry && !entry.is_main_meter) {
-    return entry.current_version ?? 1;
+  if (entry?.current_version !== undefined) {
+    return entry.current_version;
   }
 
   return meterGroup?.current_version ?? 1;

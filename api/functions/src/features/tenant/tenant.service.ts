@@ -1,5 +1,5 @@
 ﻿import {Timestamp} from "firebase-admin/firestore";
-import {AppError} from "../../utils/error.util";
+import {AppError, getOrThrow} from "../../utils/error.util";
 import {PaginatedResult} from "../../utils/pagination.util";
 import {tenantRepository} from "./tenant.repository";
 import {CreateTenantDTO, UpdateTenantDTO} from "./tenant.dto";
@@ -13,6 +13,10 @@ import {Property} from "../property/property.model";
 
 const validator = new TenantValidator();
 const CACHE_TTL = 20 * 60; // 20 minutes
+
+function repoFor(userId: string): CachedRepository<Tenant> {
+  return new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
+}
 
 /**
  * Atomically re-checks the tenant-count cap and creates the tenant doc inside
@@ -97,15 +101,14 @@ export const tenantService = {
     const property = await validator.validateCreate(data);
     const tenant = await createTenantWithCapacityCheck(data.property_id, property.tenant_amount, data);
 
-    const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
-    await cachedRepo.cacheCreatedItem(tenant);
+    await repoFor(userId).cacheCreatedItem(tenant);
 
     return tenant;
   },
 
   async createBatch(userId: string, data: CreateTenantDTO[]): Promise<Tenant[]> {
     const propertyMap = await validator.validateBatchCreate(data);
-    const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
+    const cachedRepo = repoFor(userId);
 
     // Sequential, one transaction per item (not a single batch write): each item
     // re-checks the tenant-count cap for its property inside its own transaction,
@@ -125,13 +128,11 @@ export const tenantService = {
   },
 
   async getById(userId: string, id: string): Promise<Tenant | null> {
-    const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
-    return cachedRepo.getById(id);
+    return repoFor(userId).getById(id);
   },
 
   async search(userId: string, options: TenantSearchOptions): Promise<PaginatedResult<Tenant>> {
-    const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
-    return cachedRepo.search({
+    return repoFor(userId).search({
       limit: options.limit,
       orderBy: (options.sortBy ?? "created_at") as any,
       orderDirection: options.sortOrder ?? "desc",
@@ -145,13 +146,10 @@ export const tenantService = {
   },
 
   async update(userId: string, id: string, data: UpdateTenantDTO): Promise<Tenant> {
-    const tenant = await tenantRepository.getById(id);
-    if (!tenant) {
-      throw new AppError(404, "Tenant not found");
-    }
+    const tenant = await getOrThrow(tenantRepository.getById.bind(tenantRepository), id, "Tenant");
 
     const newProperty = await validator.validateUpdate(tenant, data);
-    const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
+    const cachedRepo = repoFor(userId);
 
     if (newProperty) {
       const updated = await updateTenantWithCapacityCheck(tenant, newProperty, data);
@@ -164,7 +162,7 @@ export const tenantService = {
 
   async updateBatch(userId: string, updates: { id: string; data: UpdateTenantDTO }[]): Promise<Tenant[]> {
     const transferMap = await validator.validateBatchUpdate(updates);
-    const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
+    const cachedRepo = repoFor(userId);
 
     const results: Tenant[] = new Array(updates.length);
     const nonTransferUpdates: { id: string; data: UpdateTenantDTO }[] = [];
@@ -195,32 +193,25 @@ export const tenantService = {
   },
 
   async delete(userId: string, id: string): Promise<void> {
-    const tenant = await tenantRepository.getById(id);
-    if (!tenant) {
-      throw new AppError(404, "Tenant not found");
-    }
-
-    const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
-    await cachedRepo.delete(id);
+    await getOrThrow(tenantRepository.getById.bind(tenantRepository), id, "Tenant");
+    await repoFor(userId).delete(id);
   },
 
   async softDelete(userId: string, id: string): Promise<Tenant> {
-    const tenant = await tenantRepository.getById(id);
-    if (!tenant) {
-      throw new AppError(404, "Tenant not found");
-    }
-
-    const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
-    return cachedRepo.softDelete(id);
+    await getOrThrow(tenantRepository.getById.bind(tenantRepository), id, "Tenant");
+    return repoFor(userId).softDelete(id);
   },
 
   async restore(userId: string, id: string): Promise<Tenant> {
-    const tenant = await tenantRepository.getById(id);
-    if (!tenant) {
-      throw new AppError(404, "Tenant not found");
-    }
+    await getOrThrow(tenantRepository.getById.bind(tenantRepository), id, "Tenant");
+    return repoFor(userId).restore(id);
+  },
 
-    const cachedRepo = new CachedRepository(tenantRepository, userId, "tenants", CACHE_TTL);
-    return cachedRepo.restore(id);
+  /**
+   * Permanently delete an already-archived tenant. Second step of the
+   * archive-then-purge lifecycle — throws 409 if the tenant is still active.
+   */
+  async purge(userId: string, id: string): Promise<void> {
+    await repoFor(userId).purge(id);
   },
 };

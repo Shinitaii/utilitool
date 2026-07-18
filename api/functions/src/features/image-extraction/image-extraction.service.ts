@@ -1,5 +1,6 @@
 import {AppError} from "../../utils/error.util";
-import {geminiLib} from "../../lib/gemini.lib";
+import {visionOcrLib} from "../../lib/vision-ocr.lib";
+import {llmConfigService} from "../llm-config/llm-config.service";
 import type {ExtractedReadingData, ExtractedBillingData} from "./image-extraction.model";
 import {Timestamp} from "firebase-admin/firestore";
 
@@ -10,10 +11,10 @@ import {Timestamp} from "firebase-admin/firestore";
  */
 export class ImageExtractionService {
   /**
-   * Extract meter reading data from a photo (via Gemini Vision).
+   * Extract meter reading data from a photo via the user's configured vision model.
    * Returns the extracted meter amount and other metadata from the image.
    */
-  static async extractReadingFromImage(imageUrl: string): Promise<ExtractedReadingData> {
+  static async extractReadingFromImage(imageUrl: string, userId: string): Promise<ExtractedReadingData> {
     if (!imageUrl) {
       throw new AppError(400, "Image URL is required");
     }
@@ -22,8 +23,8 @@ export class ImageExtractionService {
       // Validate URL format
       new URL(imageUrl);
 
-      // Call Gemini to extract reading
-      const reading_amount = await geminiLib.extractReadingFromImage(imageUrl);
+      const visionConfig = await llmConfigService.getDecryptedVisionConfig(userId);
+      const reading_amount = await visionOcrLib.extractReadingFromImage(imageUrl, visionConfig);
 
       if (reading_amount === null) {
         throw new AppError(422, "Could not extract reading from image");
@@ -45,11 +46,11 @@ export class ImageExtractionService {
   }
 
   /**
-   * Extract billing cycle data from a utility bill photo (via Gemini Vision).
+   * Extract billing cycle data from a utility bill photo via the user's configured vision model.
    * Returns dates, consumption, and rate extracted from the image.
    * This is the main integration point for the OCR endpoint.
    */
-  static async extractBillingFromImage(imageUrl: string): Promise<ExtractedBillingData> {
+  static async extractBillingFromImage(imageUrl: string, userId: string): Promise<ExtractedBillingData> {
     if (!imageUrl) {
       throw new AppError(400, "Image URL is required");
     }
@@ -58,8 +59,8 @@ export class ImageExtractionService {
       // Validate URL format
       new URL(imageUrl);
 
-      // Call Gemini to extract bill data
-      const billData = await geminiLib.extractBillData(imageUrl);
+      const visionConfig = await llmConfigService.getDecryptedVisionConfig(userId);
+      const billData = await visionOcrLib.extractBillData(imageUrl, visionConfig);
 
       if (!billData) {
         throw new AppError(422, "Could not extract billing data from image");
