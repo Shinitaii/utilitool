@@ -229,7 +229,7 @@ Each page/component is organized by:
 
 ### API Features (Complete + Audited May 2026)
 
-- ✅ Meter Groups (CRUD, batch; dynamic sorting; `POST /:id/reset` and its `current_version`/`versions` fields are **@deprecated** — version tracking now lives per-property on `Property.meter_groups[entry]`, see `decisions/`)
+- ✅ Meter Groups (CRUD, batch; dynamic sorting; **submeter** version tracking lives per-property on `Property.meter_groups[entry]`, but `POST /:id/reset` and `MeterGroup.current_version`/`versions` are **still the live source of truth for main meters** — the "migrate main meters too" backfill was never done and is not pending, so do NOT treat those fields as fully deprecated or delete them, see `decisions/20260608_meter-group-version-tracking-moved-to-property.md` Amendment 2026-07-19)
 - ✅ Properties (CRUD, batch; dynamic sorting; optimized duplicate detection)
 - ✅ Tenants (CRUD, batch; dynamic sorting)
 - ✅ Readings (CRUD, batch; auto-billing on single create; anomaly guard; meter rollback prevention; utility extraction)
