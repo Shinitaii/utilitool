@@ -7,6 +7,7 @@ import type {
 import type { PaginatedResult, BatchCreateResult } from '$lib/types/api.types';
 
 export async function getBillingCycles(params?: {
+	meterGroupId?: string;
 	billingStartDate?: string;
 	billingEndDate?: string;
 	limit?: number;
@@ -14,6 +15,7 @@ export async function getBillingCycles(params?: {
 	archived?: boolean;
 }): Promise<PaginatedResult<BillingCycle>> {
 	const query = new URLSearchParams();
+	if (params?.meterGroupId) query.set('meterGroupId', params.meterGroupId);
 	if (params?.billingStartDate) query.set('billingStartDate', params.billingStartDate);
 	if (params?.billingEndDate) query.set('billingEndDate', params.billingEndDate);
 	if (params?.limit) query.set('limit', params.limit.toString());

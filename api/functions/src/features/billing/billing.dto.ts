@@ -37,6 +37,9 @@ export type BillingByIdParamsDTO = z.infer<typeof BillingByIdParamsDTOSchema>;
 export const GetBillingsQueryDTOSchema = z
   .object({
     propertyId: z.string().trim().min(1).optional(),
+    meterGroupId: z.string().trim().min(1).optional(),
+    startDate: z.union([z.string().datetime(), z.string().date()]).optional(),
+    endDate: z.union([z.string().datetime(), z.string().date()]).optional(),
     sortBy: z.enum(["created_at", "payment_status"]).optional(),
     sortOrder: z.enum(["asc", "desc"]).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -50,6 +53,20 @@ export const GetBillingsQueryDTOSchema = z
       context.addIssue({
         code: "custom",
         message: "cursor cannot be combined with propertyId",
+        path: ["cursor"],
+      });
+    }
+    if (value.meterGroupId && value.cursor) {
+      context.addIssue({
+        code: "custom",
+        message: "cursor cannot be combined with meterGroupId",
+        path: ["cursor"],
+      });
+    }
+    if ((value.startDate || value.endDate) && value.cursor) {
+      context.addIssue({
+        code: "custom",
+        message: "cursor cannot be combined with startDate or endDate",
         path: ["cursor"],
       });
     }

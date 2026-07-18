@@ -78,6 +78,15 @@ export const billingCyclePaths = {
       security: [{BearerAuth: []}],
       parameters: [
         {
+          name: "meterGroupId",
+          in: "query",
+          description: "Filter by meter group ID",
+          schema: {
+            type: "string",
+            minLength: 1,
+          },
+        },
+        {
           name: "billingStartDate",
           in: "query",
           description: "Filter by billing start date (ISO 8601 datetime string)",

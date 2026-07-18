@@ -1,5 +1,6 @@
 jest.mock('./billing.repository');
 jest.mock('./billing.validator');
+jest.mock('../reading/reading.repository');
 
 // Mock Firestore transaction used in billingService.create
 jest.mock('../../config/firebase.config', () => {
@@ -31,6 +32,7 @@ jest.mock('../../config/firebase.config', () => {
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import { billingService } from './billing.service';
 import { billingRepository } from './billing.repository';
+import { readingRepository } from '../reading/reading.repository';
 import { BillingValidator } from './billing.validator';
 import { CreateBillingDTOSchema, UpdateBillingDTOSchema, BillingByIdParamsDTOSchema, CreateBillingBatchDTOSchema, UpdateBillingBatchDTOSchema } from './billing.dto';
 import { AppError } from '../../utils/error.util';
@@ -80,6 +82,10 @@ describe('billingService', () => {
       const mocks = [mockBilling({ id: 'billing-1' }), mockBilling({ id: 'billing-2' })];
       jest.mocked(BillingValidator.prototype.validateBatch).mockResolvedValue(undefined);
       jest.mocked(billingRepository.createBatch).mockResolvedValue(mocks);
+      jest.mocked(readingRepository.getByIds).mockResolvedValue([
+        { id: 'reading-2', meter_group_id: 'mg-1', reading_date: now } as any,
+        { id: 'reading-3', meter_group_id: 'mg-1', reading_date: now } as any,
+      ]);
 
       const input = [
         { property_id: 'prop-1', previous_reading_id: 'reading-1', current_reading_id: 'reading-2' },

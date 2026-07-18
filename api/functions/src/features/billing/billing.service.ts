@@ -1,4 +1,4 @@
-import {FieldValue, Transaction, DocumentData} from "firebase-admin/firestore";
+import {FieldValue, Transaction, DocumentData, Timestamp} from "firebase-admin/firestore";
 import {firestore} from "../../config/firebase.config";
 import {billingRepository} from "./billing.repository";
 import {Billing} from "./billing.model";
@@ -11,12 +11,32 @@ import {snapshotToModel} from "../../utils/firestore.util";
 import {validateMeterRollback} from "../reading/reading.util";
 import {cacheSet} from "../../utils/cache.util";
 import {CachedRepository} from "../../lib/cached-repository.lib";
+import {readingRepository} from "../reading/reading.repository";
 
 const validator = new BillingValidator();
 const CACHE_TTL = 10 * 60; // 10 minutes
 
+/**
+ * Derives the denormalized fields Billing copies off its current reading
+ * (meter_group_id + billing_period_date). Single source of the copy logic so
+ * create/createBatch/createFromReadings and update() can't drift apart.
+ * Accepts any reading-shaped value (DocumentData from a txn snapshot or a
+ * resolved Reading model) — both carry meter_group_id/reading_date.
+ */
+function deriveBillingDenormalizedFields(
+  currReading: { meter_group_id: string; reading_date: Timestamp }
+): { meter_group_id: string; billing_period_date: Timestamp } {
+  return {
+    meter_group_id: currReading.meter_group_id,
+    billing_period_date: currReading.reading_date,
+  };
+}
+
 type BillingSearchOptions = {
   propertyId?: string;
+  meterGroupId?: string;
+  startDate?: string;
+  endDate?: string;
   sortBy?: string;
   sortOrder?: "asc" | "desc";
   limit: number;
@@ -71,6 +91,7 @@ export const billingService = {
       newBillingId = newRef.id;
       txn.set(newRef, {
         ...data,
+        ...deriveBillingDenormalizedFields(currReading as any),
         payment_status: "pending" as const,
         created_at: FieldValue.serverTimestamp(),
         is_deleted: false,
@@ -87,28 +108,95 @@ export const billingService = {
 
   async createBatch(userId: string, data: CreateBillingDTO[]): Promise<Billing[]> {
     await validator.validateBatch(data);
+
+    // Batch is capped at 10 items (CreateBillingBatchDTOSchema), so this is a small,
+    // one-time lookup — resolves meter_group_id/reading_date for the denormalized fields
+    // below, mirroring what create()/createFromReadings() already get for free from their
+    // transaction reads.
+    const currentReadingIds = Array.from(new Set(data.map((item) => item.current_reading_id)));
+    const currentReadings = await readingRepository.getByIds(currentReadingIds);
+    const readingById = new Map(
+      currentReadings.filter((r): r is NonNullable<typeof r> => r !== null).map((r) => [r.id, r])
+    );
+
     const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
     const created = await cachedRepo.createBatch(
-      data.map((item) => ({
-        ...item,
-        payment_status: "pending" as const,
-      }))
+      data.map((item) => {
+        const currReading = readingById.get(item.current_reading_id)!;
+        return {
+          ...item,
+          ...deriveBillingDenormalizedFields(currReading),
+          payment_status: "pending" as const,
+        };
+      })
     );
     return created;
   },
 
   async search(userId: string, options: BillingSearchOptions): Promise<PaginatedResult<Billing>> {
     const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
-    return cachedRepo.search({
+
+    // Archived queries go direct to Firestore, same as billing-cycle.service.ts —
+    // range filters can be pushed down to the query since there's no list cache involved.
+    if (options.archived) {
+      const filters: Record<string, any> = {
+        ...(options.propertyId ? {property_id: options.propertyId} : {}),
+        ...(options.meterGroupId ? {meter_group_id: options.meterGroupId} : {}),
+      };
+      if (options.startDate) {
+        filters.billing_period_date = {...filters.billing_period_date, gte: new Date(options.startDate)};
+      }
+      if (options.endDate) {
+        filters.billing_period_date = {...filters.billing_period_date, lte: new Date(options.endDate)};
+      }
+      return billingRepository.search({
+        limit: options.limit,
+        orderBy: (options.sortBy ?? "created_at") as any,
+        orderDirection: options.sortOrder ?? "desc",
+        cursor: options.cursor,
+        archived: true,
+        filters,
+      });
+    }
+
+    // Active items: load the cached list, apply equality filters via CachedRepository,
+    // then post-filter date range in memory — CachedRepository.applyFilters rejects range
+    // filters outright, so date filtering can't be pushed into the same call. Mirrors the
+    // same two-step pattern billing-cycle.service.ts uses for its date filters.
+    const result = await cachedRepo.search({
       limit: options.limit,
       orderBy: (options.sortBy ?? "created_at") as any,
       orderDirection: options.sortOrder ?? "desc",
       cursor: options.cursor,
-      archived: options.archived,
+      archived: false,
       filters: {
         ...(options.propertyId ? {property_id: options.propertyId} : {}),
+        ...(options.meterGroupId ? {meter_group_id: options.meterGroupId} : {}),
       },
     });
+
+    if (options.startDate || options.endDate) {
+      if (options.startDate) {
+        const startDate = new Date(options.startDate);
+        result.data = result.data.filter((b) => {
+          const periodDate = b.billing_period_date instanceof Date ?
+            b.billing_period_date :
+            new Date(b.billing_period_date as any);
+          return periodDate >= startDate;
+        });
+      }
+      if (options.endDate) {
+        const endDate = new Date(options.endDate);
+        result.data = result.data.filter((b) => {
+          const periodDate = b.billing_period_date instanceof Date ?
+            b.billing_period_date :
+            new Date(b.billing_period_date as any);
+          return periodDate <= endDate;
+        });
+      }
+    }
+
+    return result;
   },
 
   async getById(userId: string, id: string): Promise<Billing | null> {
@@ -117,11 +205,22 @@ export const billingService = {
   },
 
   async update(userId: string, id: string, data: Partial<CreateBillingDTO> & { payment_status?: "pending" | "paid"; paid_at?: string }): Promise<Billing> {
-    await validator.validateUpdate(data);
+    await validator.validateUpdate(id, data);
 
-    const updateData = {...data};
+    const updateData: Record<string, unknown> = {...data};
     if (data.payment_status === "paid" && !data.paid_at) {
       updateData.paid_at = new Date().toISOString();
+    }
+
+    // Keep the denormalized fields in sync when the current reading changes via
+    // the PATCH correction escape hatch — otherwise meter_group_id /
+    // billing_period_date would silently point at the old reading.
+    if (data.current_reading_id) {
+      const currReading = await readingRepository.getById(data.current_reading_id);
+      if (!currReading) {
+        throw new AppError(404, "Current reading not found");
+      }
+      Object.assign(updateData, deriveBillingDenormalizedFields(currReading));
     }
 
     const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
@@ -130,8 +229,29 @@ export const billingService = {
 
   async updateBatch(userId: string, updates: {id: string, data: Partial<CreateBillingDTO>}[]): Promise<Billing[]> {
     await validator.validateUpdateBatch(updates);
+
+    // Re-derive denormalized fields for any item whose current reading changes,
+    // mirroring update()'s single-item sync.
+    const changedReadingIds = Array.from(
+      new Set(updates.map((u) => u.data.current_reading_id).filter((x): x is string => !!x))
+    );
+    const readingById = new Map<string, Awaited<ReturnType<typeof readingRepository.getById>>>();
+    if (changedReadingIds.length > 0) {
+      const readings = await readingRepository.getByIds(changedReadingIds);
+      readings.forEach((r) => r && readingById.set(r.id, r));
+    }
+    const enriched = updates.map((u) => {
+      if (u.data.current_reading_id) {
+        const currReading = readingById.get(u.data.current_reading_id);
+        if (currReading) {
+          return {id: u.id, data: {...u.data, ...deriveBillingDenormalizedFields(currReading)}};
+        }
+      }
+      return u;
+    });
+
     const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
-    return cachedRepo.updateBatch(updates);
+    return cachedRepo.updateBatch(enriched);
   },
 
   async delete(userId: string, id: string): Promise<void> {
@@ -198,6 +318,7 @@ export const billingService = {
       property_id: propertyId,
       previous_reading_id: prevReadingId,
       current_reading_id: currReadingId,
+      ...deriveBillingDenormalizedFields(currReading as any),
       payment_status: "pending" as const,
       created_at: FieldValue.serverTimestamp(),
       is_deleted: false,

@@ -115,4 +115,53 @@ describe('BillingValidator', () => {
       })).rejects.toMatchObject({ statusCode: 404 });
     });
   });
+
+  describe('validateUpdate — correction escape hatch', () => {
+    const storedBilling = {
+      id: 'billing-1',
+      property_id: 'prop-1',
+      previous_reading_id: 'r-prev',
+      current_reading_id: 'r-old',
+    };
+
+    it('skips cross-entity validation when no reading id changes', async () => {
+      await expect(validator.validateUpdate('billing-1', {})).resolves.toBeUndefined();
+    });
+
+    it('rejects a lone current_reading_id PATCH pointing at a different meter group', async () => {
+      jest.mocked(billingRepository.getById).mockResolvedValue(storedBilling as any);
+      jest.mocked(propertyRepository.getById).mockResolvedValue(mockProperty() as any);
+      jest.mocked(readingRepository.getById).mockImplementation(async (id: string) => {
+        if (id === 'r-prev') return mockReading('r-prev', 'mg-1', 100) as any;
+        if (id === 'r-new') return mockReading('r-new', 'mg-2', 200) as any;
+        return null;
+      });
+
+      await expect(
+        validator.validateUpdate('billing-1', { current_reading_id: 'r-new' })
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('resolves a lone current_reading_id PATCH when same meter group and greater', async () => {
+      jest.mocked(billingRepository.getById).mockResolvedValue(storedBilling as any);
+      jest.mocked(propertyRepository.getById).mockResolvedValue(mockProperty() as any);
+      jest.mocked(readingRepository.getById).mockImplementation(async (id: string) => {
+        if (id === 'r-prev') return mockReading('r-prev', 'mg-1', 100) as any;
+        if (id === 'r-new') return mockReading('r-new', 'mg-1', 300) as any;
+        return null;
+      });
+
+      await expect(
+        validator.validateUpdate('billing-1', { current_reading_id: 'r-new' })
+      ).resolves.toBeUndefined();
+    });
+
+    it('rejects when the billing to update no longer exists', async () => {
+      jest.mocked(billingRepository.getById).mockResolvedValue(null);
+
+      await expect(
+        validator.validateUpdate('billing-1', { current_reading_id: 'r-new' })
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
 });

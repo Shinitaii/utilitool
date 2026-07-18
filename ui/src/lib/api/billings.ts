@@ -4,12 +4,18 @@ import type { PaginatedResult } from '$lib/types/api.types';
 
 export async function getBillings(params?: {
 	propertyId?: string;
+	meterGroupId?: string;
+	startDate?: string;
+	endDate?: string;
 	limit?: number;
 	cursor?: string;
 	archived?: boolean;
 }): Promise<PaginatedResult<Billing>> {
 	const query = new URLSearchParams();
 	if (params?.propertyId) query.set('propertyId', params.propertyId);
+	if (params?.meterGroupId) query.set('meterGroupId', params.meterGroupId);
+	if (params?.startDate) query.set('startDate', params.startDate);
+	if (params?.endDate) query.set('endDate', params.endDate);
 	if (params?.limit) query.set('limit', params.limit.toString());
 	if (params?.cursor) query.set('cursor', params.cursor);
 	if (params?.archived) query.set('archived', 'true');

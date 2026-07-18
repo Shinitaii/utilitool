@@ -54,6 +54,9 @@ export const getBillings = async (
 
   const result = await billingService.search(userId, {
     propertyId: query.propertyId,
+    meterGroupId: query.meterGroupId,
+    startDate: query.startDate,
+    endDate: query.endDate,
     sortBy: query.sortBy,
     sortOrder: query.sortOrder,
     limit: query.limit,

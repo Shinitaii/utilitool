@@ -56,6 +56,7 @@ export const getBillingCycles = async (
   const userId = req.user!.userId;
 
   const result = await billingCycleService.search(userId, {
+    meterGroupId: query.meterGroupId,
     billingStartDate: query.billingStartDate,
     billingEndDate: query.billingEndDate,
     sortBy: query.sortBy,

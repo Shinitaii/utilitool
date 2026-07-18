@@ -112,6 +112,7 @@ async function injectMainMeterBilling(
 }
 
 type BillingCycleSearchOptions = {
+  meterGroupId?: string;
   billingStartDate?: string;
   billingEndDate?: string;
   sortBy?: string;
@@ -197,7 +198,9 @@ export const billingCycleService = {
 
     // For archived queries, we need custom date filtering
     if (options.archived) {
-      const filters: Record<string, any> = {};
+      const filters: Record<string, any> = {
+        ...(options.meterGroupId ? {meter_group_id: options.meterGroupId} : {}),
+      };
       if (options.billingStartDate) {
         filters.billing_start_date = {gte: new Date(options.billingStartDate)};
       }
@@ -221,7 +224,9 @@ export const billingCycleService = {
       orderDirection: options.sortOrder ?? "desc",
       cursor: options.cursor,
       archived: false,
-      filters: {},
+      filters: {
+        ...(options.meterGroupId ? {meter_group_id: options.meterGroupId} : {}),
+      },
     });
 
     // Post-filter for date ranges (can't query dates directly in Firestore query)
@@ -255,7 +260,7 @@ export const billingCycleService = {
     id: string,
     data: Partial<CreateBillingCycleDTO>
   ): Promise<BillingCycle> {
-    await validator.validateUpdate(data);
+    await validator.validateUpdate(id, data);
     const cachedRepo = new CachedRepository(billingCycleRepository, userId, "billing-cycles", CACHE_TTL);
     return cachedRepo.update(id, data);
   },

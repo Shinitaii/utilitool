@@ -27,7 +27,8 @@ export class BillingCycleValidator {
   }
 
   private async validateBillingConsumptionAmounts(
-    billingIds: Record<string, number>
+    billingIds: Record<string, number>,
+    expectedMeterGroupId: string
   ): Promise<void> {
     const PER_BILLING_TOLERANCE = 0.05;
     const billingIdList = Object.keys(billingIds);
@@ -75,6 +76,19 @@ export class BillingCycleValidator {
       const currReading = readingMap.get(billing.current_reading_id);
 
       if (!prevReading || !currReading) continue;
+
+      // Cross-check the cycle's declared meter_group_id against the meter group
+      // of the reading each billing actually summarizes — otherwise a cycle can
+      // claim a meter_group_id that doesn't match its billings' readings, and
+      // the denormalized field silently lies (nothing else validates it).
+      if (currReading.meter_group_id !== expectedMeterGroupId) {
+        throw new AppError(
+          400,
+          `Billing ${billingId}: its reading belongs to meter group ` +
+            `${currReading.meter_group_id}, but the billing cycle is for meter group ` +
+            `${expectedMeterGroupId}`
+        );
+      }
 
       const meterGroup = meterGroupMap.get(currReading.meter_group_id);
       const property = propertyMap.get(billing.property_id);
@@ -181,7 +195,7 @@ export class BillingCycleValidator {
     }
 
     await this.validateBillingIdsExist(billingIds);
-    await this.validateBillingConsumptionAmounts(data.billing_ids);
+    await this.validateBillingConsumptionAmounts(data.billing_ids, data.meter_group_id);
   }
 
   async validateCreate(data: CreateBillingCycleDTO): Promise<void> {
@@ -192,7 +206,7 @@ export class BillingCycleValidator {
     }
 
     await this.validateBillingIdsExist(billingIds);
-    await this.validateBillingConsumptionAmounts(data.billing_ids);
+    await this.validateBillingConsumptionAmounts(data.billing_ids, data.meter_group_id);
     await this.ensureBillingCycleNotDuplicate(data.meter_group_id, data.billing_start_date);
 
     this.validateBillingDates(
@@ -239,6 +253,7 @@ export class BillingCycleValidator {
   }
 
   async validateUpdate(
+    id: string,
     data: Partial<CreateBillingCycleDTO>
   ): Promise<void> {
     if (data.billing_ids !== undefined) {
@@ -249,7 +264,24 @@ export class BillingCycleValidator {
       }
 
       await this.validateBillingIdsExist(billingIds);
-      await this.validateBillingConsumptionAmounts(data.billing_ids);
+    }
+
+    // Re-run the meter-group cross-check whenever billing_ids OR meter_group_id
+    // changes — a PATCH touching only meter_group_id (no billing_ids in the
+    // payload) would otherwise bypass validation entirely. Resolve whichever
+    // side isn't in this PATCH from the stored cycle.
+    if (data.billing_ids !== undefined || data.meter_group_id !== undefined) {
+      let effectiveBillingIds = data.billing_ids;
+      let effectiveMeterGroupId = data.meter_group_id;
+      if (!effectiveBillingIds || !effectiveMeterGroupId) {
+        const existing = await billingCycleRepository.getById(id);
+        if (!existing) {
+          throw new AppError(404, "Billing cycle not found");
+        }
+        effectiveBillingIds = effectiveBillingIds ?? existing.billing_ids;
+        effectiveMeterGroupId = effectiveMeterGroupId ?? existing.meter_group_id;
+      }
+      await this.validateBillingConsumptionAmounts(effectiveBillingIds, effectiveMeterGroupId);
     }
 
     if (data.billing_start_date && data.billing_end_date) {
@@ -279,8 +311,8 @@ export class BillingCycleValidator {
   async validateUpdateBatch(
     updates: {id: string; data: Partial<CreateBillingCycleDTO>}[]
   ): Promise<void> {
-    for (const {data} of updates) {
-      await this.validateUpdate(data);
+    for (const {id, data} of updates) {
+      await this.validateUpdate(id, data);
     }
   }
 }

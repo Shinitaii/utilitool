@@ -171,6 +171,7 @@ describe('BillingCycleValidator', () => {
     it('accepts the correct true-reading delta across the reset (5.5)', async () => {
       await expect(
         validator.validateSubmeterConsumption({
+          meter_group_id: 'mg-1',
           billing_ids: { 'b-1': 5.5 },
         } as any)
       ).resolves.toBeUndefined();
@@ -179,12 +180,89 @@ describe('BillingCycleValidator', () => {
     it('rejects an overstated consumption that used the full true reading (639.5) instead of the delta', async () => {
       await expect(
         validator.validateSubmeterConsumption({
+          meter_group_id: 'mg-1',
           billing_ids: { 'b-1': 639.5 },
         } as any)
       ).rejects.toMatchObject({
         statusCode: 400,
         message: expect.stringContaining('deviates more than 5%'),
       });
+    });
+  });
+
+  describe('meter_group_id cross-check against billings\' readings', () => {
+    const prevReading = {
+      id: 'r-1',
+      meter_group_id: 'mg-1',
+      property_id: 'prop-1',
+      reading_amount: 100,
+      reading_date: startTs,
+      meter_version: 1,
+    };
+    const currReading = {
+      id: 'r-2',
+      meter_group_id: 'mg-1',
+      property_id: 'prop-1',
+      reading_amount: 200,
+      reading_date: endTs,
+      meter_version: 1,
+    };
+    const property = { id: 'prop-1', meter_groups: {} };
+    const meterGroup = { id: 'mg-1', current_version: 1, versions: {} };
+
+    beforeEach(() => {
+      jest.mocked(readingRepository.getByIds).mockResolvedValue([prevReading, currReading] as any);
+      jest.mocked(propertyRepository.getByIds).mockResolvedValue([property] as any);
+      jest.mocked(meterGroupRepository.getByIds).mockResolvedValue([meterGroup] as any);
+    });
+
+    it('rejects create when the cycle meter_group_id does not match its billings\' readings', async () => {
+      await expect(
+        validator.validateCreate({
+          meter_group_id: 'mg-OTHER',
+          billing_ids: { 'b-1': 100 },
+          billing_rate: 5,
+          billing_consumption: 100,
+          billing_start_date: startTs,
+          billing_end_date: endTs,
+        } as any)
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        message: expect.stringContaining('meter group'),
+      });
+    });
+
+    it('accepts create when the cycle meter_group_id matches its billings\' readings', async () => {
+      await expect(
+        validator.validateCreate({
+          meter_group_id: 'mg-1',
+          billing_ids: { 'b-1': 100 },
+          billing_rate: 5,
+          billing_consumption: 100,
+          billing_start_date: startTs,
+          billing_end_date: endTs,
+        } as any)
+      ).resolves.toBeUndefined();
+    });
+
+    it('rejects a PATCH changing only meter_group_id to one that does not match the stored billings', async () => {
+      // Stored cycle is for mg-1 with b-1; PATCH switches only meter_group_id to
+      // mg-OTHER, which no longer matches b-1's reading (mg-1).
+      jest.mocked(billingCycleRepository.getById).mockResolvedValue(
+        { id: 'bc-1', meter_group_id: 'mg-1', billing_ids: { 'b-1': 100 } } as any
+      );
+      await expect(
+        validator.validateUpdate('bc-1', { meter_group_id: 'mg-OTHER' })
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it('accepts a PATCH changing only meter_group_id to one that matches the stored billings', async () => {
+      jest.mocked(billingCycleRepository.getById).mockResolvedValue(
+        { id: 'bc-1', meter_group_id: 'mg-OTHER', billing_ids: { 'b-1': 100 } } as any
+      );
+      await expect(
+        validator.validateUpdate('bc-1', { meter_group_id: 'mg-1' })
+      ).resolves.toBeUndefined();
     });
   });
 });
