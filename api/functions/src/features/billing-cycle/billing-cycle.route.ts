@@ -23,6 +23,7 @@ import {
 } from "./billing-cycle.dto";
 import {validateRequest} from "../../middlewares/validate-request.middleware";
 import {requireRole} from "../../middlewares/require-role.middleware";
+import {ocrRateLimiter} from "../../config/rate-limit.config";
 
 const router = Router();
 
@@ -48,6 +49,7 @@ router.patch(
 
 router.post(
   "/ocr",
+  ocrRateLimiter,
   validateRequest({body: OcrBillingCycleDTOSchema}),
   requireRole("admin", "landlord"),
   ocrBillingCycle

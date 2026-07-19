@@ -25,6 +25,7 @@ import {
 } from "./reading.dto";
 import {validateRequest} from "../../middlewares/validate-request.middleware";
 import {requireRole} from "../../middlewares/require-role.middleware";
+import {ocrRateLimiter} from "../../config/rate-limit.config";
 
 const router = Router();
 
@@ -36,6 +37,7 @@ router.post(
 
 router.post(
   "/ocr",
+  ocrRateLimiter,
   validateRequest({body: OcrReadingDTOSchema}),
   requireRole("admin", "landlord", "assistant"),
   ocrReading
