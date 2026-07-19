@@ -125,15 +125,14 @@ export function paginate<T extends BaseModel>(
 
 export async function listAppend<T extends BaseModel>(
   cacheKey: string,
-  item: T
+  item: T,
+  ttlSeconds: number = 30 * 60
 ): Promise<void> {
   const cached = await cacheGet<T[]>(cacheKey);
   if (!cached) return; // Cache miss, let next GET populate it
 
   cached.push(item);
-  // Refresh TTL - maintain original 20-30 min TTL
-  const ttl = 30 * 60; // Default to 30 min
-  await cacheSet(cacheKey, cached, ttl);
+  await cacheSet(cacheKey, cached, ttlSeconds);
 }
 
 export async function listUpdate<T extends BaseModel>(

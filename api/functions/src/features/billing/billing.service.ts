@@ -10,6 +10,7 @@ import {COLLECTIONS} from "../../constants/collection.constants";
 import {snapshotToModel, parseTimestamp} from "../../utils/firestore.util";
 import {validateMeterRollback} from "../reading/reading.util";
 import {cacheSet} from "../../utils/cache.util";
+import {listAppend} from "../../utils/list-cache.util";
 import {CachedRepository} from "../../lib/cached-repository.lib";
 import {readingRepository} from "../reading/reading.repository";
 
@@ -103,6 +104,7 @@ export const billingService = {
     const snap = await firestore.collection(COLLECTIONS.BILLINGS).doc(newBillingId!).get();
     const billing = snapshotToModel<Billing>(snap);
     await cacheSet(`utilitool:billings:id:${billing.id}`, billing, CACHE_TTL);
+    await listAppend(`utilitool:billings:all:${userId}`, billing, CACHE_TTL);
     return billing;
   },
 
