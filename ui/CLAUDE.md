@@ -102,7 +102,7 @@ ui/src/
 │       │   ├── +page.svelte
 │       │   └── archive/+page.svelte   (Archived billings recovery)
 │       ├── bills/+page.svelte      (OCR bill upload — functional)
-│       ├── reports/+page.svelte    (Analytics dashboard — stub)
+│       ├── reports/+page.svelte    (Analytics dashboard — complete)
 │       └── settings/
 │           ├── +page.svelte        (Account settings root)
 │           ├── payment/+page.svelte (Payment settings)
@@ -122,7 +122,7 @@ ui/src/
 │   │   ├── billing-cycles.ts
 │   │   ├── bills.ts                (ocrBill — POST /bills/ocr)
 │   │   ├── users.ts                (createUser — POST /users)
-│   │   ├── reports.ts              (getSummaryReport, getConsumptionReport, getBillingTrendsReport, getCollectionStatusReport)
+│   │   ├── reports.ts              (getAllReports — combined fetch used by the page; getSummaryReport, getConsumptionReport, getBillingTrendsReport, getCollectionStatusReport still available individually)
 │   │   ├── llm-config.ts           (getLlmConfig, upsertLlmConfig, upsertVisionLlmConfig — GET /llm-config, PATCH /llm-config, PATCH /llm-config/vision)
 │   │   ├── chat.ts                 (sendChatMessage — POST /chatbot)
 │   │   └── cache.ts                (clearAllCaches — clears all feature caches in parallel)
@@ -137,7 +137,7 @@ ui/src/
 │   │   ├── reading.types.ts
 │   │   ├── billing.types.ts
 │   │   ├── billing-cycle.types.ts
-│   │   ├── reports.types.ts        (ReportSummary, ConsumptionReport, BillingTrendsReport, CollectionStatusReport, ReportQueryParams)
+│   │   ├── reports.types.ts        (ReportSummary, ConsumptionReport, BillingTrendsReport, CollectionStatusReport, CombinedReportsResponse, ReportQueryParams)
 │   │   └── llm-config.types.ts     (LlmConfigResponse, UpsertLlmConfigRequest)
 │   │
 │   ├── stores/                      (Svelte 5 runes-based stores)
@@ -319,13 +319,21 @@ All archive pages: `GET /<feature>?archived=true` to list soft-deleted items, th
 #### Reports (`/reports`)
 
 - **Component**: `src/routes/(app)/reports/+page.svelte`
-- **API calls** (available, not yet wired in UI):
-  - `GET /reports/summary` ← `getSummaryReport()`
-  - `GET /reports/consumption` ← `getConsumptionReport()`
-  - `GET /reports/billing-trends` ← `getBillingTrendsReport()`
-  - `GET /reports/collection-status` ← `getCollectionStatusReport()`
-- **Displays**: "Coming Soon" placeholder
-- **Status**: 🚧 Stub — API module ready, UI needs build-out
+- **API calls**:
+  - `GET /reports` ← `getAllReports()` — combined fetch used by the page (one HTTP call
+    computes summary/consumption/billing-trends/collection-status from a single shared join)
+  - `GET /reports/summary` ← `getSummaryReport()`, `GET /reports/consumption` ←
+    `getConsumptionReport()`, `GET /reports/billing-trends` ← `getBillingTrendsReport()`,
+    `GET /reports/collection-status` ← `getCollectionStatusReport()` — granular endpoints kept
+    for other callers (e.g. the chatbot), not used by this page
+  - `GET /meter-groups?limit=100` ← `getMeterGroups()`, `GET /properties?limit=100` ←
+    `getProperties()` — filter dropdowns
+- **Displays**: date-range + meter-group/property filters, 4 summary stat cards, two Chart.js
+  charts (consumption by month, billing trends by month), collection-status cards, per-property
+  consumption table
+- **Note**: defaults to a bounded 12-month `startDate` when the user hasn't picked one, instead
+  of an unbounded "To Present" scan (mirrors the Dashboard's fetch-window bound)
+- **Status**: ✅ Complete
 
 ---
 
@@ -387,6 +395,7 @@ export async function createUser(data: {
 ### reports.ts
 
 ```ts
+export async function getAllReports(params?: ReportQueryParams): Promise<CombinedReportsResponse>; // used by the Reports page
 export async function getSummaryReport(params?: ReportQueryParams): Promise<ReportSummary>;
 export async function getConsumptionReport(params?: ReportQueryParams): Promise<ConsumptionReport>;
 export async function getBillingTrendsReport(

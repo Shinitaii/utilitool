@@ -264,7 +264,7 @@ Each page/component is organized by:
 - ✅ Readings (filterable list; True Total column; batch form with decoupled OCR suggest; archive page)
 - ✅ Billings (cycle-centric: expandable cycles with nested billings; bill photo OCR autofill; cycle edit modal for rate/consumption/date corrections; archive page)
 - ✅ Bills / OCR upload (3-step wizard: upload → review/map → submit, creates a billing cycle)
-- 🚧 Reports (stub — API module ready, UI not built)
+- ✅ Reports (analytics dashboard: filters, summary cards, consumption/billing-trends charts, collection-status cards, per-property table)
 - 🚧 Settings (partial — payment + user management tabs scaffolded; LLM Provider tab added)
 - ✅ Insight Chatbot (`ChatWidget` floating widget, mounted globally on all protected routes)
 

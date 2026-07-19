@@ -1,5 +1,5 @@
 import {Response} from "express";
-import {getSummary, getConsumption, getBillingTrends, getCollectionStatus} from "./reports.service";
+import {getSummary, getConsumption, getBillingTrends, getCollectionStatus, getAllReports} from "./reports.service";
 import type {ReportQueryDTO} from "./reports.dto";
 import type {AuthenticatedRequest} from "../../utils/auth.util";
 
@@ -33,4 +33,12 @@ export async function getCollectionStatusReport(req: AuthenticatedRequest, res: 
   const status = await getCollectionStatus(userId, query);
   res.set("Cache-Control", "no-store");
   res.json(status);
+}
+
+export async function getAllReportsHandler(req: AuthenticatedRequest, res: Response) {
+  const userId = req.user!.userId;
+  const query = req.query as ReportQueryDTO;
+  const reports = await getAllReports(userId, query);
+  res.set("Cache-Control", "no-store");
+  res.json(reports);
 }
