@@ -2,6 +2,11 @@
 	import { createUser } from '$lib/api/users';
 	import type { ApiError } from '$lib/types/api.types';
 
+	// Account creation is temporarily disabled — the app is currently single-tenant
+	// with one active user. Flip back to false to re-enable (must be paired with
+	// removing the matching guard in api/functions/src/features/user/user.route.ts).
+	const ACCOUNT_CREATION_DISABLED = true;
+
 	let email = $state('');
 	let displayName = $state('');
 	let password = $state('');
@@ -49,6 +54,12 @@
 
 	<div class="rounded-lg border border-gray-200 bg-white p-6">
 		<h2 class="mb-6 text-xl font-semibold">Create New User</h2>
+
+		{#if ACCOUNT_CREATION_DISABLED}
+			<div class="rounded-lg bg-gray-50 p-4 text-sm text-gray-700">
+				Account creation is currently disabled.
+			</div>
+		{:else}
 
 		{#if error}
 			<div class="mb-4 rounded-lg bg-red-50 p-4 text-sm text-red-700">
@@ -131,5 +142,6 @@
 				{isLoading ? 'Creating user...' : 'Create User'}
 			</button>
 		</form>
+		{/if}
 	</div>
 </div>

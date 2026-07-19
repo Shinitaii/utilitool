@@ -57,6 +57,33 @@ describe('POST /users', () => {
     jest.clearAllMocks();
   });
 
+  it('should return 403 "Account creation is currently disabled" regardless of role or payload validity', async () => {
+    // Account creation is temporarily disabled (see user.route.ts's accountCreationDisabled
+    // guard) — the app is single-tenant with one active user, so onboarding is paused. This
+    // guard runs before validation/role-check, so even an invalid payload or a non-admin
+    // caller gets the same 403 rather than reaching those checks.
+    jest.mocked(admin.auth().verifyIdToken).mockResolvedValue({ uid: 'admin-uid' } as any);
+
+    const response = await request(app)
+      .post('/users')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ email: 'newuser@test.com', password: 'password123', role: 'assistant' });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error ?? response.body.message).toMatch(/currently disabled/i);
+    expect(admin.auth().createUser).not.toHaveBeenCalled();
+  });
+});
+
+// The following describe block tests the actual create-user behavior (validation, role
+// gating, restore-on-recreate) and is preserved so it can be re-enabled with a one-line
+// `.skip` removal once account creation is turned back on — see the guard's own comment in
+// user.route.ts for the paired re-enable step.
+describe.skip('POST /users (disabled while account creation is paused — re-enable together with user.route.ts)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it('should create the Firebase Auth account server-side and the profile with the specified role', async () => {
     const newUid = 'new-meter-reader-1';
     jest.mocked(admin.auth().verifyIdToken).mockResolvedValue({ uid: 'admin-uid' } as any);
