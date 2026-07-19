@@ -11,7 +11,7 @@ import {
 } from "./billing-cycle.dto";
 import {AppError} from "../../utils/error.util";
 import {ImageExtractionService} from "../image-extraction/image-extraction.service";
-import {cacheDelPattern} from "../../utils/cache.util";
+import {makeClearCacheHandler} from "../../utils/clear-cache-handler.util";
 
 export const createBillingCycle = async (
   req: AuthenticatedRequest,
@@ -146,10 +146,4 @@ export const ocrBillingCycle = async (
   res.status(200).json(validated);
 };
 
-export const clearCache = async (
-  _req: AuthenticatedRequest,
-  res: Response
-): Promise<void> => {
-  const deletedCount = await cacheDelPattern("utilitool:billing-cycles:*");
-  res.status(200).json({message: `Cleared ${deletedCount} cache entries for billing cycles`});
-};
+export const clearCache = makeClearCacheHandler("billing-cycles", "billing cycles");

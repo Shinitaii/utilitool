@@ -11,7 +11,8 @@ import {
 } from "./reading.dto";
 import {AppError} from "../../utils/error.util";
 import {ImageExtractionService} from "../image-extraction/image-extraction.service";
-import {cacheDelPattern} from "../../utils/cache.util";
+import {makeClearCacheHandler} from "../../utils/clear-cache-handler.util";
+import type {BatchGetQueryDTO} from "../../utils/batch-get.dto";
 
 export const createReading = async (
   req: AuthenticatedRequest,
@@ -56,6 +57,15 @@ export const getReadingById = async (
   }
 
   res.status(200).json(reading);
+};
+
+export const getReadingsByIds = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  const {ids} = req.query as unknown as BatchGetQueryDTO;
+  const readings = await readingService.getByIds(ids);
+  res.status(200).json(readings);
 };
 
 export const getReadings = async (
@@ -149,10 +159,4 @@ export const ocrReading = async (
   res.status(200).json({suggested_reading_amount: extracted.reading_amount});
 };
 
-export const clearCache = async (
-  _req: AuthenticatedRequest,
-  res: Response
-): Promise<void> => {
-  const deletedCount = await cacheDelPattern("utilitool:readings:*");
-  res.status(200).json({message: `Cleared ${deletedCount} cache entries for readings`});
-};
+export const clearCache = makeClearCacheHandler("readings", "readings");

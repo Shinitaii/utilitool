@@ -10,7 +10,7 @@ import {
   UpdateTenantDTO,
 } from "./tenant.dto";
 import {AppError} from "../../utils/error.util";
-import {cacheDelPattern} from "../../utils/cache.util";
+import {makeClearCacheHandler} from "../../utils/clear-cache-handler.util";
 
 export const createTenant = async (
   req: AuthenticatedRequest,
@@ -128,10 +128,4 @@ export const purgeTenant = async (
   res.status(204).send();
 };
 
-export const clearCache = async (
-  _req: AuthenticatedRequest,
-  res: Response
-): Promise<void> => {
-  const deletedCount = await cacheDelPattern("utilitool:tenants:*");
-  res.status(200).json({message: `Cleared ${deletedCount} cache entries for tenants`});
-};
+export const clearCache = makeClearCacheHandler("tenants", "tenants");

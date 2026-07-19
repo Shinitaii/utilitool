@@ -1,5 +1,5 @@
-import { getBillingById } from '$lib/api/billings';
-import { getReadingById } from '$lib/api/readings';
+import { getBillingsByIds as fetchBillingsByIds } from '$lib/api/billings';
+import { getReadingsByIds as fetchReadingsByIds } from '$lib/api/readings';
 import type { Billing } from '$lib/types/billing.types';
 import type { Reading } from '$lib/types/reading.types';
 
@@ -20,28 +20,33 @@ import type { Reading } from '$lib/types/reading.types';
 const billingCache = new Map<string, Billing>();
 const readingCache = new Map<string, Reading>();
 
+// Server caps a single batch-get call at 100 IDs (batch-get.dto.ts) — chunk larger
+// requests instead of failing validation.
+const BATCH_GET_CHUNK_SIZE = 100;
+
 async function resolveByIds<T extends { id: string }>(
 	ids: string[],
 	cache: Map<string, T>,
-	fetchById: (id: string) => Promise<T>
+	fetchByIds: (ids: string[]) => Promise<T[]>
 ): Promise<Map<string, T>> {
 	const uniqueIds = Array.from(new Set(ids.filter((id) => id && id.trim())));
 	const missing = uniqueIds.filter((id) => !cache.has(id));
 
 	if (missing.length > 0) {
-		const fetched = await Promise.all(
-			missing.map(async (id) => {
-				try {
-					return await fetchById(id);
-				} catch {
-					// A missing/soft-deleted entity resolves to undefined rather than aborting
-					// the whole batch — callers already treat absent IDs as "unknown".
-					return undefined;
-				}
-			})
-		);
-		for (const entity of fetched) {
-			if (entity) cache.set(entity.id, entity);
+		const chunks: string[][] = [];
+		for (let i = 0; i < missing.length; i += BATCH_GET_CHUNK_SIZE) {
+			chunks.push(missing.slice(i, i + BATCH_GET_CHUNK_SIZE));
+		}
+
+		try {
+			const fetchedChunks = await Promise.all(chunks.map((chunk) => fetchByIds(chunk)));
+			for (const entity of fetchedChunks.flat()) {
+				cache.set(entity.id, entity);
+			}
+		} catch {
+			// A batch call failing (e.g. all-missing/soft-deleted IDs) resolves to
+			// "nothing newly cached" rather than aborting — callers already treat
+			// absent IDs as "unknown".
 		}
 	}
 
@@ -55,11 +60,11 @@ async function resolveByIds<T extends { id: string }>(
 }
 
 export async function getBillingsByIds(ids: string[]): Promise<Map<string, Billing>> {
-	return resolveByIds(ids, billingCache, getBillingById);
+	return resolveByIds(ids, billingCache, fetchBillingsByIds);
 }
 
 export async function getReadingsByIds(ids: string[]): Promise<Map<string, Reading>> {
-	return resolveByIds(ids, readingCache, getReadingById);
+	return resolveByIds(ids, readingCache, fetchReadingsByIds);
 }
 
 /** Update a single cached billing in place (e.g. after a local mark-as-paid) without a refetch. */

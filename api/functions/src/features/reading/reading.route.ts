@@ -3,6 +3,7 @@ import {
   createReading,
   createSeedReading,
   getReadingById,
+  getReadingsByIds,
   getReadings,
   updateReading,
   softDeleteReading,
@@ -23,6 +24,7 @@ import {
   UpdateReadingDTOSchema,
   OcrReadingDTOSchema,
 } from "./reading.dto";
+import {BatchGetQueryDTOSchema} from "../../utils/batch-get.dto";
 import {validateRequest} from "../../middlewares/validate-request.middleware";
 import {requireRole} from "../../middlewares/require-role.middleware";
 import {ocrRateLimiter} from "../../config/rate-limit.config";
@@ -69,6 +71,12 @@ router.post(
   validateRequest({body: CreateReadingDTOSchema}),
   requireRole("admin", "landlord", "assistant"),
   createReading
+);
+
+router.get(
+  "/batch-get",
+  validateRequest({query: BatchGetQueryDTOSchema}),
+  getReadingsByIds
 );
 
 router.get(

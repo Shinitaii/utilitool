@@ -11,7 +11,7 @@ import {
   UpdatePropertyDTO,
 } from "./property.dto";
 import {AppError} from "../../utils/error.util";
-import {cacheDelPattern} from "../../utils/cache.util";
+import {makeClearCacheHandler} from "../../utils/clear-cache-handler.util";
 
 export const createProperty = async (
   req: AuthenticatedRequest,
@@ -138,10 +138,4 @@ export const recordPropertyMeterGroupReset = async (
   res.status(200).json(result);
 };
 
-export const clearCache = async (
-  _req: AuthenticatedRequest,
-  res: Response
-): Promise<void> => {
-  const deletedCount = await cacheDelPattern("utilitool:properties:*");
-  res.status(200).json({message: `Cleared ${deletedCount} cache entries for properties`});
-};
+export const clearCache = makeClearCacheHandler("properties", "properties");

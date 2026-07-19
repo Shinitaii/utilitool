@@ -7,7 +7,8 @@ import {PaginatedResult} from "../../utils/pagination.util";
 import {BillingValidator} from "./billing.validator";
 import {AppError} from "../../utils/error.util";
 import {COLLECTIONS} from "../../constants/collection.constants";
-import {snapshotToModel, parseTimestamp} from "../../utils/firestore.util";
+import {snapshotToModel} from "../../utils/firestore.util";
+import {applyDateRangeFilter} from "../../utils/date-range-filter.util";
 import {validateMeterRollback} from "../reading/reading.util";
 import {cacheSet} from "../../utils/cache.util";
 import {listAppend} from "../../utils/list-cache.util";
@@ -16,6 +17,10 @@ import {readingRepository} from "../reading/reading.repository";
 
 const validator = new BillingValidator();
 const CACHE_TTL = 10 * 60; // 10 minutes
+
+function repoFor(userId: string): CachedRepository<Billing> {
+  return new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
+}
 
 /**
  * Derives the denormalized fields Billing copies off its current reading
@@ -121,7 +126,7 @@ export const billingService = {
       currentReadings.filter((r): r is NonNullable<typeof r> => r !== null).map((r) => [r.id, r])
     );
 
-    const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
+    const cachedRepo = repoFor(userId);
     const created = await cachedRepo.createBatch(
       data.map((item) => {
         const currReading = readingById.get(item.current_reading_id)!;
@@ -136,7 +141,7 @@ export const billingService = {
   },
 
   async search(userId: string, options: BillingSearchOptions): Promise<PaginatedResult<Billing>> {
-    const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
+    const cachedRepo = repoFor(userId);
 
     // Archived queries go direct to Firestore, same as billing-cycle.service.ts —
     // range filters can be pushed down to the query since there's no list cache involved.
@@ -177,27 +182,30 @@ export const billingService = {
       },
     });
 
-    if (options.startDate || options.endDate) {
-      if (options.startDate) {
-        const startDate = new Date(options.startDate);
-        result.data = result.data.filter(
-          (b) => parseTimestamp(b.billing_period_date).toDate() >= startDate
-        );
-      }
-      if (options.endDate) {
-        const endDate = new Date(options.endDate);
-        result.data = result.data.filter(
-          (b) => parseTimestamp(b.billing_period_date).toDate() <= endDate
-        );
-      }
-    }
+    result.data = applyDateRangeFilter(result.data, {
+      startDate: options.startDate,
+      endDate: options.endDate,
+      startField: "billing_period_date",
+      endField: "billing_period_date",
+    });
 
     return result;
   },
 
   async getById(userId: string, id: string): Promise<Billing | null> {
-    const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
+    const cachedRepo = repoFor(userId);
     return cachedRepo.getById(id);
+  },
+
+  /**
+   * Batch ID lookup for clients that otherwise resolve IDs one at a time
+   * (e.g. the UI's entity-lookup-cache.ts) — one round-trip instead of N.
+   * Goes through the raw repository (not the per-user list cache), same as
+   * every other getByIds caller in this codebase (reports.service.ts, etc.).
+   */
+  async getByIds(ids: string[]): Promise<Billing[]> {
+    const results = await billingRepository.getByIds(ids);
+    return results.filter((b): b is Billing => b !== null);
   },
 
   async update(userId: string, id: string, data: Partial<CreateBillingDTO> & { payment_status?: "pending" | "paid"; paid_at?: string }): Promise<Billing> {
@@ -219,7 +227,7 @@ export const billingService = {
       Object.assign(updateData, deriveBillingDenormalizedFields(currReading));
     }
 
-    const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
+    const cachedRepo = repoFor(userId);
     return cachedRepo.update(id, updateData);
   },
 
@@ -246,17 +254,17 @@ export const billingService = {
       return u;
     });
 
-    const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
+    const cachedRepo = repoFor(userId);
     return cachedRepo.updateBatch(enriched);
   },
 
   async delete(userId: string, id: string): Promise<void> {
-    const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
+    const cachedRepo = repoFor(userId);
     await cachedRepo.delete(id);
   },
 
   async softDelete(userId: string, id: string): Promise<Billing> {
-    const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
+    const cachedRepo = repoFor(userId);
     return cachedRepo.softDelete(id);
   },
 
@@ -265,7 +273,7 @@ export const billingService = {
     if (!billing) {
       throw new AppError(404, "Billing not found");
     }
-    const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
+    const cachedRepo = repoFor(userId);
     return cachedRepo.restore(id);
   },
 
@@ -274,7 +282,7 @@ export const billingService = {
    * archive-then-purge lifecycle — throws 409 if the billing is still active.
    */
   async purge(userId: string, id: string): Promise<void> {
-    const cachedRepo = new CachedRepository(billingRepository, userId, "billings", CACHE_TTL);
+    const cachedRepo = repoFor(userId);
     await cachedRepo.purge(id);
   },
 

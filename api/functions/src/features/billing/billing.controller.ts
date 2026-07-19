@@ -8,7 +8,8 @@ import {
   UpdateBillingDTO,
 } from "./billing.dto";
 import {AppError} from "../../utils/error.util";
-import {cacheDelPattern} from "../../utils/cache.util";
+import {makeClearCacheHandler} from "../../utils/clear-cache-handler.util";
+import type {BatchGetQueryDTO} from "../../utils/batch-get.dto";
 
 export const createBilling = async (
   req: AuthenticatedRequest,
@@ -43,6 +44,15 @@ export const getBillingById = async (
   }
 
   res.status(200).json(billing);
+};
+
+export const getBillingsByIds = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  const {ids} = req.query as unknown as BatchGetQueryDTO;
+  const billings = await billingService.getByIds(ids);
+  res.status(200).json(billings);
 };
 
 export const getBillings = async (
@@ -127,10 +137,4 @@ export const purgeBilling = async (
   res.status(204).send();
 };
 
-export const clearCache = async (
-  _req: AuthenticatedRequest,
-  res: Response
-): Promise<void> => {
-  const deletedCount = await cacheDelPattern("utilitool:billings:*");
-  res.status(200).json({message: `Cleared ${deletedCount} cache entries for billings`});
-};
+export const clearCache = makeClearCacheHandler("billings", "billings");

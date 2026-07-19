@@ -2,6 +2,7 @@ import {Router} from "express";
 import {
   createBilling,
   getBillingById,
+  getBillingsByIds,
   getBillings,
   updateBilling,
   softDeleteBilling,
@@ -19,6 +20,7 @@ import {
   UpdateBillingBatchDTOSchema,
   UpdateBillingDTOSchema,
 } from "./billing.dto";
+import {BatchGetQueryDTOSchema} from "../../utils/batch-get.dto";
 import {validateRequest} from "../../middlewares/validate-request.middleware";
 import {requireRole} from "../../middlewares/require-role.middleware";
 
@@ -48,6 +50,12 @@ router.post(
   "/",
   validateRequest({body: CreateBillingDTOSchema}),
   createBilling
+);
+
+router.get(
+  "/batch-get",
+  validateRequest({query: BatchGetQueryDTOSchema}),
+  getBillingsByIds
 );
 
 router.get(
