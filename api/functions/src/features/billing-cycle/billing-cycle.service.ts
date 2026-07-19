@@ -11,7 +11,7 @@ import {findPreviousMonthReading, findCurrentMonthReading} from "../reading/read
 import {CachedRepository} from "../../lib/cached-repository.lib";
 import {firestore} from "../../config/firebase.config";
 import {COLLECTIONS} from "../../constants/collection.constants";
-import {snapshotToModel} from "../../utils/firestore.util";
+import {snapshotToModel, parseTimestamp} from "../../utils/firestore.util";
 import {BatchCreateResult} from "../../utils/batch-result.util";
 
 const validator = new BillingCycleValidator();
@@ -233,17 +233,15 @@ export const billingCycleService = {
     if (options.billingStartDate || options.billingEndDate) {
       if (options.billingStartDate) {
         const startDate = new Date(options.billingStartDate);
-        result.data = result.data.filter((bc) => {
-          const bcDate = bc.billing_start_date instanceof Date ? bc.billing_start_date : new Date(bc.billing_start_date as any);
-          return bcDate >= startDate;
-        });
+        result.data = result.data.filter(
+          (bc) => parseTimestamp(bc.billing_start_date).toDate() >= startDate
+        );
       }
       if (options.billingEndDate) {
         const endDate = new Date(options.billingEndDate);
-        result.data = result.data.filter((bc) => {
-          const bcDate = bc.billing_end_date instanceof Date ? bc.billing_end_date : new Date(bc.billing_end_date as any);
-          return bcDate <= endDate;
-        });
+        result.data = result.data.filter(
+          (bc) => parseTimestamp(bc.billing_end_date).toDate() <= endDate
+        );
       }
     }
 

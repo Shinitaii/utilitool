@@ -7,7 +7,7 @@ import {PaginatedResult} from "../../utils/pagination.util";
 import {BillingValidator} from "./billing.validator";
 import {AppError} from "../../utils/error.util";
 import {COLLECTIONS} from "../../constants/collection.constants";
-import {snapshotToModel} from "../../utils/firestore.util";
+import {snapshotToModel, parseTimestamp} from "../../utils/firestore.util";
 import {validateMeterRollback} from "../reading/reading.util";
 import {cacheSet} from "../../utils/cache.util";
 import {CachedRepository} from "../../lib/cached-repository.lib";
@@ -178,21 +178,15 @@ export const billingService = {
     if (options.startDate || options.endDate) {
       if (options.startDate) {
         const startDate = new Date(options.startDate);
-        result.data = result.data.filter((b) => {
-          const periodDate = b.billing_period_date instanceof Date ?
-            b.billing_period_date :
-            new Date(b.billing_period_date as any);
-          return periodDate >= startDate;
-        });
+        result.data = result.data.filter(
+          (b) => parseTimestamp(b.billing_period_date).toDate() >= startDate
+        );
       }
       if (options.endDate) {
         const endDate = new Date(options.endDate);
-        result.data = result.data.filter((b) => {
-          const periodDate = b.billing_period_date instanceof Date ?
-            b.billing_period_date :
-            new Date(b.billing_period_date as any);
-          return periodDate <= endDate;
-        });
+        result.data = result.data.filter(
+          (b) => parseTimestamp(b.billing_period_date).toDate() <= endDate
+        );
       }
     }
 
