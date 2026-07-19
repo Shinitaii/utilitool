@@ -34,3 +34,5 @@ decisions/
 
 # Personal Claude Code hook config (machine-specific absolute paths)
 .claude/settings.local.json
+
+.env
