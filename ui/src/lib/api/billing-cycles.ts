@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPatch, apiDelete } from './client';
+import { apiGet, apiPost, apiPatch, apiDelete, toQueryString } from './client';
 import type {
 	BillingCycle,
 	CreateBillingCycleRequest,
@@ -14,16 +14,7 @@ export async function getBillingCycles(params?: {
 	cursor?: string;
 	archived?: boolean;
 }): Promise<PaginatedResult<BillingCycle>> {
-	const query = new URLSearchParams();
-	if (params?.meterGroupId) query.set('meterGroupId', params.meterGroupId);
-	if (params?.billingStartDate) query.set('billingStartDate', params.billingStartDate);
-	if (params?.billingEndDate) query.set('billingEndDate', params.billingEndDate);
-	if (params?.limit) query.set('limit', params.limit.toString());
-	if (params?.cursor) query.set('cursor', params.cursor);
-	if (params?.archived) query.set('archived', 'true');
-
-	const path = query.toString() ? `/billing-cycles?${query}` : '/billing-cycles';
-	return apiGet<PaginatedResult<BillingCycle>>(path);
+	return apiGet<PaginatedResult<BillingCycle>>(`/billing-cycles${toQueryString(params)}`);
 }
 
 export async function getBillingCycleById(id: string): Promise<BillingCycle> {

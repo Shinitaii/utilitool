@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPatch, apiDelete } from './client';
+import { apiGet, apiPost, apiPatch, apiDelete, toQueryString } from './client';
 import type {
 	MeterGroup,
 	CreateMeterGroupRequest,
@@ -14,16 +14,7 @@ export async function getMeterGroups(params?: {
 	minimal?: boolean;
 	archived?: boolean;
 }): Promise<PaginatedResult<MeterGroup>> {
-	const query = new URLSearchParams();
-	if (params?.meterName) query.set('meterName', params.meterName);
-	if (params?.utilityType) query.set('utilityType', params.utilityType);
-	if (params?.limit) query.set('limit', params.limit.toString());
-	if (params?.cursor) query.set('cursor', params.cursor);
-	if (params?.minimal) query.set('minimal', 'true');
-	if (params?.archived) query.set('archived', 'true');
-
-	const path = query.toString() ? `/meter-groups?${query}` : '/meter-groups';
-	return apiGet<PaginatedResult<MeterGroup>>(path);
+	return apiGet<PaginatedResult<MeterGroup>>(`/meter-groups${toQueryString(params)}`);
 }
 
 export async function getMeterGroupById(id: string): Promise<MeterGroup> {

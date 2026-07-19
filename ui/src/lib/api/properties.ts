@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPatch, apiDelete } from './client';
+import { apiGet, apiPost, apiPatch, apiDelete, toQueryString } from './client';
 import type {
 	Property,
 	CreatePropertyRequest,
@@ -13,15 +13,7 @@ export async function getProperties(params?: {
 	cursor?: string;
 	archived?: boolean;
 }): Promise<PaginatedResult<Property>> {
-	const query = new URLSearchParams();
-	if (params?.roomName) query.set('roomName', params.roomName);
-	if (params?.meterGroupId) query.set('meterGroupId', params.meterGroupId);
-	if (params?.limit) query.set('limit', params.limit.toString());
-	if (params?.cursor) query.set('cursor', params.cursor);
-	if (params?.archived) query.set('archived', 'true');
-
-	const path = query.toString() ? `/properties?${query}` : '/properties';
-	return apiGet<PaginatedResult<Property>>(path);
+	return apiGet<PaginatedResult<Property>>(`/properties${toQueryString(params)}`);
 }
 
 export async function getPropertyById(id: string): Promise<Property> {
