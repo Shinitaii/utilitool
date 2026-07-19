@@ -8,6 +8,7 @@
 	import { formatCurrency, formatFirestoreDate, getReadingUnit } from '$lib/utils/format';
 	import { toDate } from '$lib/utils/timestamp';
 	import { getCyclePaidAmount, getCycleOutstandingAmount } from '$lib/utils/billing-cycle.util';
+	import { billAmount, sumMoney } from '$lib/utils/money';
 	import { getUtilityTypeBadgeClasses } from '$lib/utils/utility-colors';
 	import TableSkeleton from '$lib/components/shared/TableSkeleton.svelte';
 	import type { BillingCycle } from '$lib/types/billing-cycle.types';
@@ -42,13 +43,15 @@
 	// otherwise "Billed"/"Collected"/"Outstanding" silently summed every cycle ever
 	// regardless of which range tab was selected, which read as internally inconsistent.
 	const totalBilled = $derived.by(() =>
-		recentCycles.reduce((sum, cycle) => {
-			const cycleTotal = Object.values(cycle.billing_ids).reduce(
-				(s, consumption) => s + consumption * cycle.billing_rate,
-				0
-			);
-			return sum + cycleTotal;
-		}, 0)
+		sumMoney(
+			recentCycles.map((cycle) =>
+				sumMoney(
+					Object.values(cycle.billing_ids).map((consumption) =>
+						billAmount(consumption, cycle.billing_rate)
+					)
+				)
+			)
+		)
 	);
 	const totalCollected = $derived.by(() =>
 		recentCycles.reduce((sum, cycle) => sum + getCyclePaidAmount(cycle, billingMap), 0)

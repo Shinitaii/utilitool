@@ -11,7 +11,11 @@
 	} from '$lib/api/billing-cycles';
 	import { getBillings, createBilling, updateBilling, softDeleteBilling } from '$lib/api/billings';
 	import { getReadings } from '$lib/api/readings';
-	import { getReadingsByIds, invalidateEntityLookupCache } from '$lib/stores/entity-lookup-cache';
+	import {
+		getReadingsByIds,
+		invalidateEntityLookupCache,
+		setCachedBilling
+	} from '$lib/stores/entity-lookup-cache';
 	import { getProperties } from '$lib/api/properties';
 	import { getMeterGroups } from '$lib/api/meter-groups';
 	import type { BillingCycle, UpdateBillingCycleRequest } from '$lib/types/billing-cycle.types';
@@ -313,6 +317,10 @@
 						bills[idx] = billing;
 					}
 				}
+
+				// Keep the cross-page entity-lookup cache (Dashboard) in sync — otherwise
+				// it still holds the pre-mark-as-paid copy until its TTL/invalidation clears.
+				setCachedBilling(billing);
 			}
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to mark as paid';
@@ -857,7 +865,14 @@
 					if (!dateValue) return false;
 					const cycleDate = toDate(dateValue);
 					if (filterDateFrom && cycleDate < new SvelteDate(filterDateFrom)) return false;
-					if (filterDateTo && cycleDate > new SvelteDate(filterDateTo)) return false;
+					if (filterDateTo) {
+						// filterDateTo parses as UTC midnight — compare against the end of that
+						// day (23:59:59.999 UTC), not its start, so a cycle dated exactly on the
+						// selected end date isn't excluded by its own time-of-day component.
+						const toCutoff = new SvelteDate(filterDateTo);
+						toCutoff.setUTCHours(23, 59, 59, 999);
+						if (cycleDate > toCutoff) return false;
+					}
 				}
 				return true;
 			})
