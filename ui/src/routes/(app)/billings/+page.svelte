@@ -11,6 +11,7 @@
 	} from '$lib/api/billing-cycles';
 	import { getBillings, createBilling, updateBilling, softDeleteBilling } from '$lib/api/billings';
 	import { getReadings } from '$lib/api/readings';
+	import { getReadingsByIds, invalidateEntityLookupCache } from '$lib/stores/entity-lookup-cache';
 	import { getProperties } from '$lib/api/properties';
 	import { getMeterGroups } from '$lib/api/meter-groups';
 	import type { BillingCycle, UpdateBillingCycleRequest } from '$lib/types/billing-cycle.types';
@@ -35,8 +36,20 @@
 
 	let cycles = $state<BillingCycle[]>([]);
 	let billings: SvelteMap<string, Billing[]> = new SvelteMap();
+	// allBillings stays a full load: the payment-status filter (getCyclePaymentStatus) filters
+	// ALL cycles by whether every billing under them is paid, which needs every billing's status
+	// — there's no scoped server query for that. Readings, by contrast, are fetched scoped below.
 	let allBillings = $state<Billing[]>([]);
-	let readings = $state<Reading[]>([]);
+	// Readings are no longer bulk-loaded. Scoped, purpose-specific reading sets replace the old
+	// full `readings` array:
+	//  - cycleFormReadings: the selected meter group's readings (discovery / gap-fill / overrides)
+	//  - editReadings:      the edited billing's property's readings (edit modal selects)
+	//  - stragglerReadings: the straggler property's readings on the cycle's meter group
+	//  - readingMap:        prev/current readings for the billings of expanded / printed cycles
+	let cycleFormReadings = $state<Reading[]>([]);
+	let editReadings = $state<Reading[]>([]);
+	let stragglerReadings = $state<Reading[]>([]);
+	let readingMap: SvelteMap<string, Reading> = new SvelteMap();
 	let properties = $state<Property[]>([]);
 	let meterGroups = $state<MeterGroup[]>([]);
 	let isLoading = $state(false);
@@ -127,9 +140,9 @@
 	}
 
 	const billingCycleReadings = $derived.by(() => {
-		if (!readings || !cycleFormMeterGroup || !cycleFormEndDate) return [];
+		if (!cycleFormReadings.length || !cycleFormMeterGroup || !cycleFormEndDate) return [];
 		const endDate = new Date(cycleFormEndDate);
-		return readings.filter((reading) => {
+		return cycleFormReadings.filter((reading) => {
 			if (reading.meter_group_id !== cycleFormMeterGroup) return false;
 			const readingDate = toDate(reading.reading_date);
 			return (
@@ -139,18 +152,25 @@
 		});
 	});
 
-	// Filter readings for edit modal based on selected property's meter groups
-	const editModalReadings = $derived.by(() => {
-		if (!readings || !editData.property_id) return readings || [];
-		const selectedProp = properties.find((p) => p.id === editData.property_id);
-		if (!selectedProp) return readings;
-
-		const meterGroupIds = Object.values(selectedProp.meter_groups || {})
-			.filter((e): e is any => e !== undefined && e !== null)
-			.map((e) => e.meter_group_id);
-		return readings.filter(
-			(r) => meterGroupIds.includes(r.meter_group_id) && r.property_id === editData.property_id
-		);
+	// Edit-modal reading options — fetched scoped to the edited billing's property (a property's
+	// readings are all for its own meter groups, so propertyId scoping is sufficient).
+	$effect(() => {
+		const propertyId = editData.property_id;
+		if (!propertyId) {
+			editReadings = [];
+			return;
+		}
+		let cancelled = false;
+		getReadings({ propertyId, limit: 100 })
+			.then((res) => {
+				if (!cancelled) editReadings = res.data;
+			})
+			.catch(() => {
+				if (!cancelled) editReadings = [];
+			});
+		return () => {
+			cancelled = true;
+		};
 	});
 
 	// Get utility type for cycle form meter group
@@ -195,20 +215,21 @@
 		isLoading = true;
 		error = '';
 		try {
-			const [cyclesData, billingsData, readingsData, propertiesResult, meterGroupsResult] =
-				await Promise.all([
-					fetchAllPages((cursor) => getBillingCycles({ limit: 100, cursor })),
-					fetchAllPages((cursor) => getBillings({ limit: 100, cursor })),
-					fetchAllPages((cursor) => getReadings({ limit: 100, cursor })),
-					getProperties({ limit: 100 }),
-					getMeterGroups({ limit: 100 })
-				]);
+			// Readings are no longer bulk-loaded here — resolved scoped/on-demand instead.
+			// Clear the ID lookup cache so a reload after a mutation can't serve stale readings.
+			invalidateEntityLookupCache();
+			const [cyclesData, billingsData, propertiesResult, meterGroupsResult] = await Promise.all([
+				fetchAllPages((cursor) => getBillingCycles({ limit: 100, cursor })),
+				fetchAllPages((cursor) => getBillings({ limit: 100, cursor })),
+				getProperties({ limit: 100 }),
+				getMeterGroups({ limit: 100 })
+			]);
 			cycles = cyclesData;
 			allBillings = billingsData;
-			readings = readingsData;
 			properties = propertiesResult.data;
 			meterGroups = meterGroupsResult.data;
 			billings.clear();
+			readingMap.clear();
 			currentPage = 1;
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load data';
@@ -233,6 +254,18 @@
 		if (cycle) {
 			const cycleBillings = allBillings.filter((b) => b.id in cycle.billing_ids);
 			billings.set(cycleId, cycleBillings);
+			await resolveReadingsFor(cycleBillings);
+		}
+	}
+
+	// Resolve (and cache) the previous/current readings for a set of billings into readingMap,
+	// so the expanded billing table and receipt printing can show reading amounts without the
+	// old full readings load.
+	async function resolveReadingsFor(billingList: Billing[]) {
+		const ids = billingList.flatMap((b) => [b.previous_reading_id, b.current_reading_id]);
+		const resolved = await getReadingsByIds(ids);
+		for (const [id, reading] of resolved) {
+			readingMap.set(id, reading);
 		}
 	}
 
@@ -294,7 +327,7 @@
 		const endDate = new Date(cycleFormEndDate);
 		const base = allBillings
 			.filter((billing) => {
-				const currReading = readingMap.get(billing.current_reading_id);
+				const currReading = cycleFormReadingMap.get(billing.current_reading_id);
 				if (!currReading) return false;
 				if (currReading.meter_group_id !== cycleFormMeterGroup) return false;
 				const readingDate = toDate(currReading.reading_date);
@@ -304,8 +337,8 @@
 				);
 			})
 			.map((billing) => {
-				const currReading = readingMap.get(billing.current_reading_id)!;
-				const prevReading = readingMap.get(billing.previous_reading_id);
+				const currReading = cycleFormReadingMap.get(billing.current_reading_id)!;
+				const prevReading = cycleFormReadingMap.get(billing.previous_reading_id);
 				const property = properties.find((p) => p.id === billing.property_id);
 
 				// Version-aware true-reading diff — matches the API's billing-cycle validator so the
@@ -326,8 +359,8 @@
 		return base.map((entry) => {
 			const override = cycleFormOverrideSelections.get(entry.propertyId);
 			if (!override) return entry;
-			const prevReading = readingMap.get(override.prev_reading_id);
-			const currReading = readingMap.get(override.curr_reading_id);
+			const prevReading = cycleFormReadingMap.get(override.prev_reading_id);
+			const currReading = cycleFormReadingMap.get(override.curr_reading_id);
 			if (!prevReading || !currReading) return entry;
 			const property = properties.find((p) => p.id === entry.propertyId);
 			const consumption = readingConsumption(currReading, prevReading, property);
@@ -357,7 +390,7 @@
 			.map((property) => ({
 				propertyId: property.id,
 				propertyName: property.room_name,
-				availableReadings: readings.filter(
+				availableReadings: cycleFormReadings.filter(
 					(r) =>
 						r.meter_group_id === cycleFormMeterGroup &&
 						r.property_id === property.id &&
@@ -369,8 +402,24 @@
 			.filter((g) => g.availableReadings.length >= 2);
 	}
 
-	function runDiscovery() {
+	// Discovery needs the selected meter group's readings — fetch them scoped (one meter group,
+	// small) before computing, replacing the old full readings load.
+	async function runDiscovery() {
 		error = '';
+		if (!cycleFormMeterGroup || !cycleFormEndDate) {
+			cycleFormDiscoveredBillings = [];
+			cycleFormGapProperties = [];
+			return;
+		}
+		try {
+			cycleFormReadings = await fetchAllPages((cursor) =>
+				getReadings({ meterGroupId: cycleFormMeterGroup, limit: 100, cursor })
+			);
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Failed to load readings for this meter group';
+			cycleFormReadings = [];
+			return;
+		}
 		cycleFormDiscoveredBillings = discoverBillings();
 		cycleFormGapProperties = discoverGapProperties();
 	}
@@ -381,6 +430,7 @@
 		cycleFormEndDate = '';
 		cycleFormDueDate = '';
 		cycleFormRate = 0;
+		cycleFormReadings = [];
 		cycleFormDiscoveredBillings = [];
 		cycleFormGapProperties = [];
 		cycleFormTotalConsumption = 0;
@@ -393,24 +443,24 @@
 		billOcrRawAmount = null;
 	}
 
-	function autoCalculateCycleDates() {
+	async function autoCalculateCycleDates() {
 		if (!cycleFormMeterGroup) return;
 
-		// Find the last billing cycle for this meter group
-		const meterGroupCycles = cycles
-			.filter((c) => {
-				const cycleBillingIds = Object.keys(c.billing_ids);
-				const cycleBillings = allBillings.filter((b) => cycleBillingIds.includes(b.id));
-				if (cycleBillings.length === 0) return false;
-				const firstBilling = cycleBillings[0];
-				const firstReading = readingMap.get(firstBilling.current_reading_id);
-				return firstReading?.meter_group_id === cycleFormMeterGroup;
-			})
-			.sort(
-				(a, b) =>
-					new Date(toDate(b.billing_end_date)).getTime() -
-					new Date(toDate(a.billing_end_date)).getTime()
-			);
+		// Find the last billing cycle for this meter group via a scoped query — the cycle's own
+		// denormalized meter_group_id makes this a precise lookup, correct regardless of how many
+		// total cycles exist (the old "scan the loaded cycles" approach silently reset dates to
+		// the current month once cycle volume exceeded a page).
+		let meterGroupCycles: BillingCycle[] = [];
+		try {
+			const res = await getBillingCycles({ meterGroupId: cycleFormMeterGroup, limit: 100 });
+			meterGroupCycles = res.data
+				.slice()
+				.sort(
+					(a, b) => toDate(b.billing_end_date).getTime() - toDate(a.billing_end_date).getTime()
+				);
+		} catch {
+			// Leave meterGroupCycles empty → falls back to the current-month default below.
+		}
 
 		if (meterGroupCycles.length === 0) {
 			// No previous cycle, use current month
@@ -507,8 +557,8 @@
 			// Gap-fill billings don't exist yet — create them first, then fold their
 			// consumption into the same billing_ids map the cycle expects.
 			for (const gap of gapsToFill) {
-				const prevReading = readings.find((r) => r.id === gap.selectedPrevReadingId);
-				const currReading = readings.find((r) => r.id === gap.selectedCurrReadingId);
+				const prevReading = cycleFormReadings.find((r) => r.id === gap.selectedPrevReadingId);
+				const currReading = cycleFormReadings.find((r) => r.id === gap.selectedCurrReadingId);
 				if (!prevReading || !currReading) continue;
 
 				const newBilling = await createBilling({
@@ -642,20 +692,40 @@
 		);
 	});
 
+	// Fetch the straggler property's readings on this cycle's meter group, scoped, when the
+	// selected property changes — replaces filtering the old full readings array.
+	$effect(() => {
+		const propertyId = stragglerPropertyId;
+		const meterGroupId = stragglerCycle ? getCycleMeterGroupId(stragglerCycle) : null;
+		if (!propertyId || !meterGroupId) {
+			stragglerReadings = [];
+			return;
+		}
+		let cancelled = false;
+		getReadings({ propertyId, meterGroupId, limit: 100 })
+			.then((res) => {
+				if (!cancelled) stragglerReadings = res.data;
+			})
+			.catch(() => {
+				if (!cancelled) stragglerReadings = [];
+			});
+		return () => {
+			cancelled = true;
+		};
+	});
+
 	// Readings for the selected straggler property on this cycle's meter group, oldest first.
 	const stragglerAvailableReadings = $derived.by(() => {
 		if (!stragglerCycle || !stragglerPropertyId) return [];
-		const meterGroupId = getCycleMeterGroupId(stragglerCycle);
-		if (!meterGroupId) return [];
-		return readings
-			.filter((r) => r.property_id === stragglerPropertyId && r.meter_group_id === meterGroupId)
+		return stragglerReadings
+			.slice()
 			.sort((a, b) => toDate(a.reading_date).getTime() - toDate(b.reading_date).getTime());
 	});
 
 	const stragglerConsumptionPreview = $derived.by(() => {
-		const curr = readings.find((r) => r.id === stragglerCurrReadingId);
+		const curr = stragglerReadings.find((r) => r.id === stragglerCurrReadingId);
 		if (!curr) return 0;
-		const prev = readings.find((r) => r.id === stragglerPrevReadingId);
+		const prev = stragglerReadings.find((r) => r.id === stragglerPrevReadingId);
 		const property = properties.find((p) => p.id === stragglerPropertyId);
 		return readingConsumption(curr, prev, property);
 	});
@@ -672,8 +742,8 @@
 		}
 		isAddingStraggler = true;
 		try {
-			const currReading = readings.find((r) => r.id === stragglerCurrReadingId);
-			const prevReading = readings.find((r) => r.id === stragglerPrevReadingId);
+			const currReading = stragglerReadings.find((r) => r.id === stragglerCurrReadingId);
+			const prevReading = stragglerReadings.find((r) => r.id === stragglerPrevReadingId);
 			const property = properties.find((p) => p.id === stragglerPropertyId);
 			if (!currReading) throw new Error('Selected current reading not found');
 
@@ -717,7 +787,9 @@
 	}
 
 	const billingMap = $derived.by(() => new Map(allBillings.map((b) => [b.id, b])));
-	const readingMap = $derived.by(() => new Map(readings.map((r) => [r.id, r])));
+	// Lookup over the meter-group-scoped reading set used by cycle discovery/gap-fill.
+	// (readingMap above is the on-demand cache for expanded/printed cycles.)
+	const cycleFormReadingMap = $derived.by(() => new Map(cycleFormReadings.map((r) => [r.id, r])));
 	const meterGroupMap = $derived.by(() => new Map(meterGroups.map((m) => [m.id, m])));
 
 	function getCycleUtilityType(cycle: BillingCycle): string {
@@ -831,7 +903,7 @@
 			const cycleBillings = billings.get(firstCycle.id) || [];
 			if (cycleBillings.length > 0) {
 				const firstBilling = cycleBillings[0];
-				const firstReading = readings.find((r) => r.id === firstBilling.current_reading_id);
+				const firstReading = readingMap.get(firstBilling.current_reading_id);
 				if (firstReading) {
 					const meterGroup = meterGroups.find((m) => m.id === firstReading.meter_group_id);
 					utilityType = meterGroup?.utility_type || 'electricity';
@@ -851,8 +923,8 @@
 			const cycleBillings = billings.get(cycle.id) || [];
 			for (const billing of cycleBillings) {
 				const property = properties.find((p) => p.id === billing.property_id);
-				const currReading = readings.find((r) => r.id === billing.current_reading_id);
-				const prevReading = readings.find((r) => r.id === billing.previous_reading_id);
+				const currReading = readingMap.get(billing.current_reading_id);
+				const prevReading = readingMap.get(billing.previous_reading_id);
 
 				const consumption = cycle.billing_ids[billing.id] ?? 0;
 				const billRate = cycle.billing_rate;
@@ -1041,9 +1113,9 @@
 					<select
 						id="cycle-meter-group"
 						bind:value={cycleFormMeterGroup}
-						onchange={() => {
-							autoCalculateCycleDates();
-							if (cycleFormEndDate) runDiscovery();
+						onchange={async () => {
+							await autoCalculateCycleDates();
+							if (cycleFormEndDate) await runDiscovery();
 						}}
 						class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
 					>
@@ -1089,8 +1161,8 @@
 						id="cycle-end-date"
 						type="date"
 						bind:value={cycleFormEndDate}
-						onchange={() => {
-							if (cycleFormMeterGroup) runDiscovery();
+						onchange={async () => {
+							if (cycleFormMeterGroup) await runDiscovery();
 						}}
 						class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
 					/>
@@ -1211,7 +1283,7 @@
 												const propertyId = property?.id;
 												const prevId = (e.target as HTMLSelectElement).value;
 												if (!propertyId || !prevId) return;
-												const curr = readings.find(
+												const curr = cycleFormReadings.find(
 													(r) =>
 														r.property_id === propertyId &&
 														r.meter_group_id === cycleFormMeterGroup &&
@@ -1365,6 +1437,8 @@
 									billings.set(cycle.id, cycleBillings);
 								}
 							}
+							// Resolve reading amounts for every printed cycle's billings before rendering.
+							await resolveReadingsFor(cyclesToPrint.flatMap((c) => billings.get(c.id) ?? []));
 							printReceipts(cyclesToPrint);
 						}}
 						aria-label="Print"
@@ -1617,13 +1691,14 @@
 							</div>
 							<div class="flex gap-1">
 								<button
-									onclick={(e) => {
+									onclick={async (e) => {
 										e.stopPropagation();
 										const cyclesToPrint = [cycle];
 										if (!billings.has(cycle.id)) {
 											const cycleBillings = allBillings.filter((b) => b.id in cycle.billing_ids);
 											billings.set(cycle.id, cycleBillings);
 										}
+										await resolveReadingsFor(billings.get(cycle.id) ?? []);
 										printReceipts(cyclesToPrint);
 									}}
 									class="rounded p-2 text-blue-600 hover:bg-blue-100"
@@ -1904,7 +1979,7 @@
 				bind:value={editData.previous_reading_id}
 				class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
 			>
-				{#each editModalReadings as reading (reading.id)}
+				{#each editReadings as reading (reading.id)}
 					<option value={reading.id}>
 						{formatReading(
 							reading.reading_amount,
@@ -1924,7 +1999,7 @@
 				bind:value={editData.current_reading_id}
 				class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
 			>
-				{#each editModalReadings as reading (reading.id)}
+				{#each editReadings as reading (reading.id)}
 					<option value={reading.id}>
 						{formatReading(
 							reading.reading_amount,
