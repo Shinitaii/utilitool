@@ -56,3 +56,10 @@ export interface ReportQueryParams {
 	meterGroupId?: string;
 	propertyId?: string;
 }
+
+export interface CombinedReportsResponse {
+	summary: ReportSummary;
+	consumption: ConsumptionReport;
+	billingTrends: BillingTrendsReport;
+	collectionStatus: CollectionStatusReport;
+}

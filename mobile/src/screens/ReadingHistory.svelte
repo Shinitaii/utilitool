@@ -1,7 +1,7 @@
 <script lang="ts">
   import { listReadings, type Reading } from '../lib/api/readings';
-  import { listMeterGroups, type MeterGroup } from '../lib/api/meter-groups';
-  import { listProperties, type Property } from '../lib/api/properties';
+  import type { MeterGroup } from '../lib/api/meter-groups';
+  import type { Property } from '../lib/api/properties';
   import { getReadingUnit } from '../lib/utils/format';
   import { formatTimestampDate } from '../lib/utils/timestamp';
   import { sessionCache } from '../lib/stores/session';
@@ -45,23 +45,8 @@
       const readingsRes = await listReadings();
       readings = readingsRes.data || [];
 
-      // Fetch meter groups from cache or API
-      let cachedMeterGroups = sessionCache.getMeterGroups();
-      if (!cachedMeterGroups) {
-        const meterGroupsRes = await listMeterGroups();
-        cachedMeterGroups = meterGroupsRes.data || [];
-        sessionCache.setMeterGroups(cachedMeterGroups);
-      }
-      meterGroups = cachedMeterGroups;
-
-      // Fetch properties from cache or API
-      let cachedProperties = sessionCache.getProperties();
-      if (!cachedProperties) {
-        const propertiesRes = await listProperties();
-        cachedProperties = propertiesRes.data || [];
-        sessionCache.setProperties(cachedProperties);
-      }
-      properties = cachedProperties;
+      meterGroups = await sessionCache.getOrFetchMeterGroups();
+      properties = await sessionCache.getOrFetchProperties();
 
       const names: Record<string, string> = {};
       properties.forEach((p: Property) => { names[p.id] = p.room_name; });
@@ -157,11 +142,6 @@
 
           {#if selectedReading?.id === reading.id}
             <div class="mt-3 pt-3 border-t space-y-2 text-sm" style="border-color: var(--color-border)">
-              {#if reading.image_url}
-                <div class="mb-2">
-                  <img src={reading.image_url} alt="Reading" class="w-full h-32 object-cover rounded" />
-                </div>
-              {/if}
               <p style="color: var(--color-text-secondary)">
                 <strong>Created:</strong> {formatTimestampDate(reading.created_at)}
               </p>

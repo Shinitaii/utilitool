@@ -52,3 +52,21 @@ export const chatbotRateLimiter = rateLimit({
   store: buildStore("rl:chatbot:"),
   keyGenerator: (req: AuthenticatedRequest) => req.user?.userId ?? ipKeyGenerator(req.ip ?? ""),
 });
+
+/**
+ * Vision-OCR endpoints (/image-extraction/*, /readings/ocr, /billing-cycles/ocr,
+ * /bills/ocr) are cost-bearing like the chatbot (each call hits the tenant's own
+ * configured vision provider), but are also a normal, repeated part of the reading
+ * and bill capture workflow rather than incidental chat — so the cap sits between
+ * the tight chatbot limit (30/hr) and the generic per-IP limit (1000/hr), and is
+ * keyed per-user (not per-IP) for the same shared-office-IP reason as chatbotRateLimiter.
+ */
+export const ocrRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 150,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: {error: TOO_MANY_REQUESTS_MESSAGE},
+  store: buildStore("rl:ocr:"),
+  keyGenerator: (req: AuthenticatedRequest) => req.user?.userId ?? ipKeyGenerator(req.ip ?? ""),
+});

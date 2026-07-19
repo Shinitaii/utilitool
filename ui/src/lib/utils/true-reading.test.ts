@@ -56,7 +56,6 @@ describe('true-reading (submeter, post-reset cumulative offset)', () => {
 			reading_amount: 5.5,
 			reading_date: '' as any,
 			meter_version: 2,
-			image_url: null as any,
 			created_at: '' as any,
 			updated_at: '' as any,
 			is_deleted: false,

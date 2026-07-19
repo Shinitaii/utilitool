@@ -1,4 +1,97 @@
 export const reportsPaths = {
+  "/reports": {
+    get: {
+      tags: ["Reports"],
+      summary: "Get all reports in one call",
+      description:
+        "Retrieve summary, consumption, billing-trends, and collection-status reports from a single shared join, instead of calling the four individual endpoints separately.",
+      security: [{BearerAuth: []}],
+      parameters: [
+        {
+          name: "startDate",
+          in: "query",
+          description: "Filter cycles by start date (ISO 8601)",
+          schema: {
+            type: "string",
+            format: "date-time",
+          },
+        },
+        {
+          name: "endDate",
+          in: "query",
+          description: "Filter cycles by end date (ISO 8601)",
+          schema: {
+            type: "string",
+            format: "date-time",
+          },
+        },
+        {
+          name: "meterGroupId",
+          in: "query",
+          description: "Filter by specific meter group",
+          schema: {
+            type: "string",
+          },
+        },
+        {
+          name: "propertyId",
+          in: "query",
+          description: "Filter by specific property",
+          schema: {
+            type: "string",
+          },
+        },
+      ],
+      responses: {
+        "200": {
+          description: "Combined reports data",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  summary: {$ref: "#/components/schemas/ReportSummary"},
+                  consumption: {$ref: "#/components/schemas/ConsumptionReport"},
+                  billingTrends: {$ref: "#/components/schemas/BillingTrendsReport"},
+                  collectionStatus: {$ref: "#/components/schemas/CollectionStatusReport"},
+                },
+              },
+            },
+          },
+        },
+        "400": {
+          description: "Validation error",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/ValidationErrorResponse",
+              },
+            },
+          },
+        },
+        "401": {
+          description: "Unauthorized",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/ErrorResponse",
+              },
+            },
+          },
+        },
+        "500": {
+          description: "Internal server error",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/ErrorResponse",
+              },
+            },
+          },
+        },
+      },
+    },
+  },
   "/reports/summary": {
     get: {
       tags: ["Reports"],

@@ -102,7 +102,7 @@ ui/src/
 │       │   ├── +page.svelte
 │       │   └── archive/+page.svelte   (Archived billings recovery)
 │       ├── bills/+page.svelte      (OCR bill upload — functional)
-│       ├── reports/+page.svelte    (Analytics dashboard — stub)
+│       ├── reports/+page.svelte    (Analytics dashboard — complete)
 │       └── settings/
 │           ├── +page.svelte        (Account settings root)
 │           ├── payment/+page.svelte (Payment settings)
@@ -122,10 +122,9 @@ ui/src/
 │   │   ├── billing-cycles.ts
 │   │   ├── bills.ts                (ocrBill — POST /bills/ocr)
 │   │   ├── users.ts                (createUser — POST /users)
-│   │   ├── reports.ts              (getSummaryReport, getConsumptionReport, getBillingTrendsReport, getCollectionStatusReport)
+│   │   ├── reports.ts              (getAllReports — combined fetch used by the page; getSummaryReport, getConsumptionReport, getBillingTrendsReport, getCollectionStatusReport still available individually)
 │   │   ├── llm-config.ts           (getLlmConfig, upsertLlmConfig, upsertVisionLlmConfig — GET /llm-config, PATCH /llm-config, PATCH /llm-config/vision)
 │   │   ├── chat.ts                 (sendChatMessage — POST /chatbot)
-│   │   ├── photo-settings.ts       (getPhotoSettings, upsertPhotoSettings — GET/PATCH /photo-settings)
 │   │   └── cache.ts                (clearAllCaches — clears all feature caches in parallel)
 │   │
 │   ├── types/                       (TypeScript types — mirror API models)
@@ -138,7 +137,7 @@ ui/src/
 │   │   ├── reading.types.ts
 │   │   ├── billing.types.ts
 │   │   ├── billing-cycle.types.ts
-│   │   ├── reports.types.ts        (ReportSummary, ConsumptionReport, BillingTrendsReport, CollectionStatusReport, ReportQueryParams)
+│   │   ├── reports.types.ts        (ReportSummary, ConsumptionReport, BillingTrendsReport, CollectionStatusReport, CombinedReportsResponse, ReportQueryParams)
 │   │   └── llm-config.types.ts     (LlmConfigResponse, UpsertLlmConfigRequest)
 │   │
 │   ├── stores/                      (Svelte 5 runes-based stores)
@@ -255,12 +254,11 @@ ui/src/
   - `POST /readings/batch` ← `createReadingsBatch()` — batch create (no auto-billing)
   - `POST /readings` ← `createReading()` / `POST /readings/seed` ← `createSeedReading()` — manual tab
   - `POST /readings/ocr` ← `ocrReadingImage()` — auto-triggered as soon as a photo is selected/dropped, on both the batch and manual tabs
-  - `GET /photo-settings` ← `getPhotoSettings()` — loaded once on mount to decide whether to attach `image_url` on submit
 - **Displays**:
-  - Meter group filter + paginated table: reading_amount, **True Total** (version-aware cumulative), photo, date, created_at
+  - Meter group filter + paginated table: reading_amount, **True Total** (version-aware cumulative), date, created_at
   - Batch create form: per-property rows with reading_amount input + "True total: X" hint; a `PhotoDropzone` per row (click or drag a photo onto the box — no separate Upload/Suggest buttons, OCR runs automatically on selection)
   - Manual create form: same `PhotoDropzone` for its optional photo (previously a plain image-URL text input)
-- **Note**: `meter_version` is server-set from the property entry's `current_version` (per-property version tracking — see the Meter Groups note above on the deprecated MeterGroup-level fields). `image_url` is only sent on create when the `savePhotos` photo-setting (`/settings/photos`) is enabled — off by default, so photos are used for the OCR suggest call and then discarded before submission. When enabled, the batch tab silently upgrades the in-memory data URL to a Firebase Storage URL in the background.
+- **Note**: `meter_version` is server-set from the property entry's `current_version` (per-property version tracking — see the Meter Groups note above on the deprecated MeterGroup-level fields). A photo is only ever used in-memory to drive the OCR-suggest call — it's sent to the API as a base64 `data:` URI, never persisted, and never attached to the create/batch payload. Readings have no `image_url` field.
 - **Status**: ✅ Complete
 
 #### Billings (`/billings`) — Cycle-Centric
@@ -304,9 +302,7 @@ All archive pages: `GET /<feature>?archived=true` to list soft-deleted items, th
   - `/settings/users` — user management: `POST /users` ← `createUser()` to create accounts with role (`admin`, `landlord`, `assistant`)
   - `/settings/llm-provider` — two tabs, each an independent provider (`groq` | `ollama_cloud`) + model + API key config: **Chatbot** (used by the insight chatbot) and **Vision (OCR)** (used by photo OCR for readings/bills). Providers can differ — e.g. Ollama Cloud for chat, Groq for vision, since not every provider has a usable free vision model. When the vision tab's provider matches the chatbot tab's, its API key field is optional and the chatbot's key is reused; when it differs, an API key is required. No vision config set means OCR endpoints 404, no Gemini fallback.
     - **API calls**: `GET /llm-config` ← `getLlmConfig()`, `PATCH /llm-config` ← `upsertLlmConfig()` (chat tab), `PATCH /llm-config/vision` ← `upsertVisionLlmConfig()` (vision tab), all from `src/lib/api/llm-config.ts`
-  - `/settings/photos` — single toggle for the `savePhotos` preference (defaults off). Governs whether meter-reading photos survive past the OCR-suggest call on both web and mobile; billing-cycle/bill photos are never persisted regardless.
-    - **API calls**: `GET /photo-settings` ← `getPhotoSettings()`, `PATCH /photo-settings` ← `upsertPhotoSettings()` from `src/lib/api/photo-settings.ts`
-- **Status**: Create-only — full create-user flow (role select, password validation, Firebase error-code mapping, partial-failure handling); no listing/edit of existing users
+- **Status**: Create-only — full create-user flow (role select, password validation, backend error mapping, partial-failure handling); no listing/edit of existing users. User creation is fully server-side: `POST /users` (Firebase Admin SDK) creates both the Auth account and the Firestore profile in one call — the client never touches Firebase Auth for this flow, so the acting admin's own session is never affected.
 
 #### Bills / OCR Upload (`/bills`)
 
@@ -323,13 +319,21 @@ All archive pages: `GET /<feature>?archived=true` to list soft-deleted items, th
 #### Reports (`/reports`)
 
 - **Component**: `src/routes/(app)/reports/+page.svelte`
-- **API calls** (available, not yet wired in UI):
-  - `GET /reports/summary` ← `getSummaryReport()`
-  - `GET /reports/consumption` ← `getConsumptionReport()`
-  - `GET /reports/billing-trends` ← `getBillingTrendsReport()`
-  - `GET /reports/collection-status` ← `getCollectionStatusReport()`
-- **Displays**: "Coming Soon" placeholder
-- **Status**: 🚧 Stub — API module ready, UI needs build-out
+- **API calls**:
+  - `GET /reports` ← `getAllReports()` — combined fetch used by the page (one HTTP call
+    computes summary/consumption/billing-trends/collection-status from a single shared join)
+  - `GET /reports/summary` ← `getSummaryReport()`, `GET /reports/consumption` ←
+    `getConsumptionReport()`, `GET /reports/billing-trends` ← `getBillingTrendsReport()`,
+    `GET /reports/collection-status` ← `getCollectionStatusReport()` — granular endpoints kept
+    for other callers (e.g. the chatbot), not used by this page
+  - `GET /meter-groups?limit=100` ← `getMeterGroups()`, `GET /properties?limit=100` ←
+    `getProperties()` — filter dropdowns
+- **Displays**: date-range + meter-group/property filters, 4 summary stat cards, two Chart.js
+  charts (consumption by month, billing trends by month), collection-status cards, per-property
+  consumption table
+- **Note**: defaults to a bounded 12-month `startDate` when the user hasn't picked one, instead
+  of an unbounded "To Present" scan (mirrors the Dashboard's fetch-window bound)
+- **Status**: ✅ Complete
 
 ---
 
@@ -391,6 +395,7 @@ export async function createUser(data: {
 ### reports.ts
 
 ```ts
+export async function getAllReports(params?: ReportQueryParams): Promise<CombinedReportsResponse>; // used by the Reports page
 export async function getSummaryReport(params?: ReportQueryParams): Promise<ReportSummary>;
 export async function getConsumptionReport(params?: ReportQueryParams): Promise<ConsumptionReport>;
 export async function getBillingTrendsReport(
@@ -421,17 +426,6 @@ export async function sendChatMessage(
 	history?: ChatHistoryMessage[]
 ): Promise<ChatResponse>;
 // POST /chatbot — used by ChatWidget.svelte
-```
-
-### photo-settings.ts
-
-```ts
-export async function getPhotoSettings(): Promise<PhotoSettingsResponse>; // {savePhotos: boolean}
-export async function upsertPhotoSettings(
-	data: UpsertPhotoSettingsRequest
-): Promise<PhotoSettingsResponse>;
-// Types in src/lib/types/photo-settings.types.ts. Read by the readings page (batch + manual
-// tabs) and by /settings/photos; defaults to false server-side if never configured.
 ```
 
 ### cache.ts

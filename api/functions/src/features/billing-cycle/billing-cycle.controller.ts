@@ -11,15 +11,14 @@ import {
 } from "./billing-cycle.dto";
 import {AppError} from "../../utils/error.util";
 import {ImageExtractionService} from "../image-extraction/image-extraction.service";
-import {cacheDelPattern} from "../../utils/cache.util";
+import {makeClearCacheHandler} from "../../utils/clear-cache-handler.util";
 
 export const createBillingCycle = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
   const data = req.body as CreateBillingCycleDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await billingCycleService.create(userId, data);
   res.status(201).json(result);
 };
@@ -29,8 +28,7 @@ export const createBatchBillingCycles = async (
   res: Response
 ): Promise<void> => {
   const data = req.body as CreateBillingCycleDTO[];
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await billingCycleService.createBatch(userId, data);
   res.status(201).json(result);
 };
@@ -40,8 +38,7 @@ export const getBillingCycleById = async (
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as BillingCycleByIdParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const billingCycle = await billingCycleService.getById(userId, id);
 
   if (!billingCycle) {
@@ -56,10 +53,10 @@ export const getBillingCycles = async (
   res: Response
 ): Promise<void> => {
   const query = req.query as unknown as GetBillingCyclesQueryDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
 
   const result = await billingCycleService.search(userId, {
+    meterGroupId: query.meterGroupId,
     billingStartDate: query.billingStartDate,
     billingEndDate: query.billingEndDate,
     sortBy: query.sortBy,
@@ -77,8 +74,7 @@ export const updateBillingCycle = async (
 ): Promise<void> => {
   const {id} = req.params as unknown as BillingCycleByIdParamsDTO;
   const data = req.body as Partial<UpdateBillingCycleDTO>;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await billingCycleService.update(userId, id, data);
   res.status(200).json(result);
 };
@@ -88,8 +84,7 @@ export const updateBatchBillingCycles = async (
   res: Response
 ): Promise<void> => {
   const updates = req.body as { id: string; data: Partial<UpdateBillingCycleDTO> }[];
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await billingCycleService.updateBatch(userId, updates);
   res.status(200).json(result);
 };
@@ -99,8 +94,7 @@ export const deleteBillingCycle = async (
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as BillingCycleByIdParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   await billingCycleService.delete(userId, id);
   res.status(204).send();
 };
@@ -110,8 +104,7 @@ export const softDeleteBillingCycle = async (
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as BillingCycleByIdParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await billingCycleService.softDelete(userId, id);
   res.status(200).json(result);
 };
@@ -121,8 +114,7 @@ export const restoreBillingCycle = async (
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as BillingCycleByIdParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await billingCycleService.restore(userId, id);
   res.status(200).json(result);
 };
@@ -132,8 +124,7 @@ export const purgeBillingCycle = async (
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as BillingCycleByIdParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   await billingCycleService.purge(userId, id);
   res.status(204).send();
 };
@@ -143,8 +134,7 @@ export const ocrBillingCycle = async (
   res: Response
 ): Promise<void> => {
   const {image_url} = req.body as OcrBillingCycleDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const extracted = await ImageExtractionService.extractBillingFromImage(image_url, userId);
   const validated = OcrBillingCycleResponseSchema.parse({
     billing_start_date: extracted.billing_start_date,
@@ -156,10 +146,4 @@ export const ocrBillingCycle = async (
   res.status(200).json(validated);
 };
 
-export const clearCache = async (
-  _req: AuthenticatedRequest,
-  res: Response
-): Promise<void> => {
-  const deletedCount = await cacheDelPattern("utilitool:billing-cycles:*");
-  res.status(200).json({message: `Cleared ${deletedCount} cache entries for billing cycles`});
-};
+export const clearCache = makeClearCacheHandler("billing-cycles", "billing cycles");

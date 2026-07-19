@@ -157,7 +157,7 @@ export class CachedRepository<T extends BaseModel> {
    */
   async cacheCreatedItem(item: T): Promise<void> {
     await cacheSet(this.idCacheKey(item.id), item, this.cacheTTL);
-    await listAppend(this.listCacheKey(), item);
+    await listAppend(this.listCacheKey(), item, this.cacheTTL);
   }
 
   /**
@@ -178,7 +178,7 @@ export class CachedRepository<T extends BaseModel> {
     // Update both cache tiers for each item
     for (const item of created) {
       await cacheSet(this.idCacheKey(item.id), item, this.cacheTTL);
-      await listAppend(this.listCacheKey(), item);
+      await listAppend(this.listCacheKey(), item, this.cacheTTL);
     }
 
     return created;

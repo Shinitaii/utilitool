@@ -15,7 +15,8 @@
     "deploy": "firebase deploy --only functions",
     "deploy:staging": "cross-env APP_ENV=staging firebase deploy --project staging --only functions",
     "deploy:prod": "cross-env APP_ENV=production firebase deploy --project production --only functions",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "backfill:billing-meter-group": "ts-node scripts/backfill-billing-meter-group.ts"
   },
   "engines": {
     "node": "24"

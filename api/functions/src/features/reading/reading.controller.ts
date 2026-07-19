@@ -11,15 +11,15 @@ import {
 } from "./reading.dto";
 import {AppError} from "../../utils/error.util";
 import {ImageExtractionService} from "../image-extraction/image-extraction.service";
-import {cacheDelPattern} from "../../utils/cache.util";
+import {makeClearCacheHandler} from "../../utils/clear-cache-handler.util";
+import type {BatchGetQueryDTO} from "../../utils/batch-get.dto";
 
 export const createReading = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
   const data = req.body as CreateReadingDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await readingService.create(userId, data);
   res.status(201).json(result);
 };
@@ -29,8 +29,7 @@ export const createSeedReading = async (
   res: Response
 ): Promise<void> => {
   const data = req.body as CreateSeedReadingDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await readingService.createSeed(userId, data);
   res.status(201).json(result);
 };
@@ -40,8 +39,7 @@ export const createBatchReadings = async (
   res: Response
 ): Promise<void> => {
   const data = req.body as CreateReadingDTO[];
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await readingService.createBatch(userId, data);
   res.status(201).json(result);
 };
@@ -51,8 +49,7 @@ export const getReadingById = async (
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as ReadingByIdParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const reading = await readingService.getById(userId, id);
 
   if (!reading) {
@@ -62,13 +59,21 @@ export const getReadingById = async (
   res.status(200).json(reading);
 };
 
+export const getReadingsByIds = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  const {ids} = req.query as unknown as BatchGetQueryDTO;
+  const readings = await readingService.getByIds(ids);
+  res.status(200).json(readings);
+};
+
 export const getReadings = async (
   req: AuthenticatedRequest,
   res: Response
 ): Promise<void> => {
   const query = req.query as unknown as GetReadingsQueryDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
 
   const result = await readingService.search(userId, {
     meterGroupId: query.meterGroupId,
@@ -90,8 +95,7 @@ export const updateReading = async (
 ): Promise<void> => {
   const {id} = req.params as unknown as ReadingByIdParamsDTO;
   const data = req.body as Partial<UpdateReadingDTO>;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await readingService.update(userId, id, data);
   res.status(200).json(result);
 };
@@ -101,8 +105,7 @@ export const updateBatchReadings = async (
   res: Response
 ): Promise<void> => {
   const updates = req.body as { id: string; data: Partial<UpdateReadingDTO> }[];
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await readingService.updateBatch(userId, updates);
   res.status(200).json(result);
 };
@@ -112,8 +115,7 @@ export const deleteReading = async (
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as ReadingByIdParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   await readingService.delete(userId, id);
   res.status(204).send();
 };
@@ -123,8 +125,7 @@ export const softDeleteReading = async (
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as ReadingByIdParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await readingService.softDelete(userId, id);
   res.status(200).json(result);
 };
@@ -134,8 +135,7 @@ export const restoreReading = async (
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as ReadingByIdParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const result = await readingService.restore(userId, id);
   res.status(200).json(result);
 };
@@ -145,8 +145,6 @@ export const purgeReading = async (
   res: Response
 ): Promise<void> => {
   const {id} = req.params as unknown as ReadingByIdParamsDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
   await readingService.purge(id);
   res.status(204).send();
 };
@@ -156,16 +154,9 @@ export const ocrReading = async (
   res: Response
 ): Promise<void> => {
   const data = req.body as OcrReadingDTO;
-  const userId = req.user?.userId;
-  if (!userId) throw new AppError(401, "User not authenticated");
+  const userId = req.user!.userId;
   const extracted = await ImageExtractionService.extractReadingFromImage(data.image_url, userId);
   res.status(200).json({suggested_reading_amount: extracted.reading_amount});
 };
 
-export const clearCache = async (
-  _req: AuthenticatedRequest,
-  res: Response
-): Promise<void> => {
-  const deletedCount = await cacheDelPattern("utilitool:readings:*");
-  res.status(200).json({message: `Cleared ${deletedCount} cache entries for readings`});
-};
+export const clearCache = makeClearCacheHandler("readings", "readings");

@@ -44,9 +44,8 @@ export const schemas = {
     properties: {
       image_url: {
         type: "string",
-        format: "uri",
-        description: "URL of the bill image to process",
-        example: "https://storage.googleapis.com/bucket/bills/bill.jpg",
+        description: "Base64 data URL of the bill image to process (data:image/*;base64,...)",
+        example: "data:image/jpeg;base64,/9j/4AAQSkZJRg...",
       },
     },
   },

@@ -2,12 +2,7 @@
 	import { onMount } from 'svelte';
 	let Bar = $state<any>();
 	let Line = $state<any>();
-	import {
-		getSummaryReport,
-		getConsumptionReport,
-		getBillingTrendsReport,
-		getCollectionStatusReport
-	} from '$lib/api/reports';
+	import { getAllReports } from '$lib/api/reports';
 	import { getMeterGroups } from '$lib/api/meter-groups';
 	import { getProperties } from '$lib/api/properties';
 	import { formatCurrency } from '$lib/utils/format';
@@ -152,22 +147,26 @@
 			error = '';
 
 			const params: Record<string, string> = {};
-			if (startDate) params.startDate = formatDateToISO(startDate);
+			if (startDate) {
+				params.startDate = formatDateToISO(startDate);
+			} else {
+				// Default to a 12-month bound instead of an unbounded "To Present" scan, so the
+				// Firestore range filter actually bounds the cycle scan on first load — same
+				// window the Dashboard bounds its fetch to (dashboard/+page.svelte).
+				const now = new Date();
+				const windowStart = new Date(now.getFullYear(), now.getMonth() - 12, now.getDate());
+				params.startDate = windowStart.toISOString();
+			}
 			if (!usePresent && endDate) params.endDate = formatDateToISO(endDate);
 			if (selectedMeterGroupId) params.meterGroupId = selectedMeterGroupId;
 			if (selectedPropertyId) params.propertyId = selectedPropertyId;
 
-			const [summaryData, consumptionData, trendsData, collectionData] = await Promise.all([
-				getSummaryReport(params),
-				getConsumptionReport(params),
-				getBillingTrendsReport(params),
-				getCollectionStatusReport(params)
-			]);
+			const combined = await getAllReports(params);
 
-			summary = summaryData;
-			consumption = consumptionData;
-			billingTrends = trendsData;
-			collectionStatus = collectionData;
+			summary = combined.summary;
+			consumption = combined.consumption;
+			billingTrends = combined.billingTrends;
+			collectionStatus = combined.collectionStatus;
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load reports';
 		} finally {

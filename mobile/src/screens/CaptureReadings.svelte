@@ -1,11 +1,11 @@
 <script lang="ts">
   import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
-  import { listMeterGroups, type MeterGroup } from '../lib/api/meter-groups';
-  import { listProperties, type Property } from '../lib/api/properties';
+  import type { MeterGroup } from '../lib/api/meter-groups';
+  import type { Property } from '../lib/api/properties';
   import { createReadingsBatch, createSeedReading, listReadings, ocrReadingImage, type CreateReadingRequest, type Reading } from '../lib/api/readings';
-  import { getPhotoSettings } from '../lib/api/photo-settings';
   import { getReadingUnit } from '../lib/utils/format';
   import { getUtilityTypeBadgeClasses } from '../lib/utils/utility-colors';
+  import { findMeterGroupEntry, needsSeedReading } from '../lib/utils/readings-wizard.util';
   import { sessionCache } from '../lib/stores/session';
   import BottomNav from '../components/BottomNav.svelte';
 
@@ -13,19 +13,9 @@
   let isLoading = $state(false);
   let error: string | null = $state(null);
 
-  // Off by default — a captured photo is only used in-memory to suggest a reading value;
-  // it's stripped from the submit payload unless this is enabled in Settings.
-  let savePhotos = $state(false);
+  // A captured photo is only ever used in-memory to suggest a reading value via OCR —
+  // it's never included in the submit payload.
   let suggestingFor: string | null = $state(null);
-
-  (async () => {
-    try {
-      const settings = await getPhotoSettings();
-      savePhotos = settings.savePhotos;
-    } catch {
-      // Keep the safe default (don't persist) if the setting fails to load.
-    }
-  })();
 
   // Step 1: Session setup
   let meterGroups: MeterGroup[] = $state([]);
@@ -50,13 +40,7 @@
     if (!meterGroupsLoaded) {
       (async () => {
         try {
-          let cached = sessionCache.getMeterGroups();
-          if (!cached) {
-            const res = await listMeterGroups();
-            cached = res.data || [];
-            sessionCache.setMeterGroups(cached);
-          }
-          meterGroups = cached ?? [];
+          meterGroups = await sessionCache.getOrFetchMeterGroups();
           meterGroupsLoaded = true;
         } catch (e) {
           error = 'Failed to load meter groups';
@@ -78,12 +62,7 @@
     try {
       isLoading = true;
       error = null;
-      let allProperties = sessionCache.getProperties();
-      if (!allProperties) {
-        const res = await listProperties();
-        allProperties = res.data || [];
-        sessionCache.setProperties(allProperties);
-      }
+      const allProperties = await sessionCache.getOrFetchProperties();
 
       const currentVersion = selectedMeterGroup?.current_version ?? 1;
       const existingReadingsRes = await listReadings({ meterGroupId: selectedMeterGroupId, limit: 1000 });
@@ -96,11 +75,9 @@
       // show up if they haven't been seeded yet at the current meter version — once
       // seeded, their readings are derived automatically at billing-cycle creation.
       properties = (allProperties ?? []).filter((p: Property) => {
-        const meterGroupEntry = Object.entries(p.meter_groups).find(
-          ([_, entry]) => entry.meter_group_id === selectedMeterGroupId
-        );
-        if (!meterGroupEntry) return false;
-        if (meterGroupEntry[1].is_main_meter !== true) return true;
+        const entry = findMeterGroupEntry(p, selectedMeterGroupId);
+        if (!entry) return false;
+        if (entry.is_main_meter !== true) return true;
         return !hasCurrentVersionReading(p.id);
       });
 
@@ -109,10 +86,7 @@
       propertyNeedsSeed = {};
       properties.forEach((p: Property) => {
         propertyReadings[p.id] = { amount: 0, image_url: '' };
-        const meterGroupEntry = Object.entries(p.meter_groups).find(
-          ([_, entry]) => entry.meter_group_id === selectedMeterGroupId
-        );
-        propertyNeedsSeed[p.id] = meterGroupEntry?.[1].is_main_meter === true;
+        propertyNeedsSeed[p.id] = needsSeedReading(p, selectedMeterGroupId);
       });
 
       step = 2;
@@ -180,10 +154,7 @@
         meter_group_id: selectedMeterGroupId,
         property_id: propertyId,
         reading_amount: data.amount,
-        reading_date: `${readingDate}T00:00:00Z`,
-        // Only attach the photo when the user has opted into saving it in Settings —
-        // otherwise it was only ever used in-memory to suggest the amount above.
-        image_url: savePhotos && data.image_url ? data.image_url : undefined
+        reading_date: `${readingDate}T00:00:00Z`
       });
 
       const failedSummaries: string[] = [];
@@ -351,9 +322,9 @@
               📷 Capture Photo
             {/if}
           </button>
-          {#if !savePhotos && propertyReadings[property.id]?.image_url}
+          {#if propertyReadings[property.id]?.image_url}
             <p class="text-xs" style="color: var(--color-text-secondary)">
-              Photo won't be saved (enable in Settings) — used only to suggest the amount above.
+              Photo used only to suggest the amount above — it isn't saved.
             </p>
           {/if}
 
@@ -405,11 +376,7 @@
           <p class="text-sm" style="color: var(--color-text-secondary)">
             Amount: <strong style="color: var(--color-accent)">{propertyReadings[property.id]?.amount}</strong>
             {#if propertyReadings[property.id]?.image_url}
-              {#if savePhotos}
-                <span class="ml-2" style="color: var(--color-status-good)">📷 Photo will be saved</span>
-              {:else}
-                <span class="ml-2" style="color: var(--color-text-tertiary)">📷 Photo used for suggestion only</span>
-              {/if}
+              <span class="ml-2" style="color: var(--color-text-tertiary)">📷 Photo used for suggestion only</span>
             {/if}
           </p>
         </div>

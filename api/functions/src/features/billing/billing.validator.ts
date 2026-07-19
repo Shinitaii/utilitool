@@ -158,42 +158,58 @@ export class BillingValidator {
   }
 
   async validateUpdate(
+    id: string,
     data: Partial<CreateBillingDTO>
   ): Promise<void> {
-    if (
-      data.property_id ||
-      data.previous_reading_id ||
-      data.current_reading_id
-    ) {
-      const propertyId = data.property_id;
-      const previousReadingId = data.previous_reading_id;
-      const currentReadingId = data.current_reading_id;
+    // Only a change to one of the readings needs cross-entity re-validation.
+    const changesReadingPair =
+      data.previous_reading_id !== undefined || data.current_reading_id !== undefined;
 
-      if (propertyId && previousReadingId && currentReadingId) {
-        const [property, previousReading, currentReading] = await Promise.all([
-          propertyRepository.getById(propertyId),
-          readingRepository.getById(previousReadingId),
-          readingRepository.getById(currentReadingId),
-        ]);
-
-        if (!property) {
-          throw new AppError(404, "Property not found");
-        }
-        if (!previousReading || !currentReading) {
-          throw new AppError(404, "Reading not found");
-        }
-
-        await this.validateReadingsBelongToProperty(property, previousReading, currentReading);
-        this.validatePropertyIsNotMainMeter(property, currentReading.meter_group_id);
-      }
+    if (!changesReadingPair) {
+      return;
     }
+
+    // The correction escape hatch: a PATCH may send only current_reading_id (or
+    // only previous_reading_id). Resolve the full triple, falling back to the
+    // stored billing for whatever isn't in this PATCH, so a lone reading change
+    // still passes the same-meter-group / rollback / main-meter checks instead
+    // of silently skipping them.
+    let propertyId = data.property_id;
+    let previousReadingId = data.previous_reading_id;
+    let currentReadingId = data.current_reading_id;
+
+    if (!propertyId || !previousReadingId || !currentReadingId) {
+      const existing = await billingRepository.getById(id);
+      if (!existing) {
+        throw new AppError(404, "Billing not found");
+      }
+      propertyId = propertyId ?? existing.property_id;
+      previousReadingId = previousReadingId ?? existing.previous_reading_id;
+      currentReadingId = currentReadingId ?? existing.current_reading_id;
+    }
+
+    const [property, previousReading, currentReading] = await Promise.all([
+      propertyRepository.getById(propertyId),
+      readingRepository.getById(previousReadingId),
+      readingRepository.getById(currentReadingId),
+    ]);
+
+    if (!property) {
+      throw new AppError(404, "Property not found");
+    }
+    if (!previousReading || !currentReading) {
+      throw new AppError(404, "Reading not found");
+    }
+
+    await this.validateReadingsBelongToProperty(property, previousReading, currentReading);
+    this.validatePropertyIsNotMainMeter(property, currentReading.meter_group_id);
   }
 
   async validateUpdateBatch(
     updates: {id: string; data: Partial<CreateBillingDTO>}[]
   ): Promise<void> {
-    for (const {data} of updates) {
-      await this.validateUpdate(data);
+    for (const {id, data} of updates) {
+      await this.validateUpdate(id, data);
     }
   }
 }

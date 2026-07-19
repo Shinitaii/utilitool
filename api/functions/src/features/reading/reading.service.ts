@@ -21,6 +21,10 @@ import {BatchCreateResult} from "../../utils/batch-result.util";
 const validator = new ReadingValidator();
 const CACHE_TTL = 10 * 60; // 10 minutes
 
+function repoFor(userId: string): CachedRepository<Reading> {
+  return new CachedRepository(readingRepository, userId, "readings", CACHE_TTL);
+}
+
 type ReadingCreatePayload = CreateReadingDTO & { meter_version: number };
 
 
@@ -147,7 +151,7 @@ export const readingService = {
     const meterGroup = await meterGroupRepository.getById(data.meter_group_id);
     const meter_version = meterGroup!.current_version ?? 1;
     const payload: ReadingCreatePayload = {...data, meter_version};
-    const cachedRepo = new CachedRepository(readingRepository, userId, "readings", CACHE_TTL);
+    const cachedRepo = repoFor(userId);
     return cachedRepo.create(payload);
   },
 
@@ -187,7 +191,7 @@ export const readingService = {
       };
     }
 
-    const cachedRepo = new CachedRepository(readingRepository, userId, "readings", CACHE_TTL);
+    const cachedRepo = repoFor(userId);
     return cachedRepo.search({
       limit: options.limit,
       orderBy: (options.sortBy ?? "created_at") as any,
@@ -202,24 +206,35 @@ export const readingService = {
   },
 
   async getById(userId: string, id: string): Promise<Reading | null> {
-    const cachedRepo = new CachedRepository(readingRepository, userId, "readings", CACHE_TTL);
+    const cachedRepo = repoFor(userId);
     return cachedRepo.getById(id);
+  },
+
+  /**
+   * Batch ID lookup for clients that otherwise resolve IDs one at a time
+   * (e.g. the UI's entity-lookup-cache.ts) — one round-trip instead of N.
+   * Goes through the raw repository (not the per-user list cache), same as
+   * every other getByIds caller in this codebase (reports.service.ts, etc.).
+   */
+  async getByIds(ids: string[]): Promise<Reading[]> {
+    const results = await readingRepository.getByIds(ids);
+    return results.filter((r): r is Reading => r !== null);
   },
 
   async update(userId: string, id: string, data: Partial<CreateReadingDTO>): Promise<Reading> {
     await validator.validateUpdate(data);
-    const cachedRepo = new CachedRepository(readingRepository, userId, "readings", CACHE_TTL);
+    const cachedRepo = repoFor(userId);
     return cachedRepo.update(id, data);
   },
 
   async updateBatch(userId: string, updates: {id: string, data: Partial<CreateReadingDTO>}[]): Promise<Reading[]> {
     await validator.validateUpdateBatch(updates);
-    const cachedRepo = new CachedRepository(readingRepository, userId, "readings", CACHE_TTL);
+    const cachedRepo = repoFor(userId);
     return cachedRepo.updateBatch(updates);
   },
 
   async delete(userId: string, id: string): Promise<void> {
-    const cachedRepo = new CachedRepository(readingRepository, userId, "readings", CACHE_TTL);
+    const cachedRepo = repoFor(userId);
     await cachedRepo.delete(id);
   },
 

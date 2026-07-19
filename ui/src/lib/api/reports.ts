@@ -1,42 +1,33 @@
-import { apiGet } from './client';
+import { apiGet, toQueryString } from './client';
 import type {
 	ReportSummary,
 	ConsumptionReport,
 	BillingTrendsReport,
 	CollectionStatusReport,
+	CombinedReportsResponse,
 	ReportQueryParams
 } from '$lib/types/reports.types';
 
-function buildQueryString(params?: ReportQueryParams): string {
-	if (!params) return '';
-	const query = new URLSearchParams();
-	if (params.startDate) query.set('startDate', params.startDate);
-	if (params.endDate) query.set('endDate', params.endDate);
-	if (params.meterGroupId) query.set('meterGroupId', params.meterGroupId);
-	if (params.propertyId) query.set('propertyId', params.propertyId);
-	return query.toString() ? `?${query}` : '';
+export async function getAllReports(params?: ReportQueryParams): Promise<CombinedReportsResponse> {
+	return apiGet<CombinedReportsResponse>(`/reports${toQueryString(params)}`);
 }
 
 export async function getSummaryReport(params?: ReportQueryParams): Promise<ReportSummary> {
-	const query = buildQueryString(params);
-	return apiGet<ReportSummary>(`/reports/summary${query}`);
+	return apiGet<ReportSummary>(`/reports/summary${toQueryString(params)}`);
 }
 
 export async function getConsumptionReport(params?: ReportQueryParams): Promise<ConsumptionReport> {
-	const query = buildQueryString(params);
-	return apiGet<ConsumptionReport>(`/reports/consumption${query}`);
+	return apiGet<ConsumptionReport>(`/reports/consumption${toQueryString(params)}`);
 }
 
 export async function getBillingTrendsReport(
 	params?: ReportQueryParams
 ): Promise<BillingTrendsReport> {
-	const query = buildQueryString(params);
-	return apiGet<BillingTrendsReport>(`/reports/billing-trends${query}`);
+	return apiGet<BillingTrendsReport>(`/reports/billing-trends${toQueryString(params)}`);
 }
 
 export async function getCollectionStatusReport(
 	params?: ReportQueryParams
 ): Promise<CollectionStatusReport> {
-	const query = buildQueryString(params);
-	return apiGet<CollectionStatusReport>(`/reports/collection-status${query}`);
+	return apiGet<CollectionStatusReport>(`/reports/collection-status${toQueryString(params)}`);
 }

@@ -12,7 +12,6 @@ import {billsPaths} from "../features/bills/bills.swagger";
 import {paths as imageExtractionPaths} from "../features/image-extraction/image-extraction.swagger";
 import {reportsPaths} from "../features/reports/reports.swagger";
 import {llmConfigPaths} from "../features/llm-config/llm-config.swagger";
-import {photoSettingsPaths} from "../features/photo-settings/photo-settings.swagger";
 import {chatbotPaths} from "../features/chatbot/chatbot.swagger";
 
 const swaggerSpec = {
@@ -471,11 +470,6 @@ const swaggerSpec = {
               reading_date: {
                 $ref: "#/components/schemas/Timestamp",
               },
-              image_url: {
-                type: "string",
-                format: "uri",
-                description: "Optional photo of the meter (requires Firebase Storage)",
-              },
               meter_version: {
                 type: "integer",
                 minimum: 1,
@@ -504,11 +498,6 @@ const swaggerSpec = {
           reading_date: {
             $ref: "#/components/schemas/Timestamp",
           },
-          image_url: {
-            type: "string",
-            format: "uri",
-            description: "Optional photo URL (requires Firebase Storage to be configured)",
-          },
         },
         required: ["meter_group_id", "property_id", "reading_amount", "reading_date"],
       },
@@ -529,10 +518,6 @@ const swaggerSpec = {
           },
           reading_date: {
             $ref: "#/components/schemas/Timestamp",
-          },
-          image_url: {
-            type: "string",
-            format: "uri",
           },
         },
       },
@@ -935,9 +920,8 @@ const swaggerSpec = {
         properties: {
           image_url: {
             type: "string",
-            format: "uri",
-            description: "URL of the bill image to process",
-            example: "https://storage.googleapis.com/bucket/bills/bill.jpg",
+            description: "Base64 data URL of the bill image to process (data:image/*;base64,...)",
+            example: "data:image/jpeg;base64,/9j/4AAQSkZJRg...",
           },
         },
       },
@@ -1012,25 +996,6 @@ const swaggerSpec = {
           },
         },
         required: ["provider", "model"],
-      },
-      PhotoSettingsResponse: {
-        type: "object",
-        properties: {
-          savePhotos: {
-            type: "boolean",
-            description: "Whether meter-reading photos are persisted (image_url) on create. Defaults to false. Bill/billing-cycle photos are never persisted regardless.",
-          },
-        },
-        required: ["savePhotos"],
-      },
-      UpsertPhotoSettingsRequest: {
-        type: "object",
-        properties: {
-          savePhotos: {
-            type: "boolean",
-          },
-        },
-        required: ["savePhotos"],
       },
       ChatHistoryMessage: {
         type: "object",
@@ -1128,7 +1093,6 @@ const swaggerSpec = {
     ...reportsPaths,
     ...llmConfigPaths,
     ...chatbotPaths,
-    ...photoSettingsPaths,
   },
 };
 

@@ -11,12 +11,13 @@ consumption data is processed.
 
 - **Property/tenant records**: room/unit names, tenant names, occupancy dates — entered by
   staff, stored in Firestore.
-- **Meter readings**: numeric consumption values, timestamps, and (optionally) a photo of
-  the meter face, if the per-user photo-settings preference (`GET/PATCH /photo-settings`,
-  default **off**) is enabled. See `api/CLAUDE.md` → "Photo Settings".
+- **Meter readings**: numeric consumption values and timestamps. A photo of the meter face
+  may be captured to drive the OCR "suggest" feature, but it is never persisted — it exists
+  only in-memory for that one request and is discarded immediately after (readings have no
+  `image_url` field).
 - **Billing records and billing cycles**: consumption, rates, and computed charges derived
   from readings — no bill/cycle photos are ever persisted (no `image_url` field exists on
-  the billing-cycle model).
+  the billing-cycle model either).
 - **Account data**: email and role, via Firebase Authentication.
 
 ## Third-Party AI Processors (OCR / Vision)
@@ -127,8 +128,8 @@ data exposure beyond what the requesting admin's role already permits.
   purges cascade to their already-archived readings/billings, mirroring the existing
   archive cascade, so a purge cannot leave orphaned records behind. See `api/CLAUDE.md` →
   "Archive-Then-Purge Lifecycle".
-- Meter-reading photos are only stored if the photo-settings preference is explicitly
-  enabled per user; bill/billing-cycle photos are never stored.
+- Meter-reading, bill, and billing-cycle photos are never stored — every photo is used
+  transiently, in-memory, for the OCR "suggest" call only, then discarded.
 - This document does not set a fixed data-retention period — retention is governed by
   operational need and, if the organization is subject to a specific data protection
   regime (e.g. the Philippine Data Privacy Act), by that regime's requirements. The

@@ -13,8 +13,7 @@ export const paths = {
               properties: {
                 image_url: {
                   type: "string",
-                  format: "uri",
-                  description: "URL of the meter photo (data URL or HTTPS)",
+                  description: "Base64 data URL of the meter photo (data:image/*;base64,...)",
                 },
               },
               required: ["image_url"],
@@ -61,8 +60,7 @@ export const paths = {
               properties: {
                 image_url: {
                   type: "string",
-                  format: "uri",
-                  description: "URL of the utility bill photo (data URL or HTTPS)",
+                  description: "Base64 data URL of the utility bill photo (data:image/*;base64,...)",
                 },
               },
               required: ["image_url"],

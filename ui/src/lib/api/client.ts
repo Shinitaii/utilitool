@@ -137,3 +137,26 @@ export async function apiPatch<T>(
 		body: body ? JSON.stringify(body) : undefined
 	});
 }
+
+/**
+ * Shared query-string builder for the feature API modules — previously each
+ * module (meter-groups, properties, tenants, readings, billings, billing-cycles,
+ * reports) hand-rolled the same `URLSearchParams` + `if (params?.x) query.set(...)`
+ * loop. `false`/`undefined`/`null`/`''` values are omitted (matches each module's
+ * prior per-field `if` guards); `true` serializes to the string `'true'`.
+ */
+export function toQueryString(
+	params?: Record<string, string | number | boolean | undefined | null> | object
+): string {
+	if (!params) return '';
+	const query = new URLSearchParams();
+	for (const [key, value] of Object.entries(params) as [
+		string,
+		string | number | boolean | undefined | null
+	][]) {
+		if (value === undefined || value === null || value === '' || value === false) continue;
+		query.set(key, value === true ? 'true' : String(value));
+	}
+	const qs = query.toString();
+	return qs ? `?${qs}` : '';
+}

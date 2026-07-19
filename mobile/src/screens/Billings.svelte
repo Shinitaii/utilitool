@@ -2,7 +2,6 @@
   import { listBillingCycles, type BillingCycle } from '../lib/api/billing-cycles';
   import { listBillings, updateBillingStatus, type Billing } from '../lib/api/billings';
   import { listMeterGroups, type MeterGroup } from '../lib/api/meter-groups';
-  import { listProperties } from '../lib/api/properties';
   import { formatTimestampDate } from '../lib/utils/timestamp';
   import { getReadingUnit } from '../lib/utils/format';
   import { getStatusSummary } from '../lib/utils/billing-cycle.util';
@@ -35,13 +34,7 @@
         meterGroups = meterGroupsRes.data;
       }
 
-      // Fetch property names from cache or API
-      let properties = sessionCache.getProperties();
-      if (!properties) {
-        const propsRes = await listProperties();
-        properties = propsRes.data || [];
-        sessionCache.setProperties(properties);
-      }
+      const properties = await sessionCache.getOrFetchProperties();
 
       const names: Record<string, string> = {};
       const propertyMap = new Map(properties.map(p => [p.id, p.room_name]));

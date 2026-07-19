@@ -80,6 +80,7 @@ export type BillingCycleByIdParamsDTO = z.infer<typeof BillingCycleByIdParamsDTO
 
 export const GetBillingCyclesQueryDTOSchema = z
   .object({
+    meterGroupId: z.string().trim().min(1).optional(),
     billingStartDate: z.string().datetime().optional(),
     billingEndDate: z.string().datetime().optional(),
     sortBy: z.enum(["created_at", "billing_start_date"]).optional(),
@@ -96,6 +97,13 @@ export const GetBillingCyclesQueryDTOSchema = z
         code: "custom",
         message: "cursor cannot be combined with billingStartDate " +
           "or billingEndDate",
+        path: ["cursor"],
+      });
+    }
+    if (value.meterGroupId && value.cursor) {
+      context.addIssue({
+        code: "custom",
+        message: "cursor cannot be combined with meterGroupId",
         path: ["cursor"],
       });
     }

@@ -6,9 +6,10 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "cap:add:android": "npx cap add android",
+    "cap:add:android": "npx cap add android && node scripts/apply-network-security-config.mjs",
     "cap:open:android": "npx cap open android",
-    "cap:sync": "npx cap sync"
+    "cap:sync": "npx cap sync && node scripts/apply-network-security-config.mjs",
+    "verify:network-security-config": "node scripts/apply-network-security-config.mjs"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.1.0",

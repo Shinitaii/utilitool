@@ -18,7 +18,7 @@
 	import type { Reading } from '$lib/types/reading.types';
 	import type { Billing } from '$lib/types/billing.types';
 	import type { PaginatedResult } from '$lib/types/api.types';
-	import { formatDate, formatDateTime, formatReading } from '$lib/utils/format';
+	import { formatFirestoreDate, formatDateTime, formatReading } from '$lib/utils/format';
 	import { toDate } from '$lib/utils/timestamp';
 	import { getUtilityTypeBadgeClasses } from '$lib/utils/utility-colors';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
@@ -653,7 +653,7 @@
 										{/if}
 									</div>
 									<div class="text-xs text-gray-500">
-										{formatDate(toDate(property.created_at))}
+										{formatFirestoreDate(property.created_at)}
 									</div>
 								</button>
 							</div>
@@ -784,7 +784,7 @@
 															>
 														</td>
 														<td class="px-6 py-4 text-gray-600">
-															{formatDate(toDate(tenant.tenant_start_date))}
+															{formatFirestoreDate(tenant.tenant_start_date)}
 														</td>
 													</tr>
 												{/each}
@@ -851,7 +851,7 @@
 															)}
 														</td>
 														<td class="px-6 py-4 text-gray-600">
-															{formatDate(toDate(reading.reading_date))}
+															{formatFirestoreDate(reading.reading_date)}
 														</td>
 													</tr>
 												{/each}
@@ -940,9 +940,9 @@
 														</td>
 														<td class="px-6 py-4 text-gray-600">
 															{prevReading && currReading
-																? formatDate(toDate(prevReading.reading_date)) +
+																? formatFirestoreDate(prevReading.reading_date) +
 																	' - ' +
-																	formatDate(toDate(currReading.reading_date))
+																	formatFirestoreDate(currReading.reading_date)
 																: 'N/A'}
 														</td>
 													</tr>

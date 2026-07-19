@@ -1,25 +1,25 @@
-import { apiGet, apiPost, apiPatch, apiDelete } from './client';
+import { apiGet, apiPost, apiPatch, apiDelete, toQueryString } from './client';
 import type { Billing, CreateBillingRequest, UpdateBillingRequest } from '$lib/types/billing.types';
 import type { PaginatedResult } from '$lib/types/api.types';
 
 export async function getBillings(params?: {
 	propertyId?: string;
+	meterGroupId?: string;
+	startDate?: string;
+	endDate?: string;
 	limit?: number;
 	cursor?: string;
 	archived?: boolean;
 }): Promise<PaginatedResult<Billing>> {
-	const query = new URLSearchParams();
-	if (params?.propertyId) query.set('propertyId', params.propertyId);
-	if (params?.limit) query.set('limit', params.limit.toString());
-	if (params?.cursor) query.set('cursor', params.cursor);
-	if (params?.archived) query.set('archived', 'true');
-
-	const path = query.toString() ? `/billings?${query}` : '/billings';
-	return apiGet<PaginatedResult<Billing>>(path);
+	return apiGet<PaginatedResult<Billing>>(`/billings${toQueryString(params)}`);
 }
 
 export async function getBillingById(id: string): Promise<Billing> {
 	return apiGet<Billing>(`/billings/${id}`);
+}
+
+export async function getBillingsByIds(ids: string[]): Promise<Billing[]> {
+	return apiGet<Billing[]>(`/billings/batch-get?ids=${ids.map(encodeURIComponent).join(',')}`);
 }
 
 export async function createBilling(data: CreateBillingRequest): Promise<Billing> {

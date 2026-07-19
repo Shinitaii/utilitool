@@ -50,6 +50,13 @@ export interface CollectionStatusReport {
   overdue: CollectionStatusItem;
 }
 
+export interface CombinedReports {
+  summary: ReportSummary;
+  consumption: ConsumptionReport;
+  billingTrends: BillingTrendsReport;
+  collectionStatus: CollectionStatusReport;
+}
+
 export interface JoinedBilling {
   billingId: string;
   amount: number;

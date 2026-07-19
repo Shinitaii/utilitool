@@ -87,6 +87,31 @@ export const billingPaths = {
           },
         },
         {
+          name: "meterGroupId",
+          in: "query",
+          description: "Filter by meter group ID",
+          schema: {
+            type: "string",
+            minLength: 1,
+          },
+        },
+        {
+          name: "startDate",
+          in: "query",
+          description: "Filter by billing_period_date >= startDate (ISO 8601)",
+          schema: {
+            type: "string",
+          },
+        },
+        {
+          name: "endDate",
+          in: "query",
+          description: "Filter by billing_period_date <= endDate (ISO 8601)",
+          schema: {
+            type: "string",
+          },
+        },
+        {
           name: "limit",
           in: "query",
           description: "Number of results per page (1-100, default 20)",

@@ -1,30 +1,18 @@
+// Maps Firebase auth error codes to user-friendly messages.
+const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  'auth/invalid-email': 'Invalid email address',
+  'auth/user-disabled': 'This account has been disabled',
+  'auth/user-not-found': 'Invalid email or password',
+  'auth/invalid-login-credentials': 'Invalid email or password',
+  'auth/invalid-password': 'Invalid email or password',
+  'auth/too-many-requests': 'Too many failed attempts. Please try again later',
+  'auth/network-request-failed': 'Network error. Please check your connection',
+  'auth/operation-not-allowed': 'This authentication method is not available'
+};
+
 export function getReadableAuthError(error: any): string {
   if (typeof error === 'string') return error;
   if (!error) return 'Authentication failed';
 
-  const code = error.code || '';
-  const message = error.message || '';
-
-  // Map Firebase error codes to user-friendly messages
-  if (code === 'auth/invalid-email') {
-    return 'Invalid email address';
-  }
-  if (code === 'auth/user-disabled') {
-    return 'This account has been disabled';
-  }
-  if (code === 'auth/user-not-found' || code === 'auth/invalid-login-credentials' || code === 'auth/invalid-password') {
-    return 'Invalid email or password';
-  }
-  if (code === 'auth/too-many-requests') {
-    return 'Too many failed attempts. Please try again later';
-  }
-  if (code === 'auth/network-request-failed') {
-    return 'Network error. Please check your connection';
-  }
-  if (code === 'auth/operation-not-allowed') {
-    return 'This authentication method is not available';
-  }
-
-  // Fallback to generic message for unknown errors
-  return 'Unable to sign in. Please try again';
+  return AUTH_ERROR_MESSAGES[error.code] || 'Unable to sign in. Please try again';
 }

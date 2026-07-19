@@ -27,6 +27,7 @@
     "jest.config.ts",
     "jest.setup.ts",
     "seed.js",
+    "scripts/**/*", // One-off admin scripts, outside the main tsconfig "src" scope.
   ],
   plugins: [
     "@typescript-eslint",

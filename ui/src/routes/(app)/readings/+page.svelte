@@ -16,17 +16,10 @@
 	import type { MeterGroup } from '$lib/types/meter-group.types';
 	import type { Property } from '$lib/types/property.types';
 	import type { PaginatedResult } from '$lib/types/api.types';
-	import { formatDate, formatLongDate, formatReading, getReadingUnit } from '$lib/utils/format';
+	import { formatFirestoreDate, formatLongDate, formatReading } from '$lib/utils/format';
 	import { toDate } from '$lib/utils/timestamp';
-	import { uploadToStorage } from '$lib/utils/firebase-storage';
 	import { compressImage } from '$lib/utils/image-compression';
-	import { getPhotoSettings } from '$lib/api/photo-settings';
-	import {
-		trueReading,
-		resolveCurrentVersion,
-		getVersionsSource,
-		getCumulativeOffset
-	} from '$lib/utils/true-reading';
+	import { resolveCurrentVersion, getVersionsSource } from '$lib/utils/true-reading';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import TableSkeleton from '$lib/components/shared/TableSkeleton.svelte';
 	import EditModal from '$lib/components/shared/EditModal.svelte';
@@ -112,18 +105,8 @@
 
 	let isUpdating = $state(false);
 
-	// Defaults to false (don't persist photos to Storage) until loaded — matches the
-	// backend default so there's no window where an unloaded setting reads as "save".
-	let savePhotos = $state(false);
-
 	onMount(async () => {
 		await loadData();
-		try {
-			const settings = await getPhotoSettings();
-			savePhotos = settings.savePhotos;
-		} catch {
-			// Keep the safe default (don't persist) if the setting fails to load.
-		}
 	});
 
 	async function applyFilters() {
@@ -304,9 +287,7 @@
 				reading_date: {
 					_seconds: Math.floor(new Date(manualReadingForm.reading_date).getTime() / 1000),
 					_nanoseconds: 0
-				},
-				image_url:
-					savePhotos && manualReadingForm.image_url ? manualReadingForm.image_url : undefined
+				}
 			} as any;
 
 			const isSeed = await shouldSeedReading(
@@ -344,7 +325,7 @@
 			// Compress image to avoid "request entity too large" errors
 			const compressedDataUrl = await compressImage(file, 800, 0.7);
 
-			// Show preview and run Suggest immediately — don't wait for Storage
+			// Photo is only ever used transiently for OCR suggest — never persisted.
 			row.data_url = compressedDataUrl;
 			row.image_url = compressedDataUrl;
 		} catch (err) {
@@ -356,19 +337,6 @@
 
 		// Auto-suggest a reading value from the photo — no separate Suggest button.
 		await handleSuggestReading(rowIndex);
-
-		// Silently upgrade to a persistent Storage URL in the background — only when the
-		// user has opted in via Photo Settings. Otherwise the data URL stays in-memory
-		// only, long enough to have been OCR'd above, and is never persisted.
-		if (row.data_url && savePhotos) {
-			uploadToStorage(file, `readings/${Date.now()}_${file.name}`)
-				.then((url) => {
-					row.image_url = url;
-				})
-				.catch(() => {
-					/* keep data URL */
-				});
-		}
 	}
 
 	async function handleManualImageUpload(file: File | null) {
@@ -394,18 +362,6 @@
 			}
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to suggest reading';
-		}
-
-		// Silently upgrade to a persistent Storage URL in the background — only when the
-		// user has opted in via Photo Settings.
-		if (savePhotos) {
-			uploadToStorage(file, `readings/${Date.now()}_${file.name}`)
-				.then((url) => {
-					manualReadingForm.image_url = url;
-				})
-				.catch(() => {
-					/* keep data URL */
-				});
 		}
 	}
 
@@ -435,10 +391,7 @@
 				reading_date: {
 					_seconds: Math.floor(dateObj.getTime() / 1000),
 					_nanoseconds: 0
-				},
-				// Only attach the photo when the user has opted into saving it —
-				// otherwise it was only ever used in-memory for the Suggest button.
-				image_url: savePhotos && row.image_url ? row.image_url : undefined
+				}
 			}));
 
 			const result = await createReadingsBatch(readingsData);
@@ -667,11 +620,13 @@
 													row.property,
 													selectedMeterGroup
 												)}
-												{@const offset = getCumulativeOffset(versionsSource, version)}
-												{@const unit = getReadingUnit(selectedMg?.utility_type || 'electricity')}
+												{@const resetInfo =
+													version > 1 ? versionsSource?.[String(version - 1)] : undefined}
 												<p class="mt-1 text-xs text-gray-400">
-													True total: {(offset + row.reading_amount).toLocaleString()}
-													{unit}
+													Meter v{version}
+													{#if resetInfo}
+														(reset {formatFirestoreDate(resetInfo.reset_at)} from {resetInfo.last_reading.toLocaleString()})
+													{/if}
 												</p>
 											{/if}
 										</td>
@@ -884,7 +839,7 @@
 
 	<div class="overflow-x-auto rounded-lg border border-gray-200">
 		{#if isLoading}
-			<TableSkeleton rows={6} cols={8} />
+			<TableSkeleton rows={6} cols={7} />
 		{:else if readings.data.length === 0}
 			<div class="p-6">
 				<EmptyState title="No readings" message="Create readings to track meter consumption" />
@@ -916,8 +871,7 @@
 						<th class="px-6 py-3 text-left font-semibold text-gray-700">Property</th>
 						<th class="px-6 py-3 text-left font-semibold text-gray-700">Meter Group</th>
 						<th scope="col" class="px-6 py-3 text-right font-semibold text-gray-700">Reading</th>
-						<th scope="col" class="px-6 py-3 text-right font-semibold text-gray-700">True Total</th>
-						<th class="px-6 py-3 text-left font-semibold text-gray-700">Photo</th>
+						<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Meter Cycle</th>
 						<th class="px-6 py-3 text-left font-semibold text-gray-700">Date</th>
 						<th class="px-6 py-3 text-left font-semibold text-gray-700">Created</th>
 						<th class="px-6 py-3 text-left font-semibold text-gray-700">Actions</th>
@@ -927,6 +881,14 @@
 					{#each readings.data as item (item.id)}
 						{@const itemProperty = propertyMap.get(item.property_id)}
 						{@const itemMeterGroup = meterGroupMap.get(item.meter_group_id)}
+						{@const itemMeterVersion = item.meter_version ?? 1}
+						{@const itemVersionsSource = getVersionsSource(
+							itemMeterGroup,
+							itemProperty,
+							item.meter_group_id
+						)}
+						{@const itemResetInfo =
+							itemMeterVersion > 1 ? itemVersionsSource?.[String(itemMeterVersion - 1)] : undefined}
 						<tr class="border-b border-gray-200 hover:bg-gray-50">
 							<td class="w-8 px-4 py-4">
 								<input
@@ -945,26 +907,16 @@
 							<td class="px-6 py-4 text-right font-mono text-gray-700">
 								{formatReading(item.reading_amount, itemMeterGroup?.utility_type || 'electricity')}
 							</td>
-							<td class="px-6 py-4 text-right font-mono text-xs text-gray-400">
-								{trueReading(item, itemMeterGroup, itemProperty).toLocaleString()}
-								{getReadingUnit(itemMeterGroup?.utility_type || 'electricity')}
-							</td>
-							<td class="px-6 py-4">
-								{#if item.image_url}
-									<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- external/data-URL image, not an app route -->
-									<a href={item.image_url} target="_blank" rel="noreferrer">
-										<img
-											src={item.image_url}
-											alt="Meter reading"
-											class="h-12 w-12 rounded object-cover hover:opacity-75"
-										/>
-									</a>
-								{:else}
-									<span class="text-gray-400">No image</span>
+							<td class="px-6 py-4 text-xs text-gray-500">
+								<span class="font-medium text-gray-700">v{itemMeterVersion}</span>
+								{#if itemResetInfo}
+									<span class="block text-gray-400"
+										>reset {formatFirestoreDate(itemResetInfo.reset_at)}, prior meter ended at {itemResetInfo.last_reading.toLocaleString()}</span
+									>
 								{/if}
 							</td>
-							<td class="px-6 py-4 text-gray-600">{formatDate(toDate(item.reading_date))}</td>
-							<td class="px-6 py-4 text-gray-600">{formatDate(toDate(item.created_at))}</td>
+							<td class="px-6 py-4 text-gray-600">{formatFirestoreDate(item.reading_date)}</td>
+							<td class="px-6 py-4 text-gray-600">{formatFirestoreDate(item.created_at)}</td>
 							<td class="px-6 py-4">
 								<ActionButtons
 									onEdit={() => {

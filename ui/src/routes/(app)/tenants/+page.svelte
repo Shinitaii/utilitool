@@ -6,7 +6,7 @@
 	import type { Tenant, CreateTenantRequest, UpdateTenantRequest } from '$lib/types/tenant.types';
 	import type { Property } from '$lib/types/property.types';
 	import type { PaginatedResult } from '$lib/types/api.types';
-	import { formatDate } from '$lib/utils/format';
+	import { formatFirestoreDate } from '$lib/utils/format';
 	import { toDate } from '$lib/utils/timestamp';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import TableSkeleton from '$lib/components/shared/TableSkeleton.svelte';
@@ -270,7 +270,7 @@
 							<td class="px-6 py-4 text-gray-600"
 								>{properties.find((p) => p.id === item.property_id)?.room_name || 'Unknown'}</td
 							>
-							<td class="px-6 py-4 text-gray-600">{formatDate(toDate(item.tenant_start_date))}</td>
+							<td class="px-6 py-4 text-gray-600">{formatFirestoreDate(item.tenant_start_date)}</td>
 							<td class="px-6 py-4">
 								{#if item.tenant_end_date}
 									<span class="rounded bg-orange-100 px-2 py-1 text-xs font-medium text-orange-800">

@@ -13,8 +13,7 @@
 		UpdateMeterGroupRequest
 	} from '$lib/types/meter-group.types';
 	import type { PaginatedResult } from '$lib/types/api.types';
-	import { formatDate } from '$lib/utils/format';
-	import { toDate } from '$lib/utils/timestamp';
+	import { formatFirestoreDate } from '$lib/utils/format';
 	import { getUtilityTypeBadgeClasses } from '$lib/utils/utility-colors';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import EditModal from '$lib/components/shared/EditModal.svelte';
@@ -229,7 +228,7 @@
 									{item.utility_type}
 								</span>
 							</td>
-							<td class="px-6 py-4 text-gray-600">{formatDate(toDate(item.created_at))}</td>
+							<td class="px-6 py-4 text-gray-600">{formatFirestoreDate(item.created_at)}</td>
 							<td class="px-6 py-4">
 								<div class="flex items-center gap-1">
 									<ActionButtons

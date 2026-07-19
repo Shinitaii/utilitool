@@ -18,10 +18,6 @@ export async function listBillings(propertyId?: string) {
   return apiGet(`/billings${params.toString() ? '?' + params.toString() : ''}`);
 }
 
-export async function getBilling(id: string) {
-  return apiGet(`/billings/${id}`);
-}
-
 export async function updateBillingStatus(id: string, paymentStatus: string) {
   return apiPatch(`/billings/${id}`, { payment_status: paymentStatus });
 }

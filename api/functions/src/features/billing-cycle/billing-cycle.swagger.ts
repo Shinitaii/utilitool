@@ -78,6 +78,15 @@ export const billingCyclePaths = {
       security: [{BearerAuth: []}],
       parameters: [
         {
+          name: "meterGroupId",
+          in: "query",
+          description: "Filter by meter group ID",
+          schema: {
+            type: "string",
+            minLength: 1,
+          },
+        },
+        {
           name: "billingStartDate",
           in: "query",
           description: "Filter by billing start date (ISO 8601 datetime string)",
@@ -202,7 +211,7 @@ export const billingCyclePaths = {
               properties: {
                 image_url: {
                   type: "string",
-                  description: "Data URL (data:image/...) or public HTTPS URL of the utility bill photo",
+                  description: "Base64 data URL of the utility bill photo (data:image/*;base64,...)",
                 },
               },
             },

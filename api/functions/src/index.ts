@@ -28,7 +28,6 @@ import {imageExtractionRouter} from "./features/image-extraction/image-extractio
 import {reportsRouter} from "./features/reports/reports.route";
 import {llmConfigRouter} from "./features/llm-config/llm-config.route";
 import {chatbotRouter} from "./features/chatbot/chatbot.route";
-import {photoSettingsRouter} from "./features/photo-settings/photo-settings.route";
 
 const app = express();
 
@@ -97,7 +96,6 @@ app.use("/image-extraction", imageExtractionRouter);
 app.use("/reports", reportsRouter);
 app.use("/llm-config", llmConfigRouter);
 app.use("/chatbot", chatbotRouter);
-app.use("/photo-settings", photoSettingsRouter);
 
 // Error handling
 app.use(errorHandler);

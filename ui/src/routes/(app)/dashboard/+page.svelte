@@ -2,12 +2,13 @@
 	import { onMount } from 'svelte';
 	import { getProperties } from '$lib/api/properties';
 	import { getTenants } from '$lib/api/tenants';
-	import { getBillings } from '$lib/api/billings';
 	import { getBillingCycles } from '$lib/api/billing-cycles';
+	import { getBillingsByIds } from '$lib/stores/entity-lookup-cache';
 	import { getMeterGroups } from '$lib/api/meter-groups';
-	import { formatCurrency, formatDate, getReadingUnit } from '$lib/utils/format';
+	import { formatCurrency, formatFirestoreDate, getReadingUnit } from '$lib/utils/format';
 	import { toDate } from '$lib/utils/timestamp';
 	import { getCyclePaidAmount, getCycleOutstandingAmount } from '$lib/utils/billing-cycle.util';
+	import { billAmount, sumMoney } from '$lib/utils/money';
 	import { getUtilityTypeBadgeClasses } from '$lib/utils/utility-colors';
 	import TableSkeleton from '$lib/components/shared/TableSkeleton.svelte';
 	import type { BillingCycle } from '$lib/types/billing-cycle.types';
@@ -25,8 +26,12 @@
 	let recentCyclesRangeMonths = $state<3 | 6 | 12>(3);
 
 	const recentCycles = $derived.by(() => {
-		const cutoff = new Date();
-		cutoff.setMonth(cutoff.getMonth() - recentCyclesRangeMonths);
+		const now = new Date();
+		const cutoff = new Date(
+			now.getFullYear(),
+			now.getMonth() - recentCyclesRangeMonths,
+			now.getDate()
+		);
 		return allCycles
 			.filter((cycle) => toDate(cycle.billing_start_date) >= cutoff)
 			.sort(
@@ -38,13 +43,15 @@
 	// otherwise "Billed"/"Collected"/"Outstanding" silently summed every cycle ever
 	// regardless of which range tab was selected, which read as internally inconsistent.
 	const totalBilled = $derived.by(() =>
-		recentCycles.reduce((sum, cycle) => {
-			const cycleTotal = Object.values(cycle.billing_ids).reduce(
-				(s, consumption) => s + consumption * cycle.billing_rate,
-				0
-			);
-			return sum + cycleTotal;
-		}, 0)
+		sumMoney(
+			recentCycles.map((cycle) =>
+				sumMoney(
+					Object.values(cycle.billing_ids).map((consumption) =>
+						billAmount(consumption, cycle.billing_rate)
+					)
+				)
+			)
+		)
 	);
 	const totalCollected = $derived.by(() =>
 		recentCycles.reduce((sum, cycle) => sum + getCyclePaidAmount(cycle, billingMap), 0)
@@ -53,16 +60,19 @@
 		recentCycles.reduce((sum, cycle) => sum + getCycleOutstandingAmount(cycle, billingMap), 0)
 	);
 
-	// Cycles/billings can number in the hundreds (historical backfill) — a single capped
-	// page would silently under-count older cycles/billings, so page through with cursors
-	// (mirrors the same fix applied to the Billings page).
-	async function fetchAllPages<T>(
-		fetchPage: (cursor?: string) => Promise<{ data: T[]; hasMore: boolean; nextCursor: string | null }>
-	): Promise<T[]> {
-		const all: T[] = [];
+	// Bound the cycle fetch to the widest selectable range (12 months) instead of pulling
+	// all-time history, then page through that window with cursors. Billings are resolved
+	// per-ID (getBillingsByIds) from only the cycles in this window — replacing the old
+	// full-billings-collection scan on every dashboard load.
+	async function fetchCyclesInWindow(startDateIso: string) {
+		const all: BillingCycle[] = [];
 		let cursor: string | undefined;
 		do {
-			const page = await fetchPage(cursor);
+			const page = await getBillingCycles({
+				billingStartDate: startDateIso,
+				limit: 100,
+				cursor
+			});
 			all.push(...page.data);
 			cursor = page.hasMore ? (page.nextCursor ?? undefined) : undefined;
 		} while (cursor);
@@ -71,22 +81,25 @@
 
 	onMount(async () => {
 		try {
-			const [propertiesResult, tenantsResult, cyclesData, allBillings, meterGroupsResult] =
-				await Promise.all([
-					getProperties({ limit: 100 }),
-					getTenants({ limit: 100 }),
-					fetchAllPages((cursor) => getBillingCycles({ limit: 100, cursor })),
-					fetchAllPages((cursor) => getBillings({ limit: 100, cursor })),
-					getMeterGroups({ limit: 100 })
-				]);
+			const now = new Date();
+			const windowStart = new Date(now.getFullYear(), now.getMonth() - 12, now.getDate());
+
+			const [propertiesResult, tenantsResult, cyclesData, meterGroupsResult] = await Promise.all([
+				getProperties({ limit: 100 }),
+				getTenants({ limit: 100 }),
+				fetchCyclesInWindow(windowStart.toISOString()),
+				getMeterGroups({ limit: 100 })
+			]);
 
 			propertyCount = propertiesResult.data.length;
 			tenantCount = tenantsResult.data.length;
 			allCycles = cyclesData;
 			meterGroups = meterGroupsResult.data;
 
-			// Build billing map for lookup
-			billingMap = new Map(allBillings.map((b) => [b.id, b]));
+			// Resolve only the billings referenced by the in-window cycles (for paid/outstanding
+			// amounts) — the denormalized cycle fields already carry everything else the cards need.
+			const billingIds = cyclesData.flatMap((cycle) => Object.keys(cycle.billing_ids));
+			billingMap = await getBillingsByIds(billingIds);
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load dashboard data';
 		} finally {
@@ -186,8 +199,8 @@
 						{@const meterGroup = meterGroups.find((m) => m.id === cycle.meter_group_id)}
 						<tr class="border-b border-gray-50">
 							<td class="py-2 text-gray-700">
-								{formatDate(toDate(cycle.billing_start_date))} – {formatDate(
-									toDate(cycle.billing_end_date)
+								{formatFirestoreDate(cycle.billing_start_date)} – {formatFirestoreDate(
+									cycle.billing_end_date
 								)}
 							</td>
 							<td class="py-2">

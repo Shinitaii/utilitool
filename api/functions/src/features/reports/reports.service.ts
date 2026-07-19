@@ -5,6 +5,8 @@ import {propertyRepository} from "../property/property.repository";
 import {readingRepository} from "../reading/reading.repository";
 import {calculateTrueReading, resolveVersionsSource} from "../reading/reading.util";
 import {billAmount, sumMoney} from "../../utils/money.util";
+import {cacheGet, cacheSet} from "../../utils/cache.util";
+import {fetchAllPages} from "../../utils/list-cache.util";
 import type {SearchFilter, RangeFilter} from "../../lib/repository.lib";
 import type {BillingCycle} from "../billing-cycle/billing-cycle.model";
 import type {WithoutBaseModel} from "../../utils/model.util";
@@ -13,6 +15,7 @@ import type {
   ConsumptionReport,
   BillingTrendsReport,
   CollectionStatusReport,
+  CombinedReports,
   JoinedBilling,
 } from "./reports.model";
 import type {ReportQueryDTO} from "./reports.dto";
@@ -44,15 +47,17 @@ function buildDateRangeFilters(query: ReportQueryDTO): SearchFilter<WithoutBaseM
  * stays in each caller.
  */
 async function fetchReportContext(query: ReportQueryDTO) {
-  // 1. Fetch billing cycles with date range filtering at query time (H1 optimization)
+  // 1. Fetch billing cycles with date range filtering at query time (H1 optimization).
+  // Loops through every page instead of taking a single 1000-item page, so a landlord
+  // with >1000 non-deleted cycles doesn't get reports silently computed from only the
+  // newest 1000 by created_at desc.
   const filters = buildDateRangeFilters(query);
-  const cyclesResult = await billingCycleRepository.search({
+  let cycles = await fetchAllPages((cursor) => billingCycleRepository.search({
     limit: 1000,
     orderBy: "created_at",
+    cursor,
     filters,
-  });
-
-  let cycles = cyclesResult.data;
+  }));
 
   // 2. Additional in-memory filter for endDate range to ensure both bounds are respected
   // (runs whenever endDate is supplied, not only alongside startDate — an endDate-only
@@ -201,9 +206,40 @@ async function buildJoinedData(userId: string, query: ReportQueryDTO): Promise<J
   return joinedData;
 }
 
-export async function getSummary(userId: string, query: ReportQueryDTO): Promise<ReportSummary> {
-  const joinedData = await buildJoinedData(userId, query);
+// Short-TTL cache over the shared join (cycles → billings → properties → meter groups →
+// readings). There is no write-path invalidation hook for this cache — billing/cycle/
+// reading mutations elsewhere don't know it exists — so the TTL is kept short (60s) to
+// bound staleness on a financial page rather than relying on invalidation. This is an
+// accepted tradeoff (see decisions/20260719_landing2-deviations-and-reports-finding.md
+// Part 3): it only helps repeat opens/re-applied filters within the window, not the very
+// first parallel burst of requests for a given query.
+const JOINED_DATA_CACHE_TTL_SECONDS = 60;
 
+function joinedDataCacheKey(userId: string, query: ReportQueryDTO): string {
+  const sortedEntries = Object.entries(query)
+    .filter(([, value]) => value !== undefined && value !== "")
+    .sort(([a], [b]) => a.localeCompare(b));
+  return `utilitool:reports:joined:${userId}:${JSON.stringify(sortedEntries)}`;
+}
+
+async function buildJoinedDataCached(userId: string, query: ReportQueryDTO): Promise<JoinedBilling[]> {
+  const key = joinedDataCacheKey(userId, query);
+  const cached = await cacheGet<JoinedBilling[]>(key);
+  if (cached) {
+    // Dates round-trip through JSON as ISO strings — revive them before returning.
+    return cached.map((j) => ({
+      ...j,
+      cycleStartDate: new Date(j.cycleStartDate),
+      cycleEndDate: new Date(j.cycleEndDate),
+    }));
+  }
+
+  const joinedData = await buildJoinedData(userId, query);
+  await cacheSet(key, joinedData, JOINED_DATA_CACHE_TTL_SECONDS);
+  return joinedData;
+}
+
+function summarizeJoined(joinedData: JoinedBilling[]): ReportSummary {
   const totalRevenue = sumMoney(
     joinedData.filter((j) => j.paymentStatus === "paid").map((j) => j.amount)
   );
@@ -227,15 +263,7 @@ export async function getSummary(userId: string, query: ReportQueryDTO): Promise
   };
 }
 
-export async function getConsumption(userId: string, query: ReportQueryDTO): Promise<ConsumptionReport> {
-  // Reuses buildJoinedData so consumption here is computed the same version-aware way
-  // (calculateTrueReading against Property.meter_groups[entry].versions) as every other
-  // report — previously this endpoint read the raw, non-version-aware number frozen on
-  // cycle.billing_ids at cycle-creation time, so a cycle whose meter reset after creation
-  // (or was backfilled with the old naive number) showed different consumption here than
-  // on the Summary/Billing-Trends/Collection-Status reports for the same underlying data.
-  const joinedData = await buildJoinedData(userId, query);
-
+function aggregateConsumption(joinedData: JoinedBilling[]): ConsumptionReport {
   const monthMap = new Map<string, Record<string, number>>();
   for (const j of joinedData) {
     const month = j.cycleStartDate.toISOString().slice(0, 7);
@@ -258,10 +286,10 @@ export async function getConsumption(userId: string, query: ReportQueryDTO): Pro
     }))
     .sort((a, b) => a.period.localeCompare(b.period));
 
-  const propertyConsumption = new Map<string, Record<string, number>>();
+  const propertyConsumption = new Map<string, {roomName: string; electricity: number; water: number}>();
   for (const j of joinedData) {
     if (!propertyConsumption.has(j.propertyId)) {
-      propertyConsumption.set(j.propertyId, {electricity: 0, water: 0});
+      propertyConsumption.set(j.propertyId, {roomName: j.roomName, electricity: 0, water: 0});
     }
     const propData = propertyConsumption.get(j.propertyId)!;
     if (j.utilityType === "electricity") {
@@ -272,28 +300,23 @@ export async function getConsumption(userId: string, query: ReportQueryDTO): Pro
   }
 
   const by_property = Array.from(propertyConsumption.entries())
-    .map(([propId, data]) => {
-      const j = joinedData.find((jb) => jb.propertyId === propId);
-      return {
-        property_id: propId,
-        room_name: j?.roomName || "Unknown",
-        electricity: Math.round(data.electricity * 100) / 100,
-        water: Math.round(data.water * 100) / 100,
-      };
-    })
+    .map(([propId, data]) => ({
+      property_id: propId,
+      room_name: data.roomName || "Unknown",
+      electricity: Math.round(data.electricity * 100) / 100,
+      water: Math.round(data.water * 100) / 100,
+    }))
     .sort((a, b) => a.room_name.localeCompare(b.room_name));
 
   return {by_month, by_property};
 }
 
-export async function getBillingTrends(userId: string, query: ReportQueryDTO): Promise<BillingTrendsReport> {
-  const joinedData = await buildJoinedData(userId, query);
-
+function aggregateBillingTrends(joinedData: JoinedBilling[]): BillingTrendsReport {
   // Group by month
   const monthMap = new Map<string, { billed: number; collected: number; pending: number; overdue: number }>();
 
   for (const billing of joinedData) {
-    // Bucketed by cycle start date to match getConsumption's grouping (both use
+    // Bucketed by cycle start date to match aggregateConsumption's grouping (both use
     // billing_start_date) — bucketing by end date instead put the same cycle in a
     // different month on this chart vs. the Consumption chart whenever a cycle spans
     // a month boundary.
@@ -328,12 +351,7 @@ export async function getBillingTrends(userId: string, query: ReportQueryDTO): P
   return {by_month};
 }
 
-export async function getCollectionStatus(
-  userId: string,
-  query: ReportQueryDTO
-): Promise<CollectionStatusReport> {
-  const joinedData = await buildJoinedData(userId, query);
-
+function aggregateCollectionStatus(joinedData: JoinedBilling[]): CollectionStatusReport {
   const paid = joinedData.filter((j) => j.paymentStatus === "paid");
   const pending = joinedData.filter((j) => j.paymentStatus === "pending" && !j.isOverdue);
   const overdue = joinedData.filter((j) => j.isOverdue);
@@ -351,5 +369,49 @@ export async function getCollectionStatus(
       count: overdue.length,
       amount: sumMoney(overdue.map((j) => j.amount)),
     },
+  };
+}
+
+export async function getSummary(userId: string, query: ReportQueryDTO): Promise<ReportSummary> {
+  const joinedData = await buildJoinedDataCached(userId, query);
+  return summarizeJoined(joinedData);
+}
+
+export async function getConsumption(userId: string, query: ReportQueryDTO): Promise<ConsumptionReport> {
+  // Reuses buildJoinedData so consumption here is computed the same version-aware way
+  // (calculateTrueReading against Property.meter_groups[entry].versions) as every other
+  // report — previously this endpoint read the raw, non-version-aware number frozen on
+  // cycle.billing_ids at cycle-creation time, so a cycle whose meter reset after creation
+  // (or was backfilled with the old naive number) showed different consumption here than
+  // on the Summary/Billing-Trends/Collection-Status reports for the same underlying data.
+  const joinedData = await buildJoinedDataCached(userId, query);
+  return aggregateConsumption(joinedData);
+}
+
+export async function getBillingTrends(userId: string, query: ReportQueryDTO): Promise<BillingTrendsReport> {
+  const joinedData = await buildJoinedDataCached(userId, query);
+  return aggregateBillingTrends(joinedData);
+}
+
+export async function getCollectionStatus(
+  userId: string,
+  query: ReportQueryDTO
+): Promise<CollectionStatusReport> {
+  const joinedData = await buildJoinedDataCached(userId, query);
+  return aggregateCollectionStatus(joinedData);
+}
+
+/**
+ * Computes all four report shapes from a single shared join, instead of the four HTTP
+ * endpoints above each independently re-fetching and re-joining the same underlying data.
+ */
+export async function getAllReports(userId: string, query: ReportQueryDTO): Promise<CombinedReports> {
+  const joinedData = await buildJoinedDataCached(userId, query);
+
+  return {
+    summary: summarizeJoined(joinedData),
+    consumption: aggregateConsumption(joinedData),
+    billingTrends: aggregateBillingTrends(joinedData),
+    collectionStatus: aggregateCollectionStatus(joinedData),
   };
 }

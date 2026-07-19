@@ -1,7 +1,11 @@
 <script lang="ts">
-	import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-	import { auth } from '$lib/firebase';
 	import { createUser } from '$lib/api/users';
+	import type { ApiError } from '$lib/types/api.types';
+
+	// Account creation is temporarily disabled — the app is currently single-tenant
+	// with one active user. Flip back to false to re-enable (must be paired with
+	// removing the matching guard in api/functions/src/features/user/user.route.ts).
+	const ACCOUNT_CREATION_DISABLED = true;
 
 	let email = $state('');
 	let displayName = $state('');
@@ -10,14 +14,12 @@
 	let isLoading = $state(false);
 	let error = $state('');
 	let success = $state('');
-	let warning = $state('');
 
 	async function handleCreateUser(e: SubmitEvent) {
 		e.preventDefault();
 		isLoading = true;
 		error = '';
 		success = '';
-		warning = '';
 
 		if (password.length < 8) {
 			error = 'Password must be at least 8 characters';
@@ -26,35 +28,18 @@
 		}
 
 		try {
-			const credential = await createUserWithEmailAndPassword(auth, email, password);
-			if (displayName) {
-				await updateProfile(credential.user, { displayName });
-			}
-
-			// Pre-seed the user profile with the selected role
-			try {
-				await createUser({
-					uid: credential.user.uid,
-					role
-				});
-				success = `User "${displayName || email}" created successfully`;
-			} catch (roleErr) {
-				console.error('Failed to set user role:', roleErr);
-				warning = `User "${displayName || email}" was created but role assignment failed. Retry setting the role from the users list.`;
-			}
+			// Account creation happens entirely server-side (Firebase Admin SDK via
+			// POST /users) — the client never touches Firebase Auth for this flow, so
+			// the acting admin's own session is never affected by the new account.
+			await createUser({ email, password, displayName: displayName || undefined, role });
+			success = `User "${displayName || email}" created successfully`;
 
 			email = '';
 			displayName = '';
 			password = '';
 			role = 'assistant';
 		} catch (err: unknown) {
-			const code = (err as { code?: string })?.code ?? '';
-			const messages: Record<string, string> = {
-				'auth/email-already-in-use': 'An account with this email already exists.',
-				'auth/weak-password': 'Password is too weak. Use at least 8 characters.',
-				'auth/invalid-email': 'Invalid email address.'
-			};
-			error = messages[code] ?? 'Failed to create user. Please try again.';
+			error = (err as ApiError)?.message ?? 'Failed to create user. Please try again.';
 		} finally {
 			isLoading = false;
 		}
@@ -70,92 +55,93 @@
 	<div class="rounded-lg border border-gray-200 bg-white p-6">
 		<h2 class="mb-6 text-xl font-semibold">Create New User</h2>
 
-		{#if error}
-			<div class="mb-4 rounded-lg bg-red-50 p-4 text-sm text-red-700">
-				{error}
+		{#if ACCOUNT_CREATION_DISABLED}
+			<div class="rounded-lg bg-gray-50 p-4 text-sm text-gray-700">
+				Account creation is currently disabled.
 			</div>
-		{/if}
+		{:else}
+			{#if error}
+				<div class="mb-4 rounded-lg bg-red-50 p-4 text-sm text-red-700">
+					{error}
+				</div>
+			{/if}
 
-		{#if success}
-			<div class="mb-4 rounded-lg bg-green-50 p-4 text-sm text-green-700">
-				{success}
-			</div>
-		{/if}
+			{#if success}
+				<div class="mb-4 rounded-lg bg-green-50 p-4 text-sm text-green-700">
+					{success}
+				</div>
+			{/if}
 
-		{#if warning}
-			<div class="mb-4 rounded-lg bg-yellow-50 p-4 text-sm text-yellow-800">
-				{warning}
-			</div>
-		{/if}
+			<form onsubmit={handleCreateUser} class="max-w-md space-y-4">
+				<div>
+					<label for="email" class="block text-sm font-medium text-gray-700">Email</label>
+					<input
+						id="email"
+						type="email"
+						bind:value={email}
+						required
+						placeholder="user@example.com"
+						class="focus:border-opacity-50 mt-1 block w-full rounded border border-gray-300 px-3 py-2 shadow-sm focus:ring-2 focus:outline-none"
+						style="--tw-ring-color: var(--color-accent)"
+						disabled={isLoading}
+					/>
+				</div>
 
-		<form onsubmit={handleCreateUser} class="max-w-md space-y-4">
-			<div>
-				<label for="email" class="block text-sm font-medium text-gray-700">Email</label>
-				<input
-					id="email"
-					type="email"
-					bind:value={email}
-					required
-					placeholder="user@example.com"
-					class="focus:border-opacity-50 mt-1 block w-full rounded border border-gray-300 px-3 py-2 shadow-sm focus:ring-2 focus:outline-none"
-					style="--tw-ring-color: var(--color-accent)"
+				<div>
+					<label for="displayName" class="block text-sm font-medium text-gray-700"
+						>Display Name</label
+					>
+					<input
+						id="displayName"
+						type="text"
+						bind:value={displayName}
+						placeholder="John Doe"
+						class="focus:border-opacity-50 mt-1 block w-full rounded border border-gray-300 px-3 py-2 shadow-sm focus:ring-2 focus:outline-none"
+						style="--tw-ring-color: var(--color-accent)"
+						disabled={isLoading}
+					/>
+				</div>
+
+				<div>
+					<label for="password" class="block text-sm font-medium text-gray-700">Password</label>
+					<input
+						id="password"
+						type="password"
+						bind:value={password}
+						required
+						placeholder="••••••••"
+						minlength="8"
+						class="focus:border-opacity-50 mt-1 block w-full rounded border border-gray-300 px-3 py-2 shadow-sm focus:ring-2 focus:outline-none"
+						style="--tw-ring-color: var(--color-accent)"
+						disabled={isLoading}
+					/>
+					<p class="mt-1 text-xs text-gray-500">Minimum 8 characters</p>
+				</div>
+
+				<div>
+					<label for="role" class="block text-sm font-medium text-gray-700">Role</label>
+					<select
+						id="role"
+						bind:value={role}
+						class="focus:border-opacity-50 mt-1 block w-full rounded border border-gray-300 px-3 py-2 shadow-sm focus:ring-2 focus:outline-none"
+						style="--tw-ring-color: var(--color-accent)"
+						disabled={isLoading}
+					>
+						<option value="assistant">Assistant (Meter Reader)</option>
+						<option value="landlord">Landlord</option>
+						<option value="admin">Admin</option>
+					</select>
+				</div>
+
+				<button
+					type="submit"
 					disabled={isLoading}
-				/>
-			</div>
-
-			<div>
-				<label for="displayName" class="block text-sm font-medium text-gray-700">Display Name</label
+					class="w-full rounded px-4 py-2 font-medium text-white transition-opacity disabled:opacity-50"
+					style="background-color: var(--color-accent)"
 				>
-				<input
-					id="displayName"
-					type="text"
-					bind:value={displayName}
-					placeholder="John Doe"
-					class="focus:border-opacity-50 mt-1 block w-full rounded border border-gray-300 px-3 py-2 shadow-sm focus:ring-2 focus:outline-none"
-					style="--tw-ring-color: var(--color-accent)"
-					disabled={isLoading}
-				/>
-			</div>
-
-			<div>
-				<label for="password" class="block text-sm font-medium text-gray-700">Password</label>
-				<input
-					id="password"
-					type="password"
-					bind:value={password}
-					required
-					placeholder="••••••••"
-					minlength="8"
-					class="focus:border-opacity-50 mt-1 block w-full rounded border border-gray-300 px-3 py-2 shadow-sm focus:ring-2 focus:outline-none"
-					style="--tw-ring-color: var(--color-accent)"
-					disabled={isLoading}
-				/>
-				<p class="mt-1 text-xs text-gray-500">Minimum 8 characters</p>
-			</div>
-
-			<div>
-				<label for="role" class="block text-sm font-medium text-gray-700">Role</label>
-				<select
-					id="role"
-					bind:value={role}
-					class="focus:border-opacity-50 mt-1 block w-full rounded border border-gray-300 px-3 py-2 shadow-sm focus:ring-2 focus:outline-none"
-					style="--tw-ring-color: var(--color-accent)"
-					disabled={isLoading}
-				>
-					<option value="assistant">Assistant (Meter Reader)</option>
-					<option value="landlord">Landlord</option>
-					<option value="admin">Admin</option>
-				</select>
-			</div>
-
-			<button
-				type="submit"
-				disabled={isLoading}
-				class="w-full rounded px-4 py-2 font-medium text-white transition-opacity disabled:opacity-50"
-				style="background-color: var(--color-accent)"
-			>
-				{isLoading ? 'Creating user...' : 'Create User'}
-			</button>
-		</form>
+					{isLoading ? 'Creating user...' : 'Create User'}
+				</button>
+			</form>
+		{/if}
 	</div>
 </div>

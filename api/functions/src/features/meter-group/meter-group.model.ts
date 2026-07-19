@@ -11,15 +11,18 @@ export interface MeterGroup extends BaseModel {
   meter_name: string;
   utility_type: UtilityType;
   /**
-   * @deprecated Version tracking has moved to `Property.meter_groups[entry].current_version`.
-   * Submeter entries already track their own versions independently; main-meter entries are
-   * pending backfill (see `migrations/backfill-property-meter-versions.ts`). Do not write new
-   * data here — read paths should resolve from the property entry once that backfill lands.
+   * Deprecated FOR SUBMETERS ONLY — submeter version tracking moved to
+   * `Property.meter_groups[entry].current_version`. For **main meters this is still the live,
+   * required source of truth** for `Reading.meter_version`: `propertyService.recordMeterGroupReset`
+   * rejects main-meter resets and routes them here, and `resolveVersionsSource`/`resolveMeterVersion`
+   * read this field for main meters. The planned "migrate main meters too" backfill was never done
+   * and is not pending — do NOT delete this field. See
+   * `decisions/20260608_meter-group-version-tracking-moved-to-property.md` (Amendment 2026-07-19).
    */
   current_version: number;
   /**
-   * @deprecated Version history has moved to `Property.meter_groups[entry].versions`.
-   * See `current_version` deprecation note for migration status.
+   * Deprecated FOR SUBMETERS ONLY — see `current_version`. Still the live source of version history
+   * for **main meters**; do not delete.
    */
   versions: Record<string, MeterGroupVersionEntry>;
 }

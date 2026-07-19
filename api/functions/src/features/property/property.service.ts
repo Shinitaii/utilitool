@@ -1,4 +1,4 @@
-﻿import {AppError} from "../../utils/error.util";
+﻿import {AppError, getOrThrow} from "../../utils/error.util";
 import {PaginatedResult} from "../../utils/pagination.util";
 import {propertyRepository} from "./property.repository";
 import {CreatePropertyDTO, UpdatePropertyDTO} from "./property.dto";
@@ -14,6 +14,10 @@ import {Timestamp} from "firebase-admin/firestore";
 
 const validator = new PropertyValidator();
 const CACHE_TTL = 20 * 60; // 20 minutes
+
+function repoFor(userId: string): CachedRepository<Property> {
+  return new CachedRepository(propertyRepository, userId, "properties", CACHE_TTL);
+}
 
 type PropertySearchOptions = {
   roomName?: string;
@@ -35,29 +39,24 @@ function cleanMeterGroups(meterGroups: Record<string, {meter_group_id: string; i
 export const propertyService = {
   async create(userId: string, data: CreatePropertyDTO): Promise<Property> {
     await validator.validateCreate(data);
-    const cachedRepo = new CachedRepository(propertyRepository, userId, "properties", CACHE_TTL);
-    return cachedRepo.create({...data, meter_groups: cleanMeterGroups(data.meter_groups)});
+    return repoFor(userId).create({...data, meter_groups: cleanMeterGroups(data.meter_groups)});
   },
 
   async createBatch(userId: string, data: CreatePropertyDTO[]): Promise<Property[]> {
     await validator.validateBatchCreate(data);
-    const cachedRepo = new CachedRepository(propertyRepository, userId, "properties", CACHE_TTL);
-    return cachedRepo.createBatch(data.map((d) => ({...d, meter_groups: cleanMeterGroups(d.meter_groups)})));
+    return repoFor(userId).createBatch(data.map((d) => ({...d, meter_groups: cleanMeterGroups(d.meter_groups)})));
   },
 
   async getById(userId: string, id: string): Promise<Property | null> {
-    const cachedRepo = new CachedRepository(propertyRepository, userId, "properties", CACHE_TTL);
-    return cachedRepo.getById(id);
+    return repoFor(userId).getById(id);
   },
 
   async search(
     userId: string,
     options: PropertySearchOptions
   ): Promise<PaginatedResult<Property>> {
-    const cachedRepo = new CachedRepository(propertyRepository, userId, "properties", CACHE_TTL);
-
     // Need custom filtering for meter_group_id since it's in a nested map
-    const result = await cachedRepo.search({
+    const result = await repoFor(userId).search({
       limit: options.limit,
       orderBy: (options.sortBy ?? "created_at") as any,
       orderDirection: options.sortOrder ?? "desc",
@@ -84,43 +83,29 @@ export const propertyService = {
   },
 
   async update(userId: string, id: string, data: UpdatePropertyDTO): Promise<Property> {
-    const property = await propertyRepository.getById(id);
-
-    if (!property) {
-      throw new AppError(404, "Property not found");
-    }
+    const property = await getOrThrow(propertyRepository.getById.bind(propertyRepository), id, "Property");
 
     await validator.validateUpdate(property, data);
-    const cachedRepo = new CachedRepository(propertyRepository, userId, "properties", CACHE_TTL);
     const cleanData = data.meter_groups ? {...data, meter_groups: cleanMeterGroups(data.meter_groups)} : (data as any);
-    return cachedRepo.update(id, cleanData);
+    return repoFor(userId).update(id, cleanData);
   },
 
   async updateBatch(userId: string, updates: { id: string; data: UpdatePropertyDTO }[]): Promise<Property[]> {
     await validator.validateBatchUpdate(updates);
-    const cachedRepo = new CachedRepository(propertyRepository, userId, "properties", CACHE_TTL);
     const cleanUpdates = updates.map((u) => ({
       id: u.id,
       data: u.data.meter_groups ? {...u.data, meter_groups: cleanMeterGroups(u.data.meter_groups)} : (u.data as any),
     }));
-    return cachedRepo.updateBatch(cleanUpdates);
+    return repoFor(userId).updateBatch(cleanUpdates);
   },
 
   async delete(userId: string, id: string): Promise<void> {
-    const property = await propertyRepository.getById(id);
-    if (!property) {
-      throw new AppError(404, "Property not found");
-    }
-
-    const cachedRepo = new CachedRepository(propertyRepository, userId, "properties", CACHE_TTL);
-    await cachedRepo.delete(id);
+    await getOrThrow(propertyRepository.getById.bind(propertyRepository), id, "Property");
+    await repoFor(userId).delete(id);
   },
 
   async softDelete(userId: string, id: string): Promise<Property> {
-    const property = await propertyRepository.getById(id);
-    if (!property) {
-      throw new AppError(404, "Property not found");
-    }
+    await getOrThrow(propertyRepository.getById.bind(propertyRepository), id, "Property");
 
     await cascadeDeleteProperty(id);
     const deleted = await propertyRepository.getById(id);
@@ -130,10 +115,7 @@ export const propertyService = {
   },
 
   async restore(userId: string, id: string): Promise<Property> {
-    const property = await propertyRepository.getById(id);
-    if (!property) {
-      throw new AppError(404, "Property not found");
-    }
+    await getOrThrow(propertyRepository.getById.bind(propertyRepository), id, "Property");
 
     // cascadeRestoreProperty already refreshes id caches and invalidates list
     // caches (wholesale, for all users) for properties/readings/billings —
@@ -159,10 +141,7 @@ export const propertyService = {
    * own MeterGroupEntry version tracking (main meters stay on the meter group).
    */
   async recordMeterGroupReset(userId: string, propertyId: string, meterGroupId: string): Promise<Property> {
-    const property = await propertyRepository.getById(propertyId);
-    if (!property) {
-      throw new AppError(404, "Property not found");
-    }
+    const property = await getOrThrow(propertyRepository.getById.bind(propertyRepository), propertyId, "Property");
 
     const entryKey = Object.keys(property.meter_groups).find(
       (key) => property.meter_groups[key].meter_group_id === meterGroupId
@@ -207,8 +186,7 @@ export const propertyService = {
       versions: updatedVersions,
     };
 
-    const cachedRepo = new CachedRepository(propertyRepository, userId, "properties", CACHE_TTL);
-    return cachedRepo.update(propertyId, {
+    return repoFor(userId).update(propertyId, {
       meter_groups: {
         ...property.meter_groups,
         [entryKey]: updatedEntry,

@@ -340,7 +340,7 @@ export async function createReadingWithAutoBilling(
   const snap = await readingRef.get();
   const reading = snapshotToModel<Reading>(snap);
   await cacheSet(`utilitool:readings:id:${reading.id}`, reading, CACHE_TTL);
-  await listAppend(`utilitool:readings:all:${userId}`, reading);
+  await listAppend(`utilitool:readings:all:${userId}`, reading, CACHE_TTL);
 
   if (billingId) {
     const billing = await billingRepository.getById(billingId);
@@ -385,13 +385,13 @@ export async function createBatchReadingsWithAutoBilling(
     const snap = await readingRef.get();
     const reading = snapshotToModel<Reading>(snap);
     await cacheSet(`utilitool:readings:id:${reading.id}`, reading, CACHE_TTL);
-    await listAppend(`utilitool:readings:all:${userId}`, reading);
+    await listAppend(`utilitool:readings:all:${userId}`, reading, CACHE_TTL);
 
     if (billingId) {
       const billing = await billingRepository.getById(billingId);
       if (billing) {
         await cacheSet(`utilitool:billings:id:${billing.id}`, billing, 10 * 60);
-        await listAppend(`utilitool:billings:all:${userId}`, billing);
+        await listAppend(`utilitool:billings:all:${userId}`, billing, 10 * 60);
       }
     }
 

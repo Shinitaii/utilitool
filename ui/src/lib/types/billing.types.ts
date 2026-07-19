@@ -1,9 +1,11 @@
-import type { BaseModel } from './api.types';
+import type { BaseModel, FirestoreTimestamp } from './api.types';
 
 export interface Billing extends BaseModel {
 	property_id: string;
 	previous_reading_id: string;
 	current_reading_id: string;
+	meter_group_id: string;
+	billing_period_date: FirestoreTimestamp;
 	payment_status: 'pending' | 'paid';
 	paid_at?: string;
 }

@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPatch, apiDelete } from './client';
+import { apiGet, apiPost, apiPatch, apiDelete, toQueryString } from './client';
 import type {
 	Reading,
 	CreateReadingRequest,
@@ -16,21 +16,15 @@ export async function getReadings(params?: {
 	cursor?: string;
 	archived?: boolean;
 }): Promise<PaginatedResult<Reading>> {
-	const query = new URLSearchParams();
-	if (params?.meterGroupId) query.set('meterGroupId', params.meterGroupId);
-	if (params?.propertyId) query.set('propertyId', params.propertyId);
-	if (params?.startDate) query.set('startDate', params.startDate);
-	if (params?.endDate) query.set('endDate', params.endDate);
-	if (params?.limit) query.set('limit', params.limit.toString());
-	if (params?.cursor) query.set('cursor', params.cursor);
-	if (params?.archived) query.set('archived', 'true');
-
-	const path = query.toString() ? `/readings?${query}` : '/readings';
-	return apiGet<PaginatedResult<Reading>>(path);
+	return apiGet<PaginatedResult<Reading>>(`/readings${toQueryString(params)}`);
 }
 
 export async function getReadingById(id: string): Promise<Reading> {
 	return apiGet<Reading>(`/readings/${id}`);
+}
+
+export async function getReadingsByIds(ids: string[]): Promise<Reading[]> {
+	return apiGet<Reading[]>(`/readings/batch-get?ids=${ids.map(encodeURIComponent).join(',')}`);
 }
 
 export async function createReading(data: CreateReadingRequest): Promise<Reading> {

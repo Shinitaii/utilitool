@@ -439,25 +439,25 @@ export async function getBillingReports(args: GetBillingReportsArgs) {
   const userId = "chatbot"; // unused by reportsService — every report is scoped by query filters, not caller
 
   switch (args.reportType) {
-    case "summary":
-      return reportsService.getSummary(userId, query);
-    case "consumption": {
-      const report = await reportsService.getConsumption(userId, query);
-      return {
-        by_month: report.by_month,
-        by_property: report.by_property.map((p) => ({
-          propertyName: p.room_name,
-          electricity: p.electricity,
-          water: p.water,
-        })),
-      };
-    }
-    case "billing_trends":
-      return reportsService.getBillingTrends(userId, query);
-    case "collection_status":
-      return reportsService.getCollectionStatus(userId, query);
-    default:
-      throw new AppError(400, `Unknown reportType: ${args.reportType}`);
+  case "summary":
+    return reportsService.getSummary(userId, query);
+  case "consumption": {
+    const report = await reportsService.getConsumption(userId, query);
+    return {
+      by_month: report.by_month,
+      by_property: report.by_property.map((p) => ({
+        propertyName: p.room_name,
+        electricity: p.electricity,
+        water: p.water,
+      })),
+    };
+  }
+  case "billing_trends":
+    return reportsService.getBillingTrends(userId, query);
+  case "collection_status":
+    return reportsService.getCollectionStatus(userId, query);
+  default:
+    throw new AppError(400, `Unknown reportType: ${args.reportType}`);
   }
 }
 
