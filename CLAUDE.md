@@ -234,7 +234,7 @@ Each page/component is organized by:
 - ✅ Tenants (CRUD, batch; dynamic sorting)
 - ✅ Readings (CRUD, batch; auto-billing on single create; anomaly guard; meter rollback prevention; utility extraction)
 - ✅ Billings (CRUD, batch; normally auto-created; meter rollback prevention)
-- ✅ Billing Cycles (CRUD, batch, validation; editable via `PATCH /:id` for rate/consumption/date corrections; version-aware consumption (handles N meter resets cumulatively via `calculateTrueReading`/`resolveVersionsSource` in `reading.util.ts`); `POST /ocr` bill photo extraction; dynamic sorting)
+- ✅ Billing Cycles (CRUD, batch, validation; editable via `PATCH /:id` for rate/consumption/date corrections; version-aware consumption (handles N meter resets cumulatively via `calculateTrueReading`/`resolveVersionsSource` in `reading.util.ts`); `POST /ocr` bill photo extraction; dynamic sorting; rate-EMA — `rate_ema` per meter group recomputed on cycle create/update, feeds `Billing.estimated_cost`, see `api/functions/CLAUDE.md` → "Billing Cycles" for detail and `decisions/20260724_billing-cost-estimation-ml-finding.md` for the methodology)
 - ✅ Auth (Firebase Auth: sign up, login, logout)
 - ✅ Image Extraction (`POST /image-extraction/readings` + `POST /image-extraction/billings` — vision OCR via the user's configured `llm-config` vision provider, Groq or Ollama Cloud only; no Gemini)
 - ✅ Reports (`GET /reports/summary`, `/consumption`, `/billing-trends`, `/collection-status`)

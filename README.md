@@ -84,11 +84,12 @@ Starts API, UI, and the mobile web preview in watch mode, each in its own contai
 | Tenants | ✅ Complete — CRUD, batch |
 | Readings | ✅ Complete — auto-billing on create, anomaly guard, meter rollback prevention |
 | Billings | ✅ Complete — normally auto-created; manual escape hatch available |
-| Billing Cycles | ✅ Complete — validation (version-aware, handles N meter resets), OCR autofill via Gemini, editable for rate/consumption/date corrections |
-| Image Extraction | ✅ Complete — `POST /image-extraction/readings` + `/billings` (Gemini Vision) |
-| Reports | ✅ Complete — summary, consumption, billing trends, collection status |
-| Bills | ⚠️ Partial stub — `POST /bills/ocr` exists; no full service layer |
-| Users | ⚠️ Partial stub — `POST /users` for role management |
+| Billing Cycles | ✅ Complete — validation (version-aware, handles N meter resets), OCR autofill via the configured vision provider, editable for rate/consumption/date corrections, rate-EMA (`rate_ema` per meter group, feeds `Billing.estimated_cost` — see below) |
+| Image Extraction | ✅ Complete — `POST /image-extraction/readings` + `/billings` (Groq or Ollama Cloud vision provider only, configured via Settings → LLM Provider; no Gemini) |
+| Reports | ✅ Complete — summary, consumption, billing trends, collection status (+ combined `GET /reports`) |
+| Bills | ✅ Complete — `POST /bills/ocr` is a thin pass-through to Image Extraction's billing OCR |
+| Users | ✅ Complete — `POST /users` creates Auth + Firestore profile server-side; account creation is currently disabled by a single-tenant feature flag (`ACCOUNT_CREATION_DISABLED`) |
+| Rate-EMA cost estimation | ✅ Complete — per-meter-group EMA of `billing_rate` (`RATE_EMA_GAMMA_BY_UTILITY_TYPE = {water: 0.15, electricity: 0.01}`), estimates a bill's cost from known consumption before the official rate arrives; see `decisions/20260724_billing-cost-estimation-ml-finding.md` |
 
 All DELETE endpoints use soft-delete (no hard removal). `PATCH /:id/restore` reverses it.
 
@@ -101,10 +102,10 @@ All DELETE endpoints use soft-delete (no hard removal). `PATCH /:id/restore` rev
 | Properties | ✅ List + detail tabs, archive/restore |
 | Tenants | ✅ Searchable list, archive/restore |
 | Readings | ✅ Batch form + OCR suggest, archive/restore |
-| Billings | ✅ Cycle-centric, OCR autofill, cycle edit modal (rate/consumption/dates), archive/restore |
-| Reports | 🚧 Stub — API ready, UI not built |
-| Bills / OCR | 🚧 Stub — API ready, UI not built |
-| Settings | 🚧 Partial — payment + user management tabs scaffolded |
+| Billings | ✅ Cycle-centric, OCR autofill, cycle edit modal (rate/consumption/dates), archive/restore, "Pending Estimates" panel (rate-EMA `estimated_cost` for billings awaiting their official cycle/rate) |
+| Reports | ✅ Complete — filters, summary stat cards, consumption/billing-trends charts, collection-status cards, per-property table |
+| Bills / OCR | ✅ Complete — 3-step wizard (upload → review/map → submit) |
+| Settings | ✅ Payment + LLM Provider (chat/vision + Clear Cache) complete; user management form built but disabled by feature flag (single-tenant) |
 
 ### Mobile (Android)
 | Screen | Status |
