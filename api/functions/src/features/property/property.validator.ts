@@ -59,20 +59,18 @@ export class PropertyValidator {
       .filter((e) => e.is_main_meter);
     if (mainMeterEntries.length === 0) return;
 
-    // Fetch all properties with cursor-based pagination to avoid the 100-item hard limit
-    const allProperties = await fetchAllPages((cursor) => propertyRepository.search({
-      limit: 1000,
-      orderBy: "created_at",
-      cursor,
-    }));
-
+    // Targeted array-contains query per entry instead of a full-collection scan — see
+    // Property.main_meter_group_ids. limit 2, not 1: a second match after excluding this
+    // property indicates the uniqueness invariant is already violated, which should surface
+    // loudly rather than silently taking the first match.
     for (const entry of mainMeterEntries) {
-      const conflict = allProperties.find((p) => {
-        if (excludePropertyId && p.id === excludePropertyId) return false;
-        return Object.values(p.meter_groups).some(
-          (pv) => pv.meter_group_id === entry.meter_group_id && pv.is_main_meter
-        );
+      const {data: candidates} = await propertyRepository.search({
+        limit: 2,
+        orderBy: "created_at",
+        filters: {main_meter_group_ids: {$arrayContains: entry.meter_group_id}},
       });
+
+      const conflict = candidates.find((p) => !excludePropertyId || p.id !== excludePropertyId);
 
       if (conflict) {
         throw new AppError(
@@ -97,9 +95,39 @@ export class PropertyValidator {
     }
   }
 
+  /**
+   * Batch-resolves existing main-meter owners for a set of meter_group_ids via targeted
+   * array-contains-any queries (chunked at Firestore's 10-value cap) instead of a
+   * full-collection scan — see Property.main_meter_group_ids.
+   */
+  private async queryMainMeterOwners(meterGroupIds: string[]): Promise<Map<string, Property>> {
+    const owners = new Map<string, Property>();
+    if (meterGroupIds.length === 0) return owners;
+
+    const chunkSize = 10;
+    for (let i = 0; i < meterGroupIds.length; i += chunkSize) {
+      const chunk = meterGroupIds.slice(i, i + chunkSize);
+      const {data: candidates} = await propertyRepository.search({
+        limit: 1000,
+        orderBy: "created_at",
+        filters: {main_meter_group_ids: {$arrayContainsAny: chunk}},
+      });
+      for (const p of candidates) {
+        for (const groupId of p.main_meter_group_ids) {
+          if (chunk.includes(groupId) && !owners.has(groupId)) {
+            owners.set(groupId, p);
+          }
+        }
+      }
+    }
+
+    return owners;
+  }
+
   async validateBatchCreate(data: CreatePropertyDTO[]): Promise<void> {
     const seenRoomNames = new Set<string>();
     const allMeterGroupIds = new Set<string>();
+    const mainMeterGroupIds = new Set<string>();
 
     for (const item of data) {
       const normalizedRoomName = normalizeRoomName(item.room_name);
@@ -110,7 +138,10 @@ export class PropertyValidator {
       seenRoomNames.add(normalizedRoomName);
       Object.values(item.meter_groups)
         .filter((e): e is MeterGroupEntry => e !== undefined)
-        .forEach((e) => allMeterGroupIds.add(e.meter_group_id));
+        .forEach((e) => {
+          allMeterGroupIds.add(e.meter_group_id);
+          if (e.is_main_meter) mainMeterGroupIds.add(e.meter_group_id);
+        });
     }
 
     await this.ensureMeterGroupsExist(Array.from(allMeterGroupIds));
@@ -130,28 +161,12 @@ export class PropertyValidator {
       }
     }
 
-    // Batch fetch all existing properties once instead of per-item
-    const allProperties = await fetchAllPages((cursor) => propertyRepository.search({
-      limit: 1000,
-      orderBy: "created_at",
-      cursor,
-    }));
+    const mainMeterOwnerByGroupId = await this.queryMainMeterOwners(Array.from(mainMeterGroupIds));
 
-    // Pre-index existing properties for O(1) conflict lookups
-    const mainMeterOwnerByGroupId = new Map<string, Property>();
-    const propertyByNormalizedRoomName = new Map<string, Property>();
-    for (const p of allProperties) {
-      propertyByNormalizedRoomName.set(normalizeRoomName(p.room_name), p);
-      for (const pv of Object.values(p.meter_groups)) {
-        if (pv.is_main_meter) {
-          mainMeterOwnerByGroupId.set(pv.meter_group_id, p);
-        }
-      }
-    }
-
-    // Validate all items at once using cached property list
+    // Validate each item: main meter uniqueness via the targeted owner map, room name
+    // uniqueness via the same indexed equality query validateCreate/validateUpdate use
+    // (batch is capped at 10 items, so N targeted queries here stays cheap).
     for (const item of data) {
-      // Check main meter uniqueness against all properties
       const mainMeterEntries = Object.values(item.meter_groups)
         .filter((e): e is MeterGroupEntry => e !== undefined)
         .filter((e) => e.is_main_meter);
@@ -167,10 +182,7 @@ export class PropertyValidator {
         }
       }
 
-      // Check room name uniqueness
-      const normalizedRoomName = normalizeRoomName(item.room_name);
-      const duplicate = propertyByNormalizedRoomName.get(normalizedRoomName);
-
+      const duplicate = await this.findDuplicateProperty(item.room_name);
       if (duplicate) {
         logger.warn({room_name: item.room_name}, "Duplicate property batch creation attempt");
         throw new AppError(409, "Room name already exists");
@@ -232,32 +244,25 @@ export class PropertyValidator {
       await this.ensureMeterGroupsExist(Array.from(allMeterGroupIds));
     }
 
-    // Batch fetch all existing properties for main meter uniqueness check
-    const allProperties = await fetchAllPages((cursor) => propertyRepository.search({
-      limit: 1000,
-      orderBy: "created_at",
-      cursor,
-    }));
-
-    // Pre-index existing properties for O(1) conflict lookups
-    const mainMeterOwnerByGroupId = new Map<string, Property>();
-    const propertyByNormalizedRoomName = new Map<string, Property>();
-    for (const p of allProperties) {
-      propertyByNormalizedRoomName.set(normalizeRoomName(p.room_name), p);
-      for (const pv of Object.values(p.meter_groups)) {
-        if (pv.is_main_meter) {
-          mainMeterOwnerByGroupId.set(pv.meter_group_id, p);
-        }
+    // Targeted main-meter-owner lookup instead of a full-collection scan — see
+    // Property.main_meter_group_ids / queryMainMeterOwners's doc comment.
+    const mainMeterGroupIds = new Set<string>();
+    for (const update of updates) {
+      if (update.data.meter_groups) {
+        Object.values(update.data.meter_groups)
+          .filter((e): e is MeterGroupEntry => e !== undefined)
+          .filter((e) => e.is_main_meter)
+          .forEach((e) => mainMeterGroupIds.add(e.meter_group_id));
       }
     }
+    const mainMeterOwnerByGroupId = await this.queryMainMeterOwners(Array.from(mainMeterGroupIds));
 
-    // Validate each update using cached data
+    // Validate each update
     for (let i = 0; i < updates.length; i++) {
       const property = properties[i]!;
       const update = updates[i];
 
       if (update.data.meter_groups) {
-        // Check main meter uniqueness using cached allProperties
         const mainMeterEntries = Object.values(update.data.meter_groups)
           .filter((e): e is MeterGroupEntry => e !== undefined)
           .filter((e) => e.is_main_meter);
@@ -275,10 +280,9 @@ export class PropertyValidator {
       }
 
       if (update.data.room_name) {
-        const normalizedRoomName = normalizeRoomName(update.data.room_name);
-        const duplicate = propertyByNormalizedRoomName.get(normalizedRoomName);
+        const duplicate = await this.findDuplicateProperty(update.data.room_name, property.id);
 
-        if (duplicate && duplicate.id !== property.id) {
+        if (duplicate) {
           logger.warn({room_name: update.data.room_name}, "Duplicate property update attempt");
           throw new AppError(409, "Room name already exists");
         }

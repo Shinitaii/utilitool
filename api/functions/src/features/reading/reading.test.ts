@@ -229,7 +229,8 @@ describe('readingService', () => {
 
         // First collection() call: READINGS query → has previous reading
         // Second collection() call: PROPERTIES.doc(property_id) → property exists
-        // Third collection() call: READINGS.doc() for new reading
+        // Third collection() call: BILLING_CYCLES query (getLatestRateEma) → no cycles yet
+        // Fourth collection() call: READINGS.doc() for new reading
         jest.mocked(firestore.collection)
           .mockReturnValueOnce({
             where: jest.fn().mockReturnThis(),
@@ -246,6 +247,12 @@ describe('readingService', () => {
                 data: () => ({ is_deleted: false }),
               }),
             }),
+          })
+          .mockReturnValueOnce({
+            where: jest.fn().mockReturnThis(),
+            orderBy: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
           })
           .mockReturnValueOnce({
             doc: jest.fn().mockReturnValue({

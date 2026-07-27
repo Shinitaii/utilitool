@@ -24,6 +24,10 @@ export type RangeFilter = {
   $lte?: FilterValue;
   $gt?: FilterValue;
   $lt?: FilterValue;
+  $arrayContains?: FilterValue;
+  // Firestore caps array-contains-any at 10 values — matches this codebase's
+  // existing batch-size cap (e.g. CreateBillingCycleBatchDTOSchema).
+  $arrayContainsAny?: FilterValue[];
 };
 
 export type SearchFilter<T> = {
@@ -65,7 +69,11 @@ export class Repository<T extends BaseModel> {
       for (const [field, value] of Object.entries(options.filters)) {
         if (value !== undefined && value !== null) {
           // Check if value is a range filter object
-          if (typeof value === "object" && ("$gte" in value || "$lte" in value || "$gt" in value || "$lt" in value)) {
+          if (
+            typeof value === "object" &&
+            ("$gte" in value || "$lte" in value || "$gt" in value || "$lt" in value ||
+              "$arrayContains" in value || "$arrayContainsAny" in value)
+          ) {
             const rangeFilter = value as RangeFilter;
             if (rangeFilter.$gte !== undefined && rangeFilter.$gte !== null) {
               query = query.where(field, ">=", rangeFilter.$gte as never);
@@ -78,6 +86,18 @@ export class Repository<T extends BaseModel> {
             }
             if (rangeFilter.$lt !== undefined && rangeFilter.$lt !== null) {
               query = query.where(field, "<", rangeFilter.$lt as never);
+            }
+            if (rangeFilter.$arrayContains !== undefined && rangeFilter.$arrayContains !== null) {
+              query = query.where(field, "array-contains", rangeFilter.$arrayContains as never);
+            }
+            if (rangeFilter.$arrayContainsAny !== undefined && rangeFilter.$arrayContainsAny !== null) {
+              if (rangeFilter.$arrayContainsAny.length > 10) {
+                throw new Error(
+                  `$arrayContainsAny on "${String(field)}" received ${rangeFilter.$arrayContainsAny.length} ` +
+                  "values — Firestore's array-contains-any caps at 10."
+                );
+              }
+              query = query.where(field, "array-contains-any", rangeFilter.$arrayContainsAny as never);
             }
           } else {
             // Equality filter

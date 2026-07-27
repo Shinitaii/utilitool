@@ -58,6 +58,7 @@ describe('propertyService', () => {
         room_name: 'Room 101',
         tenant_amount: 2,
         meter_groups: { electricity: { meter_group_id: 'mg-1', is_main_meter: true } },
+        main_meter_group_ids: ['mg-1'],
       });
       expect(result.id).toBe('prop-1');
     });
@@ -123,7 +124,9 @@ describe('propertyService', () => {
       ];
       const result = await propertyService.createBatch(TEST_USER_ID, input);
 
-      expect(propertyRepository.createBatch).toHaveBeenCalledWith(input);
+      expect(propertyRepository.createBatch).toHaveBeenCalledWith(
+        input.map((d) => ({...d, main_meter_group_ids: ['mg-1']}))
+      );
       expect(result).toHaveLength(2);
     });
 

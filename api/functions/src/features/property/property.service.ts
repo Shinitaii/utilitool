@@ -36,15 +36,38 @@ function cleanMeterGroups(meterGroups: Record<string, {meter_group_id: string; i
   ) as Record<string, {meter_group_id: string; is_main_meter: boolean}>;
 }
 
+// Derives the denormalized main_meter_group_ids list from a cleaned meter_groups map — see
+// Property.main_meter_group_ids's doc comment. Kept in sync at every write that touches
+// meter_groups so targeted array-contains queries can replace full-collection main-meter scans.
+function deriveMainMeterGroupIds(
+  meterGroups: Record<string, {meter_group_id: string; is_main_meter: boolean}>
+): string[] {
+  return Object.values(meterGroups)
+    .filter((e) => e.is_main_meter)
+    .map((e) => e.meter_group_id);
+}
+
 export const propertyService = {
   async create(userId: string, data: CreatePropertyDTO): Promise<Property> {
     await validator.validateCreate(data);
-    return repoFor(userId).create({...data, meter_groups: cleanMeterGroups(data.meter_groups)});
+    const meterGroups = cleanMeterGroups(data.meter_groups);
+    return repoFor(userId).create({
+      ...data,
+      meter_groups: meterGroups,
+      main_meter_group_ids: deriveMainMeterGroupIds(meterGroups),
+    });
   },
 
   async createBatch(userId: string, data: CreatePropertyDTO[]): Promise<Property[]> {
     await validator.validateBatchCreate(data);
-    return repoFor(userId).createBatch(data.map((d) => ({...d, meter_groups: cleanMeterGroups(d.meter_groups)})));
+    return repoFor(userId).createBatch(data.map((d) => {
+      const meterGroups = cleanMeterGroups(d.meter_groups);
+      return {
+        ...d,
+        meter_groups: meterGroups,
+        main_meter_group_ids: deriveMainMeterGroupIds(meterGroups),
+      };
+    }));
   },
 
   async getById(userId: string, id: string): Promise<Property | null> {
@@ -86,16 +109,32 @@ export const propertyService = {
     const property = await getOrThrow(propertyRepository.getById.bind(propertyRepository), id, "Property");
 
     await validator.validateUpdate(property, data);
-    const cleanData = data.meter_groups ? {...data, meter_groups: cleanMeterGroups(data.meter_groups)} : (data as any);
+    let cleanData: any = data;
+    if (data.meter_groups) {
+      const meterGroups = cleanMeterGroups(data.meter_groups);
+      cleanData = {
+        ...data,
+        meter_groups: meterGroups,
+        main_meter_group_ids: deriveMainMeterGroupIds(meterGroups),
+      };
+    }
     return repoFor(userId).update(id, cleanData);
   },
 
   async updateBatch(userId: string, updates: { id: string; data: UpdatePropertyDTO }[]): Promise<Property[]> {
     await validator.validateBatchUpdate(updates);
-    const cleanUpdates = updates.map((u) => ({
-      id: u.id,
-      data: u.data.meter_groups ? {...u.data, meter_groups: cleanMeterGroups(u.data.meter_groups)} : (u.data as any),
-    }));
+    const cleanUpdates = updates.map((u) => {
+      if (!u.data.meter_groups) return {id: u.id, data: u.data as any};
+      const meterGroups = cleanMeterGroups(u.data.meter_groups);
+      return {
+        id: u.id,
+        data: {
+          ...u.data,
+          meter_groups: meterGroups,
+          main_meter_group_ids: deriveMainMeterGroupIds(meterGroups),
+        } as any,
+      };
+    });
     return repoFor(userId).updateBatch(cleanUpdates);
   },
 

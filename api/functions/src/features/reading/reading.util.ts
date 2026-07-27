@@ -4,13 +4,15 @@ import {firestore} from "../../config/firebase.config";
 import {COLLECTIONS} from "../../constants/collection.constants";
 import {snapshotToModel} from "../../utils/firestore.util";
 import {cacheSet} from "../../utils/cache.util";
-import {listAppend} from "../../utils/list-cache.util";
+import {listAppend, listAppendMany} from "../../utils/list-cache.util";
 import {billingService} from "../billing/billing.service";
 import {billingRepository} from "../billing/billing.repository";
+import {billingCycleRepository} from "../billing-cycle/billing-cycle.repository";
 import {readingRepository} from "./reading.repository";
 import {CachedRepository} from "../../lib/cached-repository.lib";
 import type {CreateReadingDTO} from "./reading.dto";
 import type {Reading} from "./reading.model";
+import type {Billing} from "../billing/billing.model";
 import type {MeterGroup, MeterGroupVersionEntry} from "../meter-group/meter-group.model";
 import type {Property} from "../property/property.model";
 
@@ -224,6 +226,33 @@ export function isAlreadyExistsError(err: unknown): boolean {
   return code === 6 || code === "already-exists";
 }
 
+// Passed to the CachedRepository constructed below — unused by searchDirect (which bypasses
+// caching entirely), kept only to match billing-cycle.service.ts's own TTL for this feature.
+const BILLING_CYCLE_CACHE_TTL = 15 * 60;
+
+/**
+ * Reads the meter group's latest cycle's rate_ema, for estimating a new billing's cost before
+ * the reading-creation transaction opens (Firestore transactions require all reads before any
+ * writes). Uses CachedRepository.searchDirect — the sanctioned cache-bypass escape hatch for
+ * correctness-critical, narrowly-scoped reads (see cached-repository.lib.ts) — constructed
+ * directly here rather than imported from billing-cycle.service.ts (that service already
+ * imports from this file, so importing it back here would create a circular dependency;
+ * searchDirect lives on the generic CachedRepository class, so this needs no import from
+ * billing-cycle.service.ts at all).
+ * Returns null when the meter group has no cycles yet, or none have been backfilled/computed
+ * with a rate_ema (see scripts/backfill-rate-ema.ts).
+ */
+async function getLatestRateEma(userId: string, meterGroupId: string): Promise<number | null> {
+  const cachedRepo = new CachedRepository(billingCycleRepository, userId, "billing-cycles", BILLING_CYCLE_CACHE_TTL);
+  const {data} = await cachedRepo.searchDirect({
+    limit: 1,
+    orderBy: "billing_start_date",
+    orderDirection: "desc",
+    filters: {meter_group_id: meterGroupId},
+  });
+  return data[0]?.rate_ema ?? null;
+}
+
 /**
  * Runs the write side of "create reading + auto-billing" inside a Firestore
  * transaction, once a previous-month reading has been found. The `prevReading`/
@@ -241,6 +270,7 @@ async function runCreateReadingTransaction(
   prevReadingId: string,
   prevReadingData: any,
   propertyId: string,
+  latestCycleRateEma: number | null,
 ): Promise<{readingRef: FirebaseFirestore.DocumentReference; billingId: string}> {
   const newReadingRef = firestore.collection(COLLECTIONS.READINGS).doc();
   const lockRef = firestore.collection(COLLECTIONS.READING_LOCKS).doc(
@@ -281,6 +311,7 @@ async function runCreateReadingTransaction(
         newReadingRef.id,
         prevReadingData,
         newReadingForBilling,
+        latestCycleRateEma,
       );
     });
   } catch (err) {
@@ -329,12 +360,15 @@ export async function createReadingWithAutoBilling(
     return cachedRepo.create(payload);
   }
 
+  const latestCycleRateEma = await getLatestRateEma(userId, data.meter_group_id);
+
   const {readingRef, billingId} = await runCreateReadingTransaction(
     data,
     meterVersion,
     prevReading.id,
     prevReading.data,
     propertySnap.id,
+    latestCycleRateEma,
   );
 
   const snap = await readingRef.get();
@@ -358,21 +392,33 @@ export async function createReadingWithAutoBilling(
  * For each reading, if a previous-month reading exists, creates
  * the reading + Billing atomically in a transaction.
  * Parallelizes across readings.
+ *
+ * Cache population is batched once across the whole call (after every item's write
+ * settles), not per-item inside the parallel map: the list cache is a single
+ * read-modify-write key per user, so N concurrent single-item `listAppend` calls on it
+ * (one per batch item) would race — the same class of bug `listAppendMany` was
+ * introduced to fix in `CachedRepository.createBatch` (see `cached-repository.lib.ts`).
+ * Reading/billing writes themselves still go through the raw repositories (not
+ * `CachedRepository.create()`, which would reintroduce the same per-item list-append).
  */
 export async function createBatchReadingsWithAutoBilling(
   userId: string,
   readingsWithVersion: ReadingCreatePayload[],
 ): Promise<Reading[]> {
-  const cachedRepo = new CachedRepository(readingRepository, userId, "readings", CACHE_TTL);
-
-  const readingPromises = readingsWithVersion.map(async (readingData) => {
+  const results = await Promise.all(readingsWithVersion.map(async (readingData) => {
     // Look for previous-month reading scoped to this property
     const prevReading = await findPreviousMonthReading(readingData.meter_group_id, readingData.property_id, readingData.reading_date);
 
     // If no previous reading, just create the reading
     if (!prevReading) {
-      return cachedRepo.create(readingData);
+      const reading = await readingRepository.create(readingData);
+      return {reading, billing: null as Billing | null};
     }
+
+    // Not deduplicated per meter_group_id across the batch — batches are capped small and
+    // this mirrors the existing per-reading Promise.all parallelization, so a handful of
+    // redundant reads for readings sharing a meter group is a non-issue here.
+    const latestCycleRateEma = await getLatestRateEma(userId, readingData.meter_group_id);
 
     const {readingRef, billingId} = await runCreateReadingTransaction(
       readingData,
@@ -380,23 +426,27 @@ export async function createBatchReadingsWithAutoBilling(
       prevReading.id,
       prevReading.data,
       readingData.property_id,
+      latestCycleRateEma,
     );
 
     const snap = await readingRef.get();
     const reading = snapshotToModel<Reading>(snap);
-    await cacheSet(`utilitool:readings:id:${reading.id}`, reading, CACHE_TTL);
-    await listAppend(`utilitool:readings:all:${userId}`, reading, CACHE_TTL);
+    const billing = billingId ? await billingRepository.getById(billingId) : null;
 
-    if (billingId) {
-      const billing = await billingRepository.getById(billingId);
-      if (billing) {
-        await cacheSet(`utilitool:billings:id:${billing.id}`, billing, 10 * 60);
-        await listAppend(`utilitool:billings:all:${userId}`, billing, 10 * 60);
-      }
-    }
+    return {reading, billing};
+  }));
 
-    return reading;
-  });
+  const readings = results.map((r) => r.reading);
+  const billings = results
+    .map((r) => r.billing)
+    .filter((b): b is Billing => b !== null);
 
-  return Promise.all(readingPromises);
+  await Promise.all([
+    Promise.all(readings.map((r) => cacheSet(`utilitool:readings:id:${r.id}`, r, CACHE_TTL))),
+    listAppendMany(`utilitool:readings:all:${userId}`, readings, CACHE_TTL),
+    Promise.all(billings.map((b) => cacheSet(`utilitool:billings:id:${b.id}`, b, 10 * 60))),
+    listAppendMany(`utilitool:billings:all:${userId}`, billings, 10 * 60),
+  ]);
+
+  return readings;
 }
