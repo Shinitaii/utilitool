@@ -183,6 +183,67 @@
 		return selectedMeterGroup?.utility_type || 'electricity';
 	});
 
+	// Billings referenced by any cycle's billing_ids — everything else is still "uncycled"
+	// (the official rate/amount hasn't landed yet).
+	const cycledBillingIds = $derived.by(() => {
+		const ids = new SvelteSet<string>();
+		for (const cycle of cycles) {
+			for (const billingId of Object.keys(cycle.billing_ids)) ids.add(billingId);
+		}
+		return ids;
+	});
+
+	// Show derived-estimate row toggle — off by default so the list stays scoped to genuinely
+	// pending (uncycled) billings. A main-meter property's billing is derived from
+	// (total - submeters) at the same moment its cycle is created, so it's never actually
+	// "waiting" the way a physically-metered property is — but it does carry a real
+	// estimated_cost (computed against the *previous* cycle's rate_ema), so it belongs in this
+	// same list once it exists, not a separate comparison view.
+	let showDerivedEstimates = $state(false);
+
+	function isMainMeterBilling(billing: Billing): boolean {
+		const property = properties.find((p) => p.id === billing.property_id);
+		return Object.values(property?.meter_groups ?? {}).some(
+			(entry) =>
+				typeof entry !== 'string' &&
+				entry?.meter_group_id === billing.meter_group_id &&
+				entry?.is_main_meter
+		);
+	}
+
+	// != null (loose) deliberately treats both null and undefined as "no usable estimate" —
+	// billings created before this field existed have it missing entirely (undefined), not
+	// null, and a strict !== null check would have let all of that pre-existing history back in.
+	function hasEstimate(billing: Billing): boolean {
+		return billing.estimated_cost != null;
+	}
+
+	// Uncycled billings that do have a usable rate-EMA estimate — the "before the official bill
+	// lands" view.
+	const pendingEstimateBillings = $derived.by(() =>
+		allBillings.filter(
+			(b) => b.payment_status === 'pending' && hasEstimate(b) && !cycledBillingIds.has(b.id)
+		)
+	);
+
+	// The single most recent already-cycled main-meter billing per meter group — the one just
+	// derived alongside its cycle, which the "uncycled only" filter above would otherwise hide
+	// entirely even though it belongs in this list. Scoped to "most recent per meter group"
+	// rather than every main-meter billing ever, so this doesn't grow unbounded as more cycles
+	// accumulate over time. Only surfaced when the toggle is on.
+	const derivedEstimateBillings = $derived.by(() => {
+		if (!showDerivedEstimates) return [];
+		const latestByMeterGroup = new SvelteMap<string, Billing>();
+		for (const b of allBillings) {
+			if (!hasEstimate(b) || !cycledBillingIds.has(b.id) || !isMainMeterBilling(b)) continue;
+			const current = latestByMeterGroup.get(b.meter_group_id);
+			if (!current || toDate(b.billing_period_date) > toDate(current.billing_period_date)) {
+				latestByMeterGroup.set(b.meter_group_id, b);
+			}
+		}
+		return [...latestByMeterGroup.values()];
+	});
+
 	$effect(() => {
 		if (
 			cycleFormLastChanged === 'consumption' ||
@@ -1078,6 +1139,66 @@
 	{#if error}
 		<div class="rounded-lg bg-red-50 p-4 text-sm text-red-700">
 			{error}
+		</div>
+	{/if}
+
+	{#if pendingEstimateBillings.length > 0 || derivedEstimateBillings.length > 0}
+		<div class="rounded-lg border border-gray-200 bg-white">
+			<div class="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+				<div>
+					<h2 class="font-semibold">Pending Estimates</h2>
+					<p class="mt-1 text-sm text-gray-500">
+						Readings already captured, official bill not in yet — estimated from the meter group's
+						recent rate history.
+					</p>
+				</div>
+				<label class="flex items-center gap-2 text-sm text-gray-600">
+					<input type="checkbox" bind:checked={showDerivedEstimates} class="h-4 w-4" />
+					Show derived estimates (main meter)
+				</label>
+			</div>
+			<table class="w-full text-sm">
+				<thead>
+					<tr
+						class="border-b border-gray-100 text-left text-xs font-medium text-gray-500 uppercase"
+					>
+						<th class="px-6 py-2">Property</th>
+						<th class="px-6 py-2 text-right">Estimated Amount</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each pendingEstimateBillings as billing (billing.id)}
+						{@const billingProperty = properties.find((p) => p.id === billing.property_id)}
+						<tr class="border-b border-gray-50 last:border-0">
+							<td class="px-6 py-3 text-gray-900"
+								>{billingProperty?.room_name ?? 'Unknown Property'}</td
+							>
+							<td class="px-6 py-3 text-right font-semibold text-gray-700">
+								~{formatCurrency(billing.estimated_cost ?? 0)}
+								<span
+									class="ml-1 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700"
+									>estimated</span
+								>
+							</td>
+						</tr>
+					{/each}
+					{#each derivedEstimateBillings as billing (billing.id)}
+						{@const billingProperty = properties.find((p) => p.id === billing.property_id)}
+						<tr class="border-b border-gray-50 last:border-0">
+							<td class="px-6 py-3 text-gray-900"
+								>{billingProperty?.room_name ?? 'Unknown Property'}</td
+							>
+							<td class="px-6 py-3 text-right font-semibold text-gray-700">
+								~{formatCurrency(billing.estimated_cost ?? 0)}
+								<span
+									class="ml-1 rounded bg-purple-50 px-1.5 py-0.5 text-[10px] font-medium text-purple-700"
+									>derived</span
+								>
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
 		</div>
 	{/if}
 
