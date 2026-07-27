@@ -46,9 +46,16 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
 	let response: Response;
 	try {
-		response = await fetch(url, { ...fetchOptions, headers, signal: controller.signal });
-	} finally {
-		clearTimeout(timeoutId);
+		try {
+			response = await fetch(url, { ...fetchOptions, headers, signal: controller.signal });
+		} finally {
+			clearTimeout(timeoutId);
+		}
+	} catch {
+		throw {
+			status: 0,
+			message: 'Could not reach the server. Check your connection and that the API is running.'
+		} satisfies ApiError;
 	}
 
 	// Handle 401 by force-refreshing token and retrying once
@@ -62,9 +69,20 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 			const retryController = new AbortController();
 			const retryTimeoutId = setTimeout(() => retryController.abort(), 20_000);
 			try {
-				response = await fetch(url, { ...fetchOptions, headers, signal: retryController.signal });
-			} finally {
-				clearTimeout(retryTimeoutId);
+				try {
+					response = await fetch(url, {
+						...fetchOptions,
+						headers,
+						signal: retryController.signal
+					});
+				} finally {
+					clearTimeout(retryTimeoutId);
+				}
+			} catch {
+				throw {
+					status: 0,
+					message: 'Could not reach the server. Check your connection and that the API is running.'
+				} satisfies ApiError;
 			}
 		}
 	}
