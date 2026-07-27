@@ -19,9 +19,12 @@ export class TenantValidator {
   ): Promise<Tenant | undefined> {
     // Indexed query scoped to one property — avoids full collection scan
     const normalizedTenantName = normalizeTenantName(tenantName);
+    // .limit(1000) — defense-in-depth; already scoped to one property_id, low risk, but matches
+    // the same-shape cap applied everywhere else in this codebase.
     const snap = await collectionRef(COLLECTIONS.TENANTS)
       .where("property_id", "==", propertyId)
       .where("is_deleted", "==", false)
+      .limit(1000)
       .get();
 
     return snap.docs
@@ -83,6 +86,7 @@ export class TenantValidator {
         collectionRef(COLLECTIONS.TENANTS)
           .where("property_id", "==", propertyId)
           .where("is_deleted", "==", false)
+          .limit(1000)
           .get()
       )
     );
@@ -186,6 +190,7 @@ export class TenantValidator {
         const snap = collectionRef(COLLECTIONS.TENANTS)
           .where("property_id", "==", propertyId)
           .where("is_deleted", "==", false)
+          .limit(1000)
           .get();
         return snap;
       })
