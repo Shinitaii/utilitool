@@ -72,20 +72,10 @@ export const GetReadingsQueryDTOSchema = z
     ),
   })
   .superRefine((value, context) => {
-    if (value.meterGroupId && value.cursor) {
-      context.addIssue({
-        code: "custom",
-        message: "cursor cannot be combined with meterGroupId",
-        path: ["cursor"],
-      });
-    }
-    if (value.propertyId && value.cursor) {
-      context.addIssue({
-        code: "custom",
-        message: "cursor cannot be combined with propertyId",
-        path: ["cursor"],
-      });
-    }
+    // meterGroupId/propertyId are applied in-memory by CachedRepository.search()
+    // (load-all-then-filter-then-paginate), so cursor pagination works fine combined
+    // with them. Only the startDate/endDate path uses a separate Firestore query that
+    // doesn't accept a resumption cursor (see reading.service.ts search()).
     if ((value.startDate || value.endDate) && value.cursor) {
       context.addIssue({
         code: "custom",
