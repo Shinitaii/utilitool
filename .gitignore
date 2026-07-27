@@ -31,6 +31,8 @@ npm-debug.log*
 decisions/
 .claude/
 
+# Scripts for migrations, do not remove.
+api/functions/scripts/
 
 # Personal Claude Code hook config (machine-specific absolute paths)
 .claude/settings.local.json
