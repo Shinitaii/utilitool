@@ -244,7 +244,9 @@
 
 				const readingPromises = [];
 				if (electricityId)
-					readingPromises.push(getReadings({ meterGroupId: electricityId, propertyId, limit: 100 }));
+					readingPromises.push(
+						getReadings({ meterGroupId: electricityId, propertyId, limit: 100 })
+					);
 				if (waterId)
 					readingPromises.push(getReadings({ meterGroupId: waterId, propertyId, limit: 100 }));
 
@@ -291,7 +293,12 @@
 	// separately nested tab row, removing one level of the page's tab-within-tab nesting.
 	const flatTabs = [
 		{ key: 'tenants', label: 'Tenants', section: 'tenants' as const },
-		{ key: 'readings-all', label: 'Readings · All', section: 'readings' as const, filter: 'all' as const },
+		{
+			key: 'readings-all',
+			label: 'Readings · All',
+			section: 'readings' as const,
+			filter: 'all' as const
+		},
 		{
 			key: 'readings-electricity',
 			label: 'Readings · Electricity',
@@ -304,7 +311,12 @@
 			section: 'readings' as const,
 			filter: 'water' as const
 		},
-		{ key: 'billings-all', label: 'Billings · All', section: 'billings' as const, filter: 'all' as const },
+		{
+			key: 'billings-all',
+			label: 'Billings · All',
+			section: 'billings' as const,
+			filter: 'all' as const
+		},
 		{
 			key: 'billings-electricity',
 			label: 'Billings · Electricity',
@@ -625,7 +637,9 @@
 								<p>
 									<span class="font-medium">Electricity:</span>
 									<span class="text-gray-900">
-										{getMeterGroupName(getMeterGroupId(selectedProperty.meter_groups.electricity) || '')}
+										{getMeterGroupName(
+											getMeterGroupId(selectedProperty.meter_groups.electricity) || ''
+										)}
 									</span>
 									{#if isMainMeterEntry(selectedProperty.meter_groups.electricity)}
 										<span
@@ -663,7 +677,8 @@
 									aria-selected={isFlatTabActive(tab)}
 									aria-controls={`tab-panel-${tab.section}`}
 									id={`tab-${tab.key}`}
-									onclick={() => handleTabChange(tab.section, 'filter' in tab ? tab.filter : undefined)}
+									onclick={() =>
+										handleTabChange(tab.section, 'filter' in tab ? tab.filter : undefined)}
 									class="px-4 py-3 text-sm font-medium transition {isFlatTabActive(tab)
 										? 'border-b-2 border-blue-600 text-blue-600'
 										: 'text-gray-600 hover:text-gray-900'}"
@@ -1008,4 +1023,3 @@
 		/>
 	</div>
 </EditModal>
-

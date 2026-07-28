@@ -115,8 +115,7 @@ export function createCrudStore<T extends { id: string }>(): CrudStore<T> {
 		async handleBatchDelete(
 			deleteFn,
 			reload,
-			confirmFn = (n) =>
-				confirmAsync('Archive items', `Archive ${n} item(s)?`, { danger: true })
+			confirmFn = (n) => confirmAsync('Archive items', `Archive ${n} item(s)?`, { danger: true })
 		) {
 			if (selectedIds.size === 0) return;
 			if (!(await confirmFn(selectedIds.size))) return;

@@ -47,7 +47,11 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => controller.abort(), 20_000);
 		try {
-			return await fetch(url, { ...fetchOptions, headers: requestHeaders, signal: controller.signal });
+			return await fetch(url, {
+				...fetchOptions,
+				headers: requestHeaders,
+				signal: controller.signal
+			});
 		} catch {
 			throw {
 				status: 0,

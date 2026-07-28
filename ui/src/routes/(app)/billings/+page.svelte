@@ -1992,12 +1992,16 @@
 																</button>
 																<button
 																	onclick={() =>
-																		crud.handleSoftDelete(billing.id, softDeleteBilling, loadData, () =>
-																			confirmAsync(
-																				'Archive billing',
-																				'Archive this billing? It can be restored from the archive.',
-																				{ danger: true }
-																			)
+																		crud.handleSoftDelete(
+																			billing.id,
+																			softDeleteBilling,
+																			loadData,
+																			() =>
+																				confirmAsync(
+																					'Archive billing',
+																					'Archive this billing? It can be restored from the archive.',
+																					{ danger: true }
+																				)
 																		)}
 																	disabled={isLoading || crud.deletingId === billing.id}
 																	class="rounded p-2 text-red-700 hover:bg-red-100 disabled:opacity-50"

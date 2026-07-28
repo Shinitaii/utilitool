@@ -8,7 +8,7 @@
 	};
 </script>
 
-<div class="fixed bottom-6 right-6 z-[70] flex flex-col gap-2">
+<div class="fixed right-6 bottom-6 z-[70] flex flex-col gap-2">
 	{#each toastState.toasts as toast (toast.id)}
 		<div
 			role="status"

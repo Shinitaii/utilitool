@@ -224,8 +224,7 @@
 
 	async function switchReadingFormTab(tab: 'batch' | 'manual') {
 		if (tab === readingFormTab) return;
-		const hasUnsaved =
-			readingFormTab === 'batch' ? hasUnsavedBatchData() : hasUnsavedManualData();
+		const hasUnsaved = readingFormTab === 'batch' ? hasUnsavedBatchData() : hasUnsavedManualData();
 		if (hasUnsaved) {
 			const confirmed = await confirmAsync(
 				'Discard entered readings?',
@@ -269,7 +268,8 @@
 				});
 
 				if (filteredProperties.length === 0) {
-					batchEmptyReason = 'No submeter properties found for this meter group (all are main meters)';
+					batchEmptyReason =
+						'No submeter properties found for this meter group (all are main meters)';
 					batchRows = [];
 				} else {
 					batchRows = filteredProperties.map((property) => ({
@@ -377,8 +377,7 @@
 	}
 
 	type CompressAndSuggestResult =
-		| { ok: true; imageUrl: string; amount: number | null }
-		| { ok: false; message: string };
+		{ ok: true; imageUrl: string; amount: number | null } | { ok: false; message: string };
 
 	// Shared by the batch and manual tabs: compress → auto-suggest via OCR — no separate
 	// Suggest button on either. `onCompressed` fires as soon as the compressed image is ready
