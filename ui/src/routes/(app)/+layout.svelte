@@ -42,10 +42,10 @@
 <div class="flex h-screen w-full bg-gray-50">
 	<Sidebar />
 
-	<main class="flex flex-1 flex-col" style="margin-left: 200px">
+	<main class="flex flex-1 flex-col" style="margin-left: var(--sidebar-width)">
 		<TopBar />
 
-		<div class="flex flex-1 overflow-hidden" style="margin-top: 52px">
+		<div class="flex flex-1 overflow-hidden" style="margin-top: var(--topbar-height)">
 			<div class="flex-1 overflow-auto">
 				<div class="p-6">
 					{@render children()}

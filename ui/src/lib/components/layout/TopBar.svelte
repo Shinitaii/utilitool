@@ -30,12 +30,12 @@
 		];
 	}
 
-	const displayBreadcrumbs = generateBreadcrumbs();
+	const displayBreadcrumbs = $derived(generateBreadcrumbs());
 </script>
 
 <header
-	class="flex h-[52px] items-center justify-between border-b border-gray-200 bg-white px-6"
-	style="margin-left: 200px"
+	class="flex items-center justify-between border-b border-gray-200 bg-white px-6"
+	style="height: var(--topbar-height); margin-left: var(--sidebar-width)"
 >
 	<div class="flex items-center space-x-2 text-sm text-gray-600">
 		{#each displayBreadcrumbs as crumb, idx (crumb.label + idx)}

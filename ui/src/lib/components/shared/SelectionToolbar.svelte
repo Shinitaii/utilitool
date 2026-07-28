@@ -8,7 +8,14 @@
 
 	const { selectedCount, isBatchDeleting, onBatchDelete, entityLabel = 'item' }: Props = $props();
 
-	const label = $derived(selectedCount === 1 ? entityLabel : `${entityLabel}s`);
+	// Naive `${word}s` mishandles consonant+y nouns ("property" → "propertys") — this covers
+	// every entityLabel currently passed in (finding #23).
+	function pluralize(word: string): string {
+		if (/[^aeiou]y$/i.test(word)) return `${word.slice(0, -1)}ies`;
+		return `${word}s`;
+	}
+
+	const label = $derived(selectedCount === 1 ? entityLabel : pluralize(entityLabel));
 </script>
 
 {#if selectedCount > 0}

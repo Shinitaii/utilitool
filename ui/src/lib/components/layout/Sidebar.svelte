@@ -5,7 +5,7 @@
 	import { signOut } from 'firebase/auth';
 	import { auth } from '$lib/firebase';
 	import { getInitials } from '$lib/utils/format';
-	import { authStore, type AuthState } from '$lib/stores/auth.svelte';
+	import { authStore } from '$lib/stores/auth.svelte';
 	import { navCounts } from '$lib/stores/nav-counts.svelte';
 
 	type NavHref =
@@ -36,25 +36,9 @@
 	]);
 
 	let isLoggingOut = $state(false);
-	let authState = $state<AuthState>({
-		isAuthenticated: false,
-		user: null,
-		isLoading: false,
-		error: null
-	});
-
-	$effect(() => {
-		return authStore.subscribe((value) => {
-			authState = value;
-		});
-	});
 
 	function isActive(path: string): boolean {
 		return $page.url.pathname.startsWith(path);
-	}
-
-	function getInitialsFromName(name: string): string {
-		return getInitials(name);
 	}
 
 	async function handleLogout() {
@@ -71,7 +55,10 @@
 	}
 </script>
 
-<aside class="flex h-screen w-[200px] flex-col border-r border-gray-200 bg-white p-4">
+<aside
+	class="flex h-screen flex-col border-r border-gray-200 bg-white p-4"
+	style="width: var(--sidebar-width)"
+>
 	<div class="mb-8">
 		<h1 class="text-2xl font-bold" style="color: var(--color-accent)">utilitool</h1>
 	</div>
@@ -108,13 +95,13 @@
 				class="flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold text-white"
 				style="background-color: var(--color-accent)"
 			>
-				{authState.user ? getInitialsFromName(authState.user.display_name) : '?'}
+				{$authStore.user ? getInitials($authStore.user.display_name) : '?'}
 			</div>
 			<div class="min-w-0 flex-1">
 				<p class="truncate text-sm font-medium text-gray-900">
-					{authState.user?.display_name || 'User'}
+					{$authStore.user?.display_name || 'User'}
 				</p>
-				<p class="truncate text-xs text-gray-500">{authState.user?.email || 'user@example.com'}</p>
+				<p class="truncate text-xs text-gray-500">{$authStore.user?.email || 'user@example.com'}</p>
 			</div>
 		</div>
 		<button

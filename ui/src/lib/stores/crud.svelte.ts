@@ -1,5 +1,6 @@
 import { SvelteSet } from 'svelte/reactivity';
 import { confirmAsync } from './confirm.svelte';
+import { invalidateNavCounts } from './nav-counts.svelte';
 
 export interface CrudStore<T extends { id: string }> {
 	selectedIds: Set<string>;
@@ -102,6 +103,7 @@ export function createCrudStore<T extends { id: string }>(): CrudStore<T> {
 			try {
 				await deleteFn(id);
 				await reload();
+				invalidateNavCounts();
 			} catch (err) {
 				error = err instanceof Error ? err.message : 'Failed to archive item';
 			} finally {
@@ -131,6 +133,7 @@ export function createCrudStore<T extends { id: string }>(): CrudStore<T> {
 				// showing as present/selected, even when some deletes failed.
 				selectedIds.clear();
 				await reload();
+				invalidateNavCounts();
 
 				if (failed.length > 0) {
 					error = `Failed to archive ${failed.length} of ${ids.length} item(s): ${failed

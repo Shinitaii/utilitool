@@ -58,3 +58,12 @@ export async function loadNavCounts() {
 		billings: billings?.data.length ?? null
 	};
 }
+
+// Badges were otherwise stuck at their first post-login snapshot for the rest of the session
+// (finding #11) — this forces a refetch. Called from the shared crud store's soft-delete/batch-
+// delete handlers, since that's the one place every entity page's archive action already funnels
+// through.
+export async function invalidateNavCounts() {
+	loaded = false;
+	await loadNavCounts();
+}
