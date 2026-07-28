@@ -538,7 +538,6 @@
 			batchRows.every((r) => r.reading_amount !== null && r.reading_amount !== undefined)
 		);
 	}
-
 </script>
 
 <div class="space-y-6">
