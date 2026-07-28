@@ -121,9 +121,22 @@ export function createCrudStore<T extends { id: string }>(): CrudStore<T> {
 			isBatchDeleting = true;
 			error = '';
 			try {
-				await Promise.all(Array.from(selectedIds).map((id) => deleteFn(id)));
+				const ids = Array.from(selectedIds);
+				const results = await Promise.allSettled(ids.map((id) => deleteFn(id)));
+				const failed = results
+					.map((result, i) => ({ result, id: ids[i] }))
+					.filter(({ result }) => result.status === 'rejected');
+
+				// Clear/reload unconditionally so successfully-archived items stop
+				// showing as present/selected, even when some deletes failed.
 				selectedIds.clear();
 				await reload();
+
+				if (failed.length > 0) {
+					error = `Failed to archive ${failed.length} of ${ids.length} item(s): ${failed
+						.map(({ id }) => id)
+						.join(', ')}`;
+				}
 			} catch (err) {
 				error = err instanceof Error ? err.message : 'Failed to archive items';
 			} finally {

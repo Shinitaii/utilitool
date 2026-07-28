@@ -174,12 +174,16 @@
 		await loadProperties();
 	});
 
-	// Re-fetch tab data whenever active tab or selected property changes
+	// Sole trigger for tab-data fetching — fires whenever selectedProperty or activeTab
+	// changes. Callers that change either must NOT also call loadPropertyDetails()
+	// themselves, or the fetch fires twice (see decisions/20260728 finding #13/#37).
 	$effect(() => {
 		if (selectedProperty && activeTab) {
 			loadPropertyDetails();
 		}
 	});
+
+	let loadDetailsRequestId = 0;
 
 	async function loadProperties() {
 		isLoading = true;
@@ -197,7 +201,6 @@
 
 			if (properties.data.length > 0 && !selectedProperty) {
 				selectedProperty = properties.data[0];
-				await loadPropertyDetails();
 			}
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load properties';
@@ -208,36 +211,35 @@
 
 	async function loadPropertyDetails() {
 		if (!selectedProperty) return;
+		const requestId = ++loadDetailsRequestId;
+		const propertyId = selectedProperty.id;
+		const meterGroups = selectedProperty.meter_groups;
 
 		try {
 			if (activeTab === 'tenants') {
-				tenants = await getTenants({ propertyId: selectedProperty.id, limit: 100 }).then(
-					(result) => result.data
-				);
+				const result = await getTenants({ propertyId, limit: 100 });
+				if (requestId !== loadDetailsRequestId) return;
+				tenants = result.data;
 			} else if (activeTab === 'readings') {
 				// Load readings for all available meter groups
 				const promises = [];
-				const electricityId = selectedProperty.meter_groups.electricity
-					? typeof selectedProperty.meter_groups.electricity === 'string'
-						? selectedProperty.meter_groups.electricity
-						: selectedProperty.meter_groups.electricity.meter_group_id
+				const electricityId = meterGroups.electricity
+					? typeof meterGroups.electricity === 'string'
+						? meterGroups.electricity
+						: meterGroups.electricity.meter_group_id
 					: null;
-				const waterId = selectedProperty.meter_groups.water
-					? typeof selectedProperty.meter_groups.water === 'string'
-						? selectedProperty.meter_groups.water
-						: selectedProperty.meter_groups.water.meter_group_id
+				const waterId = meterGroups.water
+					? typeof meterGroups.water === 'string'
+						? meterGroups.water
+						: meterGroups.water.meter_group_id
 					: null;
 
 				if (electricityId)
-					promises.push(
-						getReadings({ meterGroupId: electricityId, propertyId: selectedProperty.id, limit: 50 })
-					);
-				if (waterId)
-					promises.push(
-						getReadings({ meterGroupId: waterId, propertyId: selectedProperty.id, limit: 50 })
-					);
+					promises.push(getReadings({ meterGroupId: electricityId, propertyId, limit: 50 }));
+				if (waterId) promises.push(getReadings({ meterGroupId: waterId, propertyId, limit: 50 }));
 
 				const results = await Promise.all(promises);
+				if (requestId !== loadDetailsRequestId) return;
 				const allReadings = results.flatMap((r) => r.data);
 				readings = {
 					data: allReadings,
@@ -245,36 +247,29 @@
 					hasMore: false
 				};
 			} else if (activeTab === 'billings') {
-				const billingsPromise = getBillings({ propertyId: selectedProperty.id, limit: 50 });
-				const electricityId = selectedProperty.meter_groups.electricity
-					? typeof selectedProperty.meter_groups.electricity === 'string'
-						? selectedProperty.meter_groups.electricity
-						: selectedProperty.meter_groups.electricity.meter_group_id
+				const billingsPromise = getBillings({ propertyId, limit: 50 });
+				const electricityId = meterGroups.electricity
+					? typeof meterGroups.electricity === 'string'
+						? meterGroups.electricity
+						: meterGroups.electricity.meter_group_id
 					: null;
-				const waterId = selectedProperty.meter_groups.water
-					? typeof selectedProperty.meter_groups.water === 'string'
-						? selectedProperty.meter_groups.water
-						: selectedProperty.meter_groups.water.meter_group_id
+				const waterId = meterGroups.water
+					? typeof meterGroups.water === 'string'
+						? meterGroups.water
+						: meterGroups.water.meter_group_id
 					: null;
 
 				const readingPromises = [];
 				if (electricityId)
-					readingPromises.push(
-						getReadings({
-							meterGroupId: electricityId,
-							propertyId: selectedProperty.id,
-							limit: 100
-						})
-					);
+					readingPromises.push(getReadings({ meterGroupId: electricityId, propertyId, limit: 100 }));
 				if (waterId)
-					readingPromises.push(
-						getReadings({ meterGroupId: waterId, propertyId: selectedProperty.id, limit: 100 })
-					);
+					readingPromises.push(getReadings({ meterGroupId: waterId, propertyId, limit: 100 }));
 
 				const [billingsResult, ...readingResults] = await Promise.all([
 					billingsPromise,
 					...readingPromises
 				]);
+				if (requestId !== loadDetailsRequestId) return;
 				billings = billingsResult;
 				const allReadings = readingResults.flatMap((r) => r?.data ?? []);
 				readings = {
@@ -284,29 +279,29 @@
 				};
 			}
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to load details';
+			if (requestId === loadDetailsRequestId) {
+				error = err instanceof Error ? err.message : 'Failed to load details';
+			}
 		}
 	}
 
-	async function handleSelectProperty(property: Property) {
+	function handleSelectProperty(property: Property) {
 		selectedProperty = property;
 		tenants = [];
 		readings = { data: [], nextCursor: null, hasMore: false };
 		billings = { data: [], nextCursor: null, hasMore: false };
-		await loadPropertyDetails();
 	}
 
-	async function handleTabChange(
-		section: typeof activeTab,
-		filter?: 'all' | 'electricity' | 'water'
-	) {
+	function handleTabChange(section: typeof activeTab, filter?: 'all' | 'electricity' | 'water') {
+		const sectionChanged = activeTab !== section;
 		activeTab = section;
 		if (section === 'readings' && filter) readingsUtilityFilter = filter;
 		if (section === 'billings' && filter) billingsUtilityFilter = filter;
-		tenants = [];
-		readings = { data: [], nextCursor: null, hasMore: false };
-		billings = { data: [], nextCursor: null, hasMore: false };
-		await loadPropertyDetails();
+		if (sectionChanged) {
+			tenants = [];
+			readings = { data: [], nextCursor: null, hasMore: false };
+			billings = { data: [], nextCursor: null, hasMore: false };
+		}
 	}
 
 	// Flattened tab bar — utility-type sub-tabs are sibling tabs here instead of a
@@ -496,9 +491,9 @@
 			</a>
 		</div>
 
-		{#if error}
+		{#if error || crud.error}
 			<div class="rounded-lg bg-red-50 p-4 text-sm text-red-700">
-				{error}
+				{error || crud.error}
 			</div>
 		{/if}
 	</div>
