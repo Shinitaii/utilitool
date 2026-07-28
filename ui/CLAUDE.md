@@ -135,8 +135,8 @@ ui/src/
 │   │   ├── property.types.ts
 │   │   ├── tenant.types.ts
 │   │   ├── reading.types.ts
-│   │   ├── billing.types.ts
-│   │   ├── billing-cycle.types.ts
+│   │   ├── billing.types.ts        (includes `estimated_cost?: number` — frozen rate-EMA snapshot, see Pending Estimates panel below)
+│   │   ├── billing-cycle.types.ts  (includes `rate_ema?: number` — per-meter-group EMA of billing_rate)
 │   │   ├── reports.types.ts        (ReportSummary, ConsumptionReport, BillingTrendsReport, CollectionStatusReport, CombinedReportsResponse, ReportQueryParams)
 │   │   └── llm-config.types.ts     (LlmConfigResponse, UpsertLlmConfigRequest)
 │   │
@@ -278,7 +278,15 @@ ui/src/
   - "Manual Billing (Advanced)" collapsed section for corrections
   - Pencil "Edit" button on each cycle row → opens an `EditModal` for correcting `billing_consumption`, `billing_rate`, `billing_start_date`, `billing_end_date`, `overdue_date` (covers company errors in rate/consumption without needing to delete and recreate the cycle)
 - **Note**: Billings are auto-created when readings are posted — the cycle form just groups them. OCR autofill is optional; all autofilled fields remain editable. Per-reading consumption previews (discovery, override, gap-fill) use the shared version-aware `readingConsumption()`/`trueReading()` helpers so they stay correct across meter resets.
-- **Status**: ✅ Complete (cycle-centric design; auto-billing integration; bill photo OCR)
+- **Pending Estimates panel** (`+page.svelte:1146-1195`): lists uncycled billings that already have
+  a known consumption but no official cycle/rate yet, showing `~{formatCurrency(billing.estimated_cost)}`
+  with an "estimated" badge (rate-EMA, from the meter group's recent rate history) or a "derived"
+  badge (main-meter properties, whose billing is computed as total-minus-submeters at the moment
+  its own cycle is created). A main-meter property only appears here once its cycle exists — its
+  consumption isn't knowable before that — so a brief absence from this panel is expected, not a
+  bug. See `api/functions/CLAUDE.md` → "Billing Cycles" → "Rate-EMA cost estimation" for the
+  underlying computation.
+- **Status**: ✅ Complete (cycle-centric design; auto-billing integration; bill photo OCR; rate-EMA pending estimates)
 
 #### Archive Pages (`/<feature>/archive`)
 

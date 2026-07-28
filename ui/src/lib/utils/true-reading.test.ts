@@ -15,10 +15,8 @@ const baseMeterGroup: MeterGroup = {
 	utility_type: 'water',
 	current_version: 5, // stale/deprecated field — must NOT be used for submeters
 	versions: {}, // stale/deprecated — must NOT be used for submeters
-	created_at: '' as any,
-	updated_at: '' as any,
-	is_deleted: false,
-	deleted_at: null as any
+	created_at: '',
+	updated_at: ''
 };
 
 function submeterProperty(
@@ -37,10 +35,8 @@ function submeterProperty(
 				versions
 			}
 		},
-		created_at: '' as any,
-		updated_at: '' as any,
-		is_deleted: false,
-		deleted_at: null as any
+		created_at: '',
+		updated_at: ''
 	};
 }
 
@@ -56,10 +52,8 @@ describe('true-reading (submeter, post-reset cumulative offset)', () => {
 			reading_amount: 5.5,
 			reading_date: '' as any,
 			meter_version: 2,
-			created_at: '' as any,
-			updated_at: '' as any,
-			is_deleted: false,
-			deleted_at: null as any
+			created_at: '',
+			updated_at: ''
 		};
 
 		expect(trueReading(reading, baseMeterGroup, property)).toBe(639.5);
@@ -86,10 +80,8 @@ describe('true-reading (submeter, post-reset cumulative offset)', () => {
 			meter_groups: {
 				water: { meter_group_id: 'mg-1', is_main_meter: true }
 			},
-			created_at: '' as any,
-			updated_at: '' as any,
-			is_deleted: false,
-			deleted_at: null as any
+			created_at: '',
+			updated_at: ''
 		};
 		expect(resolveCurrentVersion(baseMeterGroup, mainMeterProperty, 'mg-1')).toBe(5);
 		expect(getVersionsSource(baseMeterGroup, mainMeterProperty, 'mg-1')).toBe(

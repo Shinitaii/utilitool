@@ -2,11 +2,15 @@
   import { signInWithEmailAndPassword } from 'firebase/auth';
   import { auth } from '../firebase';
   import { getReadableAuthError } from '../lib/utils/auth-errors';
+  import { authNotice } from '../lib/stores/auth-notice.svelte';
+  import ErrorBanner from '../components/ErrorBanner.svelte';
 
   let email = $state('');
   let password = $state('');
-  let error = $state('');
+  let error = $state(authNotice.message ?? '');
   let loading = $state(false);
+
+  authNotice.clear();
 
   async function handleLogin(e: Event) {
     e.preventDefault();
@@ -62,9 +66,7 @@
 
         <!-- Error Message -->
         {#if error}
-          <div class="p-3 rounded-lg text-sm font-medium" style="background-color: #fde5e0; color: var(--color-status-alert)">
-            {error}
-          </div>
+          <ErrorBanner message={error} />
         {/if}
 
         <!-- Submit Button -->

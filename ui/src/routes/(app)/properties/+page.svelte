@@ -21,13 +21,16 @@
 	import { formatFirestoreDate, formatDateTime, formatReading } from '$lib/utils/format';
 	import { toDate } from '$lib/utils/timestamp';
 	import { getUtilityTypeBadgeClasses } from '$lib/utils/utility-colors';
+	import { getMeterGroupId, isMainMeterEntry } from '$lib/utils/property.util';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
 	import TableSkeleton from '$lib/components/shared/TableSkeleton.svelte';
 	import EditModal from '$lib/components/shared/EditModal.svelte';
+	import PropertyMeterGroupFields from '$lib/components/shared/PropertyMeterGroupFields.svelte';
 	import { Plus, Archive, RotateCcw } from 'lucide-svelte';
 	import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
 	import SelectionToolbar from '$lib/components/shared/SelectionToolbar.svelte';
 	import { createCrudStore } from '$lib/stores/crud.svelte';
+	import { confirmAsync } from '$lib/stores/confirm.svelte';
 
 	const crud = createCrudStore<Property>();
 
@@ -129,13 +132,10 @@
 			const elecEntry = prop.meter_groups.electricity;
 			const waterEntry = prop.meter_groups.water;
 
-			const elecId = typeof elecEntry === 'string' ? elecEntry : elecEntry?.meter_group_id;
-			const waterId = typeof waterEntry === 'string' ? waterEntry : waterEntry?.meter_group_id;
-
-			if (elecId === meterGroupId && typeof elecEntry !== 'string' && elecEntry?.is_main_meter) {
+			if (getMeterGroupId(elecEntry) === meterGroupId && isMainMeterEntry(elecEntry)) {
 				return prop.id;
 			}
-			if (waterId === meterGroupId && typeof waterEntry !== 'string' && waterEntry?.is_main_meter) {
+			if (getMeterGroupId(waterEntry) === meterGroupId && isMainMeterEntry(waterEntry)) {
 				return prop.id;
 			}
 		}
@@ -152,12 +152,12 @@
 		if (!selectedProperty) return;
 		const meterGroupName = getMeterGroupName(meterGroupId);
 		const nextVersion = currentVersion + 1;
-		if (
-			!confirm(
-				`Record a meter reset for "${meterGroupName}" on "${selectedProperty.room_name}"?\n\nThis will start version ${nextVersion}. The server will use the latest recorded reading as the previous meter total.\n\nContinue?`
-			)
-		)
-			return;
+		const confirmed = await confirmAsync(
+			'Record meter reset',
+			`Record a meter reset for "${meterGroupName}" on "${selectedProperty.room_name}"? This will start version ${nextVersion}. The server will use the latest recorded reading as the previous meter total.`,
+			{ danger: true }
+		);
+		if (!confirmed) return;
 		resettingMeterGroupId = meterGroupId;
 		try {
 			selectedProperty = await recordPropertyMeterGroupReset(selectedProperty.id, meterGroupId);
@@ -173,12 +173,16 @@
 		await loadProperties();
 	});
 
-	// Re-fetch tab data whenever active tab or selected property changes
+	// Sole trigger for tab-data fetching — fires whenever selectedProperty or activeTab
+	// changes. Callers that change either must NOT also call loadPropertyDetails()
+	// themselves, or the fetch fires twice (see decisions/20260728 finding #13/#37).
 	$effect(() => {
 		if (selectedProperty && activeTab) {
 			loadPropertyDetails();
 		}
 	});
+
+	let loadDetailsRequestId = 0;
 
 	async function loadProperties() {
 		isLoading = true;
@@ -196,7 +200,6 @@
 
 			if (properties.data.length > 0 && !selectedProperty) {
 				selectedProperty = properties.data[0];
-				await loadPropertyDetails();
 			}
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load properties';
@@ -207,36 +210,27 @@
 
 	async function loadPropertyDetails() {
 		if (!selectedProperty) return;
+		const requestId = ++loadDetailsRequestId;
+		const propertyId = selectedProperty.id;
+		const meterGroups = selectedProperty.meter_groups;
 
 		try {
 			if (activeTab === 'tenants') {
-				tenants = await getTenants({ propertyId: selectedProperty.id, limit: 100 }).then(
-					(result) => result.data
-				);
+				const result = await getTenants({ propertyId, limit: 100 });
+				if (requestId !== loadDetailsRequestId) return;
+				tenants = result.data;
 			} else if (activeTab === 'readings') {
 				// Load readings for all available meter groups
 				const promises = [];
-				const electricityId = selectedProperty.meter_groups.electricity
-					? typeof selectedProperty.meter_groups.electricity === 'string'
-						? selectedProperty.meter_groups.electricity
-						: selectedProperty.meter_groups.electricity.meter_group_id
-					: null;
-				const waterId = selectedProperty.meter_groups.water
-					? typeof selectedProperty.meter_groups.water === 'string'
-						? selectedProperty.meter_groups.water
-						: selectedProperty.meter_groups.water.meter_group_id
-					: null;
+				const electricityId = getMeterGroupId(meterGroups.electricity) ?? null;
+				const waterId = getMeterGroupId(meterGroups.water) ?? null;
 
 				if (electricityId)
-					promises.push(
-						getReadings({ meterGroupId: electricityId, propertyId: selectedProperty.id, limit: 50 })
-					);
-				if (waterId)
-					promises.push(
-						getReadings({ meterGroupId: waterId, propertyId: selectedProperty.id, limit: 50 })
-					);
+					promises.push(getReadings({ meterGroupId: electricityId, propertyId, limit: 50 }));
+				if (waterId) promises.push(getReadings({ meterGroupId: waterId, propertyId, limit: 50 }));
 
 				const results = await Promise.all(promises);
+				if (requestId !== loadDetailsRequestId) return;
 				const allReadings = results.flatMap((r) => r.data);
 				readings = {
 					data: allReadings,
@@ -244,36 +238,23 @@
 					hasMore: false
 				};
 			} else if (activeTab === 'billings') {
-				const billingsPromise = getBillings({ propertyId: selectedProperty.id, limit: 50 });
-				const electricityId = selectedProperty.meter_groups.electricity
-					? typeof selectedProperty.meter_groups.electricity === 'string'
-						? selectedProperty.meter_groups.electricity
-						: selectedProperty.meter_groups.electricity.meter_group_id
-					: null;
-				const waterId = selectedProperty.meter_groups.water
-					? typeof selectedProperty.meter_groups.water === 'string'
-						? selectedProperty.meter_groups.water
-						: selectedProperty.meter_groups.water.meter_group_id
-					: null;
+				const billingsPromise = getBillings({ propertyId, limit: 50 });
+				const electricityId = getMeterGroupId(meterGroups.electricity) ?? null;
+				const waterId = getMeterGroupId(meterGroups.water) ?? null;
 
 				const readingPromises = [];
 				if (electricityId)
 					readingPromises.push(
-						getReadings({
-							meterGroupId: electricityId,
-							propertyId: selectedProperty.id,
-							limit: 100
-						})
+						getReadings({ meterGroupId: electricityId, propertyId, limit: 100 })
 					);
 				if (waterId)
-					readingPromises.push(
-						getReadings({ meterGroupId: waterId, propertyId: selectedProperty.id, limit: 100 })
-					);
+					readingPromises.push(getReadings({ meterGroupId: waterId, propertyId, limit: 100 }));
 
 				const [billingsResult, ...readingResults] = await Promise.all([
 					billingsPromise,
 					...readingPromises
 				]);
+				if (requestId !== loadDetailsRequestId) return;
 				billings = billingsResult;
 				const allReadings = readingResults.flatMap((r) => r?.data ?? []);
 				readings = {
@@ -283,26 +264,79 @@
 				};
 			}
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to load details';
+			if (requestId === loadDetailsRequestId) {
+				error = err instanceof Error ? err.message : 'Failed to load details';
+			}
 		}
 	}
 
-	async function handleSelectProperty(property: Property) {
+	function handleSelectProperty(property: Property) {
 		selectedProperty = property;
 		tenants = [];
 		readings = { data: [], nextCursor: null, hasMore: false };
 		billings = { data: [], nextCursor: null, hasMore: false };
-		await loadPropertyDetails();
 	}
 
-	async function handleTabChange(tab: typeof activeTab) {
-		activeTab = tab;
-		readingsUtilityFilter = 'all';
-		billingsUtilityFilter = 'all';
-		tenants = [];
-		readings = { data: [], nextCursor: null, hasMore: false };
-		billings = { data: [], nextCursor: null, hasMore: false };
-		await loadPropertyDetails();
+	function handleTabChange(section: typeof activeTab, filter?: 'all' | 'electricity' | 'water') {
+		const sectionChanged = activeTab !== section;
+		activeTab = section;
+		if (section === 'readings' && filter) readingsUtilityFilter = filter;
+		if (section === 'billings' && filter) billingsUtilityFilter = filter;
+		if (sectionChanged) {
+			tenants = [];
+			readings = { data: [], nextCursor: null, hasMore: false };
+			billings = { data: [], nextCursor: null, hasMore: false };
+		}
+	}
+
+	// Flattened tab bar — utility-type sub-tabs are sibling tabs here instead of a
+	// separately nested tab row, removing one level of the page's tab-within-tab nesting.
+	const flatTabs = [
+		{ key: 'tenants', label: 'Tenants', section: 'tenants' as const },
+		{
+			key: 'readings-all',
+			label: 'Readings · All',
+			section: 'readings' as const,
+			filter: 'all' as const
+		},
+		{
+			key: 'readings-electricity',
+			label: 'Readings · Electricity',
+			section: 'readings' as const,
+			filter: 'electricity' as const
+		},
+		{
+			key: 'readings-water',
+			label: 'Readings · Water',
+			section: 'readings' as const,
+			filter: 'water' as const
+		},
+		{
+			key: 'billings-all',
+			label: 'Billings · All',
+			section: 'billings' as const,
+			filter: 'all' as const
+		},
+		{
+			key: 'billings-electricity',
+			label: 'Billings · Electricity',
+			section: 'billings' as const,
+			filter: 'electricity' as const
+		},
+		{
+			key: 'billings-water',
+			label: 'Billings · Water',
+			section: 'billings' as const,
+			filter: 'water' as const
+		},
+		{ key: 'history', label: 'History', section: 'history' as const }
+	];
+
+	function isFlatTabActive(tab: (typeof flatTabs)[number]): boolean {
+		if (activeTab !== tab.section) return false;
+		if (tab.section === 'readings') return readingsUtilityFilter === tab.filter;
+		if (tab.section === 'billings') return billingsUtilityFilter === tab.filter;
+		return true;
 	}
 
 	async function handleCreateProperty() {
@@ -361,26 +395,10 @@
 	}
 
 	function openEditModal(property: Property) {
-		const electricityId = property.meter_groups.electricity
-			? typeof property.meter_groups.electricity === 'string'
-				? property.meter_groups.electricity
-				: property.meter_groups.electricity.meter_group_id
-			: '';
-		const waterId = property.meter_groups.water
-			? typeof property.meter_groups.water === 'string'
-				? property.meter_groups.water
-				: property.meter_groups.water.meter_group_id
-			: '';
-		const electricityIsMain = property.meter_groups.electricity
-			? typeof property.meter_groups.electricity === 'string'
-				? false
-				: (property.meter_groups.electricity?.is_main_meter ?? false)
-			: false;
-		const waterIsMain = property.meter_groups.water
-			? typeof property.meter_groups.water === 'string'
-				? false
-				: (property.meter_groups.water?.is_main_meter ?? false)
-			: false;
+		const electricityId = getMeterGroupId(property.meter_groups.electricity) ?? '';
+		const waterId = getMeterGroupId(property.meter_groups.water) ?? '';
+		const electricityIsMain = isMainMeterEntry(property.meter_groups.electricity);
+		const waterIsMain = isMainMeterEntry(property.meter_groups.water);
 
 		editPropertyForm = {
 			room_name: property.room_name,
@@ -435,7 +453,7 @@
 	}
 </script>
 
-<div class="flex h-screen flex-col">
+<div class="flex h-screen flex-col overflow-hidden">
 	<div class="space-y-4 border-b border-gray-200 bg-white p-6">
 		<div class="flex items-center justify-between">
 			<div>
@@ -452,9 +470,9 @@
 			</a>
 		</div>
 
-		{#if error}
+		{#if error || crud.error}
 			<div class="rounded-lg bg-red-50 p-4 text-sm text-red-700">
-				{error}
+				{error || crud.error}
 			</div>
 		{/if}
 	</div>
@@ -508,88 +526,15 @@
 								class="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm"
 							/>
 						</div>
-						<div>
-							<label for="electricity-meter" class="block text-xs font-medium text-gray-700"
-								>Electricity Meter Group</label
-							>
-							<select
-								id="electricity-meter"
-								bind:value={newPropertyForm.meter_groups.electricity}
-								class="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm"
-							>
-								<option value="">Select electricity meter...</option>
-								{#each electricityMeters as group (group.id)}
-									<option value={group.id}>
-										{group.meter_name}
-									</option>
-								{/each}
-							</select>
-						</div>
-						<div>
-							<label for="water-meter" class="block text-xs font-medium text-gray-700"
-								>Water Meter Group</label
-							>
-							<select
-								id="water-meter"
-								bind:value={newPropertyForm.meter_groups.water}
-								class="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm"
-							>
-								<option value="">Select water meter...</option>
-								{#each waterMeters as group (group.id)}
-									<option value={group.id}>
-										{group.meter_name}
-									</option>
-								{/each}
-							</select>
-						</div>
-						{#if newPropertyForm.meter_groups.electricity || newPropertyForm.meter_groups.water}
-							{@const electricityMainMeterProperty =
-								newPropertyForm.meter_groups.electricity !== ''
-									? getMainMeterPropertyForMeterGroup(newPropertyForm.meter_groups.electricity)
-									: null}
-							{@const waterMainMeterProperty =
-								newPropertyForm.meter_groups.water !== ''
-									? getMainMeterPropertyForMeterGroup(newPropertyForm.meter_groups.water)
-									: null}
-							<div class="space-y-2">
-								{#if newPropertyForm.meter_groups.electricity}
-									<label class="flex items-center gap-2 text-xs font-medium text-gray-700">
-										<input
-											type="checkbox"
-											bind:checked={newPropertyForm.is_main_meter.electricity}
-											disabled={electricityMainMeterProperty !== null &&
-												!newPropertyForm.is_main_meter.electricity}
-											class="rounded disabled:cursor-not-allowed disabled:opacity-50"
-										/>
-										<span>Main Meter (Electricity)</span>
-									</label>
-									{#if electricityMainMeterProperty !== null && !newPropertyForm.is_main_meter.electricity}
-										<p class="ml-6 text-xs text-amber-700">
-											{getMainMeterPropertyName(newPropertyForm.meter_groups.electricity)} is already
-											the main meter
-										</p>
-									{/if}
-								{/if}
-								{#if newPropertyForm.meter_groups.water}
-									<label class="flex items-center gap-2 text-xs font-medium text-gray-700">
-										<input
-											type="checkbox"
-											bind:checked={newPropertyForm.is_main_meter.water}
-											disabled={waterMainMeterProperty !== null &&
-												!newPropertyForm.is_main_meter.water}
-											class="rounded disabled:cursor-not-allowed disabled:opacity-50"
-										/>
-										<span>Main Meter (Water)</span>
-									</label>
-									{#if waterMainMeterProperty !== null && !newPropertyForm.is_main_meter.water}
-										<p class="ml-6 text-xs text-amber-700">
-											{getMainMeterPropertyName(newPropertyForm.meter_groups.water)} is already the main
-											meter
-										</p>
-									{/if}
-								{/if}
-							</div>
-						{/if}
+						<PropertyMeterGroupFields
+							{electricityMeters}
+							{waterMeters}
+							meterGroups={newPropertyForm.meter_groups}
+							isMainMeter={newPropertyForm.is_main_meter}
+							{getMainMeterPropertyForMeterGroup}
+							{getMainMeterPropertyName}
+							compact
+						/>
 						<div class="flex gap-2">
 							<button
 								onclick={handleCreateProperty}
@@ -630,6 +575,7 @@
 							<div class="flex items-start gap-2">
 								<input
 									type="checkbox"
+									aria-label={`Select ${property.room_name}`}
 									checked={crud.selectedIds.has(property.id)}
 									onchange={() => crud.toggleSelection(property.id)}
 									class="mt-2 rounded"
@@ -644,7 +590,7 @@
 										<span class="flex-1 truncate font-medium text-gray-900">
 											{property.room_name}
 										</span>
-										{#if (typeof property.meter_groups.electricity !== 'string' && property.meter_groups.electricity?.is_main_meter) || (typeof property.meter_groups.water !== 'string' && property.meter_groups.water?.is_main_meter)}
+										{#if isMainMeterEntry(property.meter_groups.electricity) || isMainMeterEntry(property.meter_groups.water)}
 											<span
 												class="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800"
 											>
@@ -664,7 +610,11 @@
 									}}
 									onSoftDelete={() =>
 										crud.handleSoftDelete(property.id, softDeleteProperty, loadProperties, () =>
-											confirm('Archive this property? It can be restored from the archive.')
+											confirmAsync(
+												'Archive property',
+												'Archive this property? It can be restored from the archive.',
+												{ danger: true }
+											)
 										)}
 									isLoading={crud.deletingId === property.id}
 								/>
@@ -688,12 +638,10 @@
 									<span class="font-medium">Electricity:</span>
 									<span class="text-gray-900">
 										{getMeterGroupName(
-											typeof selectedProperty.meter_groups.electricity === 'string'
-												? selectedProperty.meter_groups.electricity
-												: selectedProperty.meter_groups.electricity?.meter_group_id || ''
+											getMeterGroupId(selectedProperty.meter_groups.electricity) || ''
 										)}
 									</span>
-									{#if typeof selectedProperty.meter_groups.electricity !== 'string' && selectedProperty.meter_groups.electricity?.is_main_meter}
+									{#if isMainMeterEntry(selectedProperty.meter_groups.electricity)}
 										<span
 											class="ml-2 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800"
 										>
@@ -706,13 +654,9 @@
 								<p>
 									<span class="font-medium">Water:</span>
 									<span class="text-gray-900">
-										{getMeterGroupName(
-											typeof selectedProperty.meter_groups.water === 'string'
-												? selectedProperty.meter_groups.water
-												: selectedProperty.meter_groups.water?.meter_group_id || ''
-										)}
+										{getMeterGroupName(getMeterGroupId(selectedProperty.meter_groups.water) || '')}
 									</span>
-									{#if typeof selectedProperty.meter_groups.water !== 'string' && selectedProperty.meter_groups.water?.is_main_meter}
+									{#if isMainMeterEntry(selectedProperty.meter_groups.water)}
 										<span
 											class="ml-2 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800"
 										>
@@ -726,20 +670,20 @@
 
 					<!-- Tabs -->
 					<div class="border-b border-gray-200">
-						<div class="flex" role="tablist">
-							{#each ['tenants', 'readings', 'billings', 'history'] as tab (tab)}
+						<div class="flex flex-wrap" role="tablist">
+							{#each flatTabs as tab (tab.key)}
 								<button
 									role="tab"
-									aria-selected={activeTab === tab}
-									aria-controls={`tab-panel-${tab}`}
-									id={`tab-${tab}`}
+									aria-selected={isFlatTabActive(tab)}
+									aria-controls={`tab-panel-${tab.section}`}
+									id={`tab-${tab.key}`}
 									onclick={() =>
-										handleTabChange(tab as 'tenants' | 'readings' | 'billings' | 'history')}
-									class="px-6 py-3 text-sm font-medium transition {activeTab === tab
+										handleTabChange(tab.section, 'filter' in tab ? tab.filter : undefined)}
+									class="px-4 py-3 text-sm font-medium transition {isFlatTabActive(tab)
 										? 'border-b-2 border-blue-600 text-blue-600'
 										: 'text-gray-600 hover:text-gray-900'}"
 								>
-									{tab.charAt(0).toUpperCase() + tab.slice(1)}
+									{tab.label}
 								</button>
 							{/each}
 						</div>
@@ -795,25 +739,6 @@
 							</div>
 						{:else if activeTab === 'readings'}
 							<div role="tabpanel" id="tab-panel-readings" aria-labelledby="tab-readings">
-								<!-- Utility type filter tabs -->
-								<div class="border-b border-gray-200">
-									<div class="flex gap-1 px-6 pt-4">
-										{#each [['all', 'All'], ['electricity', 'Electricity'], ['water', 'Water']] as [value, label] (value)}
-											<button
-												onclick={() => {
-													readingsUtilityFilter = value as typeof readingsUtilityFilter;
-												}}
-												class="rounded-t px-4 py-2 text-sm font-medium transition-colors"
-												style={readingsUtilityFilter === value
-													? 'background-color: #f3f4f6; color: #1f2937; border-bottom: 2px solid #3b82f6;'
-													: 'color: #6b7280; border-bottom: 2px solid transparent;'}
-											>
-												{label}
-											</button>
-										{/each}
-									</div>
-								</div>
-
 								{#if filteredReadings.length === 0}
 									<div class="p-6">
 										<EmptyState
@@ -862,25 +787,6 @@
 							</div>
 						{:else if activeTab === 'billings'}
 							<div role="tabpanel" id="tab-panel-billings" aria-labelledby="tab-billings">
-								<!-- Utility type filter tabs -->
-								<div class="border-b border-gray-200">
-									<div class="flex gap-1 px-6 pt-4">
-										{#each [['all', 'All'], ['electricity', 'Electricity'], ['water', 'Water']] as [value, label] (value)}
-											<button
-												onclick={() => {
-													billingsUtilityFilter = value as typeof billingsUtilityFilter;
-												}}
-												class="rounded-t px-4 py-2 text-sm font-medium transition-colors"
-												style={billingsUtilityFilter === value
-													? 'background-color: #f3f4f6; color: #1f2937; border-bottom: 2px solid #3b82f6;'
-													: 'color: #6b7280; border-bottom: 2px solid transparent;'}
-											>
-												{label}
-											</button>
-										{/each}
-									</div>
-								</div>
-
 								{#if filteredBillings.length === 0}
 									<div class="p-6">
 										<EmptyState
@@ -1105,100 +1011,15 @@
 				class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
 			/>
 		</div>
-		<div>
-			<label for="edit-electricity-meter" class="block text-sm font-medium text-gray-700"
-				>Electricity Meter Group</label
-			>
-			<select
-				id="edit-electricity-meter"
-				value={editPropertyForm.meter_groups?.electricity || ''}
-				onchange={(e) => {
-					if (editPropertyForm.meter_groups) {
-						editPropertyForm.meter_groups.electricity = (e.target as HTMLSelectElement).value;
-					}
-				}}
-				class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-			>
-				<option value="">Select electricity meter...</option>
-				{#each electricityMeters as group (group.id)}
-					<option value={group.id}>{group.meter_name}</option>
-				{/each}
-			</select>
-		</div>
-		<div>
-			<label for="edit-water-meter" class="block text-sm font-medium text-gray-700"
-				>Water Meter Group</label
-			>
-			<select
-				id="edit-water-meter"
-				value={editPropertyForm.meter_groups?.water || ''}
-				onchange={(e) => {
-					if (editPropertyForm.meter_groups) {
-						editPropertyForm.meter_groups.water = (e.target as HTMLSelectElement).value;
-					}
-				}}
-				class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-			>
-				<option value="">Select water meter...</option>
-				{#each waterMeters as group (group.id)}
-					<option value={group.id}>{group.meter_name}</option>
-				{/each}
-			</select>
-		</div>
-		{#if editPropertyForm.meter_groups.electricity || editPropertyForm.meter_groups.water}
-			{@const editElectricityMainMeterProperty =
-				editPropertyForm.meter_groups.electricity !== ''
-					? getMainMeterPropertyForMeterGroup(editPropertyForm.meter_groups.electricity)
-					: null}
-			{@const editWaterMainMeterProperty =
-				editPropertyForm.meter_groups.water !== ''
-					? getMainMeterPropertyForMeterGroup(editPropertyForm.meter_groups.water)
-					: null}
-			<div class="space-y-2">
-				{#if editPropertyForm.meter_groups.electricity}
-					<label class="flex items-center gap-2 text-sm font-medium text-gray-700">
-						<input
-							type="checkbox"
-							bind:checked={editPropertyForm.is_main_meter.electricity}
-							disabled={editElectricityMainMeterProperty !== null &&
-								editElectricityMainMeterProperty !== crud.editingItem?.id &&
-								!editPropertyForm.is_main_meter.electricity}
-							class="rounded disabled:cursor-not-allowed disabled:opacity-50"
-						/>
-						<span>Main Meter (Electricity)</span>
-					</label>
-					{#if editElectricityMainMeterProperty !== null && editElectricityMainMeterProperty !== crud.editingItem?.id && !editPropertyForm.is_main_meter.electricity}
-						<p class="ml-6 text-xs text-amber-700">
-							{getMainMeterPropertyName(editPropertyForm.meter_groups.electricity)} is already the main
-							meter
-						</p>
-					{/if}
-				{/if}
-				{#if editPropertyForm.meter_groups.water}
-					<label class="flex items-center gap-2 text-sm font-medium text-gray-700">
-						<input
-							type="checkbox"
-							bind:checked={editPropertyForm.is_main_meter.water}
-							disabled={editWaterMainMeterProperty !== null &&
-								editWaterMainMeterProperty !== crud.editingItem?.id &&
-								!editPropertyForm.is_main_meter.water}
-							class="rounded disabled:cursor-not-allowed disabled:opacity-50"
-						/>
-						<span>Main Meter (Water)</span>
-					</label>
-					{#if editWaterMainMeterProperty !== null && editWaterMainMeterProperty !== crud.editingItem?.id && !editPropertyForm.is_main_meter.water}
-						<p class="ml-6 text-xs text-amber-700">
-							{getMainMeterPropertyName(editPropertyForm.meter_groups.water)} is already the main meter
-						</p>
-					{/if}
-				{/if}
-			</div>
-		{/if}
+		<PropertyMeterGroupFields
+			{electricityMeters}
+			{waterMeters}
+			meterGroups={editPropertyForm.meter_groups}
+			isMainMeter={editPropertyForm.is_main_meter}
+			{getMainMeterPropertyForMeterGroup}
+			{getMainMeterPropertyName}
+			excludePropertyId={crud.editingItem?.id}
+			idPrefix="edit-"
+		/>
 	</div>
 </EditModal>
-
-<style>
-	:global(html, body) {
-		overflow: hidden;
-	}
-</style>

@@ -1,4 +1,6 @@
 import { SvelteSet } from 'svelte/reactivity';
+import { confirmAsync } from './confirm.svelte';
+import { invalidateNavCounts } from './nav-counts.svelte';
 
 export interface CrudStore<T extends { id: string }> {
 	selectedIds: Set<string>;
@@ -12,14 +14,14 @@ export interface CrudStore<T extends { id: string }> {
 		id: string,
 		deleteFn: (id: string) => Promise<unknown>,
 		reload: () => Promise<void>,
-		confirmFn?: (id: string) => boolean
+		confirmFn?: (id: string) => boolean | Promise<boolean>
 	): Promise<void>;
 
 	isBatchDeleting: boolean;
 	handleBatchDelete(
 		deleteFn: (id: string) => Promise<unknown>,
 		reload: () => Promise<void>,
-		confirmFn?: (count: number) => boolean
+		confirmFn?: (count: number) => boolean | Promise<boolean>
 	): Promise<void>;
 
 	editModalOpen: boolean;
@@ -92,15 +94,16 @@ export function createCrudStore<T extends { id: string }>(): CrudStore<T> {
 			id,
 			deleteFn,
 			reload,
-			confirmFn = () => window.confirm('Archive this item?')
+			confirmFn = () => confirmAsync('Archive item', 'Archive this item?', { danger: true })
 		) {
-			if (!confirmFn(id)) return;
+			if (!(await confirmFn(id))) return;
 			deletingId = id;
 			isDeleting = true;
 			error = '';
 			try {
 				await deleteFn(id);
 				await reload();
+				invalidateNavCounts();
 			} catch (err) {
 				error = err instanceof Error ? err.message : 'Failed to archive item';
 			} finally {
@@ -112,16 +115,30 @@ export function createCrudStore<T extends { id: string }>(): CrudStore<T> {
 		async handleBatchDelete(
 			deleteFn,
 			reload,
-			confirmFn = (n) => window.confirm(`Archive ${n} item(s)?`)
+			confirmFn = (n) => confirmAsync('Archive items', `Archive ${n} item(s)?`, { danger: true })
 		) {
 			if (selectedIds.size === 0) return;
-			if (!confirmFn(selectedIds.size)) return;
+			if (!(await confirmFn(selectedIds.size))) return;
 			isBatchDeleting = true;
 			error = '';
 			try {
-				await Promise.all(Array.from(selectedIds).map((id) => deleteFn(id)));
+				const ids = Array.from(selectedIds);
+				const results = await Promise.allSettled(ids.map((id) => deleteFn(id)));
+				const failed = results
+					.map((result, i) => ({ result, id: ids[i] }))
+					.filter(({ result }) => result.status === 'rejected');
+
+				// Clear/reload unconditionally so successfully-archived items stop
+				// showing as present/selected, even when some deletes failed.
 				selectedIds.clear();
 				await reload();
+				invalidateNavCounts();
+
+				if (failed.length > 0) {
+					error = `Failed to archive ${failed.length} of ${ids.length} item(s): ${failed
+						.map(({ id }) => id)
+						.join(', ')}`;
+				}
 			} catch (err) {
 				error = err instanceof Error ? err.message : 'Failed to archive items';
 			} finally {

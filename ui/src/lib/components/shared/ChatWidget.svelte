@@ -1,19 +1,39 @@
 <script lang="ts">
 	import { sendChatMessage } from '$lib/api/chat';
+	import { confirmAsync } from '$lib/stores/confirm.svelte';
 
 	interface ChatMessage {
 		role: 'user' | 'assistant';
 		content: string;
 	}
 
+	const STORAGE_KEY = 'chatWidget.messages';
+
+	function loadPersistedMessages(): ChatMessage[] {
+		try {
+			const raw = sessionStorage.getItem(STORAGE_KEY);
+			return raw ? JSON.parse(raw) : [];
+		} catch {
+			return [];
+		}
+	}
+
 	let isOpen = $state(false);
-	let messages = $state<ChatMessage[]>([]);
+	let messages = $state<ChatMessage[]>(loadPersistedMessages());
 	let draft = $state('');
 	let isSending = $state(false);
 	let error = $state('');
+	let inputEl: HTMLInputElement | undefined = $state();
+
+	$effect(() => {
+		sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+	});
 
 	function toggleOpen() {
 		isOpen = !isOpen;
+		if (isOpen) {
+			inputEl?.focus();
+		}
 	}
 
 	async function handleSubmit(e: Event) {
@@ -37,9 +57,13 @@
 		}
 	}
 
-	function handleClearChat() {
-		// Nothing is persisted server-side — clearing here discards the
-		// conversation for good, there's no history to restore.
+	async function handleClearChat() {
+		const confirmed = await confirmAsync(
+			'Clear chat',
+			'Clear this conversation? Nothing is saved server-side, so it cannot be restored.',
+			{ danger: true, confirmLabel: 'Clear' }
+		);
+		if (!confirmed) return;
 		messages = [];
 		error = '';
 	}
@@ -64,7 +88,7 @@
 				</div>
 			</div>
 
-			<div class="chat-messages">
+			<div class="chat-messages" aria-live="polite" aria-atomic="false">
 				{#if messages.length === 0}
 					<p class="text-sm text-gray-500">
 						Ask about your usage, accumulation, or billing trends.
@@ -88,6 +112,7 @@
 				<input
 					type="text"
 					bind:value={draft}
+					bind:this={inputEl}
 					placeholder="Ask a question..."
 					disabled={isSending}
 					class="chat-input"

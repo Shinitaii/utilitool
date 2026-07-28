@@ -51,7 +51,7 @@
 	}
 </script>
 
-<div class="bg-opacity-90 fixed inset-0 z-50 flex items-center justify-center bg-black">
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/90">
 	<div class="relative flex h-full w-full items-center justify-center overflow-hidden">
 		<img
 			src={imageUrl}

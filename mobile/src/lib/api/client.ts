@@ -42,13 +42,13 @@ async function request(endpoint: string, options: RequestInit = {}) {
   return response;
 }
 
-export async function apiGet(endpoint: string) {
+export async function apiGet<T = any>(endpoint: string): Promise<T> {
   const res = await request(endpoint, { method: 'GET' });
   if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
   return res.json();
 }
 
-export async function apiPost(endpoint: string, data: any) {
+export async function apiPost<T = any>(endpoint: string, data: any): Promise<T> {
   const res = await request(endpoint, {
     method: 'POST',
     body: JSON.stringify(data)
@@ -57,7 +57,7 @@ export async function apiPost(endpoint: string, data: any) {
   return res.json();
 }
 
-export async function apiPatch(endpoint: string, data: any) {
+export async function apiPatch<T = any>(endpoint: string, data: any): Promise<T> {
   const res = await request(endpoint, {
     method: 'PATCH',
     body: JSON.stringify(data)
@@ -70,4 +70,18 @@ export async function apiDelete(endpoint: string) {
   const res = await request(endpoint, { method: 'DELETE' });
   if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
   return res;
+}
+
+/** Shared optional-param query-string builder for the feature API modules. */
+export function buildQueryString(
+  params?: Record<string, string | number | undefined | null>
+): string {
+  if (!params) return '';
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === '') continue;
+    query.set(key, String(value));
+  }
+  const qs = query.toString();
+  return qs ? `?${qs}` : '';
 }

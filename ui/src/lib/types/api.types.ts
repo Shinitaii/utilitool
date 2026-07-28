@@ -3,12 +3,13 @@ export interface FirestoreTimestamp {
 	_nanoseconds: number;
 }
 
+// The API's global JSON replacer converts timestamps to ISO strings and unconditionally strips
+// is_deleted/deleted_at before they ever reach the client — those fields are server-internal
+// only and never appear on a response the UI can observe.
 export interface BaseModel {
 	id: string;
-	created_at: FirestoreTimestamp;
-	updated_at?: FirestoreTimestamp;
-	deleted_at?: FirestoreTimestamp | null;
-	is_deleted: boolean;
+	created_at: string;
+	updated_at?: string;
 }
 
 export interface PaginatedResult<T> {

@@ -1,4 +1,4 @@
-import { apiGet } from './client';
+import { apiGet, buildQueryString } from './client';
 
 export interface BillingCycle {
   id: string;
@@ -24,10 +24,5 @@ export async function listBillingCycles(params?: {
   limit?: number;
   cursor?: string;
 }): Promise<BillingCyclesResponse> {
-  const query = new URLSearchParams();
-  if (params?.limit) query.set('limit', params.limit.toString());
-  if (params?.cursor) query.set('cursor', params.cursor);
-
-  const path = query.toString() ? `/billing-cycles?${query}` : '/billing-cycles';
-  return apiGet<BillingCyclesResponse>(path);
+  return apiGet<BillingCyclesResponse>(`/billing-cycles${buildQueryString(params)}`);
 }

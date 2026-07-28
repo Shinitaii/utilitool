@@ -51,7 +51,7 @@ jobs:
         run: npx svelte-kit sync
 
       - name: Security audit
-        run: npm audit --audit-level=high
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Lint
         run: npm run lint

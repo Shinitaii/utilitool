@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { listReadings, type Reading } from '../lib/api/readings';
   import type { MeterGroup } from '../lib/api/meter-groups';
   import type { Property } from '../lib/api/properties';
@@ -6,7 +7,10 @@
   import { formatTimestampDate } from '../lib/utils/timestamp';
   import { sessionCache } from '../lib/stores/session';
   import { getUtilityTypeBadgeClasses } from '../lib/utils/utility-colors';
+  import { pushToast } from '../lib/stores/toast.svelte';
+  import { ChevronDown } from '@lucide/svelte';
   import BottomNav from '../components/BottomNav.svelte';
+  import ErrorBanner from '../components/ErrorBanner.svelte';
 
   let readings: Reading[] = $state([]);
   let meterGroups: MeterGroup[] = $state([]);
@@ -17,6 +21,11 @@
   let selectedReading: Reading | null = $state(null);
   let utilityFilter: 'all' | 'electricity' | 'water' = $state('all');
   let selectedPropertyId: string = $state('');
+  let headingEl: HTMLElement | undefined = $state();
+
+  onMount(() => {
+    headingEl?.focus();
+  });
 
   const meterGroupMap = $derived(
     Object.fromEntries(meterGroups.map(g => [g.id, g]))
@@ -28,7 +37,7 @@
       : readings.filter(r => meterGroupMap[r.meter_group_id]?.utility_type === utilityFilter)
   );
 
-  const availableProperties = $derived(() => {
+  const availableProperties = $derived.by(() => {
     const ids = new Set(utilityFilteredReadings.map(r => r.property_id));
     return properties.filter(p => ids.has(p.id));
   });
@@ -41,12 +50,16 @@
 
   $effect(async () => {
     try {
-      // Fetch readings (always fresh, not cached)
-      const readingsRes = await listReadings();
+      // Independent fetches — batched instead of sequential awaits, matching the
+      // already-correct pattern in Billings.svelte/Home.svelte (finding #54).
+      const [readingsRes, meterGroupsRes, propertiesRes] = await Promise.all([
+        listReadings(), // always fresh, not cached
+        sessionCache.getOrFetchMeterGroups(),
+        sessionCache.getOrFetchProperties()
+      ]);
       readings = readingsRes.data || [];
-
-      meterGroups = await sessionCache.getOrFetchMeterGroups();
-      properties = await sessionCache.getOrFetchProperties();
+      meterGroups = meterGroupsRes;
+      properties = propertiesRes;
 
       const names: Record<string, string> = {};
       properties.forEach((p: Property) => { names[p.id] = p.room_name; });
@@ -58,10 +71,26 @@
     }
   });
 
-  // Reset property filter when utility type changes
+  // Reset property filter when utility type changes. Tracks the previous utilityFilter value
+  // explicitly instead of relying on implicit $effect dependency tracking — reading
+  // selectedPropertyId unconditionally in the body would make Svelte track it too, so every
+  // property selection (which changes selectedPropertyId) would re-trigger this effect and
+  // immediately wipe the selection right back out (finding #1). Initialized lazily on the
+  // effect's first run (rather than at top-level) so it's a plain closure variable, not a
+  // premature read of the $state value outside a reactive context.
+  let previousUtilityFilter: typeof utilityFilter | undefined;
   $effect(() => {
-    utilityFilter;
-    selectedPropertyId = '';
+    if (previousUtilityFilter === undefined) {
+      previousUtilityFilter = utilityFilter;
+      return;
+    }
+    if (utilityFilter !== previousUtilityFilter) {
+      previousUtilityFilter = utilityFilter;
+      if (selectedPropertyId) {
+        pushToast('Property filter cleared for the new utility type', 'warning');
+      }
+      selectedPropertyId = '';
+    }
   });
 
   function getUnit(meterGroupId: string): string {
@@ -72,12 +101,14 @@
 
 <div class="min-h-screen pb-20" style="background-color: var(--color-bg-primary)">
   <div class="p-4 border-b bg-white" style="border-color: var(--color-border)">
-    <h1 class="text-xl font-bold mb-3" style="color: var(--color-text-primary)">Reading History</h1>
+    <h1 bind:this={headingEl} tabindex="-1" class="text-xl font-bold mb-3 outline-none" style="color: var(--color-text-primary)">Reading History</h1>
 
     <!-- Utility type tabs -->
-    <div class="flex gap-2 mb-3">
+    <div class="flex gap-2 mb-3" role="tablist" aria-label="Filter by utility type">
       {#each [['all', 'All'], ['electricity', 'Electricity'], ['water', 'Water']] as [value, label]}
         <button
+          role="tab"
+          aria-selected={utilityFilter === value}
           onclick={() => { utilityFilter = value as typeof utilityFilter; }}
           class="px-3 py-1 rounded-full text-sm font-semibold border transition {value !== 'all' && utilityFilter !== value ? getUtilityTypeBadgeClasses(value) : ''}"
           style={utilityFilter === value
@@ -92,23 +123,22 @@
     </div>
 
     <!-- Property filter -->
-    {#if availableProperties().length > 0}
+    {#if availableProperties.length > 0}
       <select
         bind:value={selectedPropertyId}
         class="input-base w-full text-sm"
       >
         <option value="">All properties</option>
-        {#each availableProperties() as property (property.id)}
+        {#each availableProperties as property (property.id)}
           <option value={property.id}>{property.room_name}</option>
         {/each}
       </select>
     {/if}
   </div>
 
+  <main>
   {#if error}
-    <div class="p-3 rounded-lg text-sm m-4" style="background-color: #fde5e0; color: var(--color-status-alert); border: 1px solid var(--color-status-alert)">
-      {error}
-    </div>
+    <ErrorBanner message={error} />
   {/if}
 
   {#if isLoading}
@@ -120,6 +150,7 @@
       {#each filteredReadings as reading (reading.id)}
         <button
           onclick={() => (selectedReading = selectedReading?.id === reading.id ? null : reading)}
+          aria-expanded={selectedReading?.id === reading.id}
           class="card-base w-full text-left hover:opacity-90 transition"
         >
           <div class="flex justify-between items-start mb-2">
@@ -134,9 +165,15 @@
                 {/if}
               </p>
             </div>
-            <span class="text-lg font-bold" style="color: var(--color-accent)">
-              {reading.reading_amount} {getUnit(reading.meter_group_id)}
-            </span>
+            <div class="flex items-center gap-1.5">
+              <span class="text-lg font-bold" style="color: var(--color-accent)">
+                {reading.reading_amount} {getUnit(reading.meter_group_id)}
+              </span>
+              <ChevronDown
+                size={16}
+                style="color: var(--color-text-secondary); transition: transform 0.15s; transform: rotate({selectedReading?.id === reading.id ? 180 : 0}deg)"
+              />
+            </div>
           </div>
           <p class="text-xs" style="color: var(--color-text-secondary)">{formatTimestampDate(reading.reading_date)}</p>
 
@@ -154,6 +191,7 @@
       {/each}
     </div>
   {/if}
+  </main>
 
   <BottomNav active="history" />
 </div>

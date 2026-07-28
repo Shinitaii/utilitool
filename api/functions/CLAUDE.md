@@ -207,6 +207,15 @@ Represents buildings/units that consume utilities.
 - Enforces max-tenant-count per property
 - **Cascade delete**: `DELETE /:id` soft-deletes the property + all readings for this property + all billings for this property (atomic transaction)
 - **Cascade restore**: `PATCH /:id/restore` restores the property + all its soft-deleted readings + billings (atomic transaction)
+- `Property.main_meter_group_ids: string[]` — derived/denormalized from `meter_groups` (the
+  meter_group_ids this property is the main meter for), kept in sync at every create/update
+  (single + batch) that touches `meter_groups`. Lets `property.validator.ts` and
+  `billing-cycle.service.ts`'s `injectMainMeterBilling` run a targeted `$arrayContains` /
+  `$arrayContainsAny` query for main-meter uniqueness/lookup instead of scanning the whole
+  `properties` collection — same denormalization idiom as `Billing.meter_group_id` (see
+  `decisions/20260719_billing-meter-group-denormalization.md`). Backfilled for pre-existing
+  records via `scripts/backfill-property-main-meter.ts`. See
+  `decisions/20260726_data-retrieval-layer-modularization.md`.
 
 ---
 
@@ -348,6 +357,62 @@ Represents billing periods with validation and rate calculation.
 - Returns 404 if the user has no `vision_model` configured in `llm-config` (no fallback), 422 if the vision model cannot extract the data or any numeric field is invalid
 - Requires `admin` or `landlord` role
 
+**Rate-EMA cost estimation** (`billing-cycle.util.ts` / `billing-cycle.service.ts`):
+- `computeRateEmaChain(cycles, gamma)` (`billing-cycle.util.ts`) computes a chronological
+  exponential moving average of `billing_rate` per meter group, seeded by the first cycle's own
+  rate. `gamma` is resolved per utility type via `RATE_EMA_GAMMA_BY_UTILITY_TYPE = {water: 0.15,
+  electricity: 0.01}` — values chosen by backtest, see
+  `decisions/20260724_billing-cost-estimation-ml-finding.md` for the full methodology (rejected
+  OLS regression, rejected seasonal-naive/sibling-consumption/total-intake forecasting attempts).
+- `recomputeRateEmaForMeterGroup()` (`billing-cycle.service.ts`) runs after every cycle
+  create/batch-create/update, looks up the meter group's gamma, writes the result onto
+  `BillingCycle.rate_ema`, then calls `billingService.recomputePendingEstimates()` for the same
+  meter group so any still-pending `Billing.estimated_cost` picks up the new rate_ema too.
+  Since EMA is causal (`ema[i]` only depends on `ema[i-1]`, never on anything after it), the
+  common single-cycle create/update path passes an `anchorDate` (the earliest
+  `billing_start_date` the operation could have affected) so this only fetches the nearest
+  earlier cycle (to seed the chain) plus cycles on/after the anchor — not the meter group's
+  entire history. Falls back to a full-history recompute (bounded to 1000 cycles) when no clean
+  anchor applies: a batch update touching several cycles at once, or cleaning up the *old*
+  meter group's chain after a cycle's `meter_group_id` changed. This bounded-range fetch relies
+  on a `billing_cycles` composite index on `(meter_group_id, is_deleted, billing_start_date)` —
+  see `api/firestore.indexes.json`. See
+  `decisions/20260726_billing-cycle-ema-recompute-scaling.md` for why this changed (a live
+  `POST /billing-cycles` was taking 9+ seconds) and what else was fixed alongside it
+  (`CachedRepository`'s batch cache writes were also fully sequential). The seed-plus-affected
+  fetch itself goes through the shared `fetchSeedAndAffected<T>()` in
+  `src/utils/anchor-fetch.util.ts` — a generic "nearest-before + on/after-anchor" bounded read
+  over any per-user `CachedRepository`, reused by `recomputePendingEstimates()` below rather than
+  each reimplementing the same shape.
+- `Billing.estimated_cost` (`billing.model.ts`) is set at auto-billing time as
+  `consumption × latest closed cycle's rate_ema` (`billing.service.ts`), then **kept live**:
+  `recomputePendingEstimates()` recomputes it for every billing with no closed `BillingCycle`
+  referencing it yet, whenever that meter group's `rate_ema` chain changes — a new cycle, a
+  `PATCH /billing-cycles/:id` rate correction, or a `rate_ema` backfill. Once a cycle picks up a
+  billing (referenced in its `billing_ids`), the billing is no longer "pending" and its estimate
+  stops being touched. See `decisions/20260724_billing-cost-estimation-ml-finding.md`'s "frozen
+  snapshot" follow-up for the history of this gap and why it was closed this way rather than via
+  a separate compute pipeline. Like the cycle-chain recompute above, this is anchor-bounded via
+  `fetchSeedAndAffected()` on `Billing.billing_period_date` (`billing_period_date >= anchorDate`)
+  instead of scanning every billing in the meter group — the caller
+  (`recomputeRateEmaForMeterGroup`) only passes an `anchorDate` through when a cycle already
+  existed before it (i.e. the bounded cycle fetch found a seed cycle); on a meter group's
+  *very first* cycle ever, it's omitted and this falls back to a full scan (bounded to 1000
+  billings), since older still-pending billings that were stuck at `estimated_cost: null` (no
+  rate_ema existed at all yet) would otherwise be wrongly excluded by an anchor that only looks
+  forward. Relies on a `billings` composite index on
+  `(is_deleted, meter_group_id, billing_period_date)` — see `api/firestore.indexes.json`.
+- `scripts/backfill-rate-ema.ts` — one-time idempotent migration for `BillingCycle` documents that
+  predate `rate_ema`, or that need re-backfilling after a gamma change (`--dry-run` writes a
+  report, `--apply` writes for real; safe to re-run). Since it writes `BillingCycle` documents
+  directly via raw Firestore batches (bypassing `recomputeRateEmaForMeterGroup`), it also runs its
+  own second pass that mirrors `recomputePendingEstimates()` against raw Firestore, so a rerun
+  after a gamma change fixes pending `Billing.estimated_cost` values too, not just `rate_ema`.
+- `scripts/rate-ema-backtest.js`, `regression-coefficients.js`, `seasonal-naive-backtest.js`,
+  `sibling-consumption-backtest.js`, `total-intake-backtest.js` are one-off analysis/backtest
+  scripts that produced this design — not part of the runtime app, kept for reproducibility. Full
+  detail in the decision doc above; not duplicated here.
+
 ---
 
 ### Image Extraction (`/image-extraction` — protected)
@@ -379,10 +444,14 @@ Read-only analytics endpoints for billing summaries and trends. Accepts optional
 
 | Method | Path | Purpose |
 |--------|------|---------|
+| GET | `/reports` | Combined fetch — summary + consumption + billing-trends + collection-status from one shared join. Used by the Reports UI page (single HTTP call instead of four) |
 | GET | `/reports/summary` | Key billing metrics: total revenue, collection rate, payment status breakdown |
 | GET | `/reports/consumption` | Consumption breakdown by month and by property |
 | GET | `/reports/billing-trends` | Billing amounts (billed, collected, pending, overdue) grouped by month |
 | GET | `/reports/collection-status` | Billing counts and amounts grouped by payment status |
+
+The four granular endpoints remain available for other callers (e.g. the chatbot's tool-calling)
+even though the Reports UI page only calls the combined `GET /reports`.
 
 **Query params** (all optional, all endpoints):
 - `startDate` / `endDate` — ISO 8601 filter on billing cycle dates
@@ -417,12 +486,10 @@ Restricted to the `admin` role (`requireRole("admin")` in `chatbot.route.ts`) �
 
 ### Stub & Incomplete Features
 
-The following feature folders exist but are **not fully implemented**:
-
 | Folder | Status | Notes |
 |--------|--------|-------|
-| `bills/` | ⚠️ Partial | `POST /bills/ocr` — OCR via `llm-config` `vision_model`; no model/service/repository. Functionally overlaps with `image-extraction/billings` |
-| `user/` | ⚠️ Partial | `POST /users` — create user record; no model/service/repository. Auth covered by `auth/` |
+| `bills/` | ✅ Complete (intentionally thin) | `POST /bills/ocr` — no model/service/repository by design; delegates to `ImageExtractionService.extractBillingFromImage()` rather than duplicating it. Not a stub — it's a deliberate pass-through |
+| `user/` | ✅ Complete | `POST /users` — creates both the Firebase Auth account and Firestore profile server-side via the Admin SDK in one call; no model/service/repository since it's a single-purpose admin action, not CRUD. Account creation is currently disabled client-side via the UI's `ACCOUNT_CREATION_DISABLED` flag (single-tenant), not an API limitation |
 | `audit/` | ❌ Stub | `audit.model.ts` only — not mounted |
 
 ---
@@ -650,6 +717,9 @@ api/functions/src/
     ├── pagination.util.ts       → PaginatedResult<T>, cursor-based pagination
     ├── error.util.ts            → AppError, handleValidationError()
     ├── logger.util.ts           → Pino logger instance
+    ├── cascade-delete.util.ts   → Cross-cutting cascade delete/restore/purge (meter-group, property, reading)
+    ├── list-cache.util.ts       → Per-user list-cache primitives (loadAll, paginate, listAppendMany/listUpdateMany/listRemoveMany — batched to avoid races from concurrent single-item calls on the same cache key)
+    ├── anchor-fetch.util.ts     → fetchSeedAndAffected<T>() — shared bounded "seed nearest-before + affected on/after anchor" read, see "Rate-EMA cost estimation" below
     └── ... (sanitize, firestore conversion)
 ```
 
@@ -859,6 +929,30 @@ Methods:
   not exposed via any route; used only for cleaning up dependent records when a parent is
   hard-deleted in a transaction. Public `DELETE /:id` endpoints map to `softDelete`, per the
   soft-delete-only decision (D1).
+
+`SearchOptions.filters`' `RangeFilter` supports `$gte`/`$lte`/`$gt`/`$lt` and, as of
+`decisions/20260726_data-retrieval-layer-modularization.md`, `$arrayContains` /
+`$arrayContainsAny` (native Firestore `array-contains` / `array-contains-any`; the latter throws
+if given more than 10 values, matching this codebase's existing batch-size cap).
+
+### CachedRepository<T>
+Wraps `Repository<T>` with a two-tier cache (per-item + per-user list). Located in
+`src/lib/cached-repository.lib.ts`; every feature constructs one per-request via a local
+`repoFor(userId)` helper.
+
+- `search(options)` / `searchAll(options)` — serve active-item reads from the user's cached full
+  list, filtered/paginated in memory. **Only equality filters work here** —
+  `applyFilters()` throws on any range- or array-shaped filter value, since the in-memory list
+  cache can't express them. This is the right tool for simple paginated list endpoints, where
+  loading the whole collection once and slicing in memory is the point.
+- `searchDirect(options: SearchOptions<T>)` → `PaginatedResult<T>` — thin pass-through to
+  `this.repo.search(options)`, bypassing the list cache entirely. **The sanctioned tool for
+  correctness-critical or narrowly-scoped reads** (recompute functions, validators) where loading
+  a user's entire collection into memory would be wasteful or wrong — supports the full range and
+  array-contains filter set `Repository.search()` does. Prefer this over `search()`/`searchAll()`
+  any time the caller isn't serving a simple paginated list endpoint; don't reach around
+  `CachedRepository` to the raw `Repository`/`Firestore` for this — that was the one-off shape
+  this method replaced. See `decisions/20260726_data-retrieval-layer-modularization.md`.
 
 ### AppError
 Custom error class with HTTP status. Located in `src/utils/error.util.ts`.

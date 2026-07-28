@@ -16,9 +16,12 @@ export class MeterGroupValidator {
   ): Promise<MeterGroup | undefined> {
     // Use indexed equality query instead of full collection scan
     const normalizedName = normalizeMeterName(meterName);
+    // .limit(1000) — defense-in-depth safety net; not expected to bind at this collection's
+    // scale, but this was previously the one truly uncapped `.get()` in the codebase.
     const snap = await collectionRef(COLLECTIONS.METER_GROUPS)
       .where("utility_type", "==", utilityType)
       .where("is_deleted", "==", false)
+      .limit(1000)
       .get();
 
     return snap.docs
@@ -44,6 +47,7 @@ export class MeterGroupValidator {
         const snap = await collectionRef(COLLECTIONS.METER_GROUPS)
           .where("utility_type", "==", item.utility_type)
           .where("is_deleted", "==", false)
+          .limit(1000)
           .get();
         existingByUtilityType.set(
           item.utility_type,

@@ -19,7 +19,4 @@ export interface CreateMeterGroupRequest {
 	utility_type: UtilityType;
 }
 
-export interface UpdateMeterGroupRequest {
-	meter_name?: string;
-	utility_type?: UtilityType;
-}
+export type UpdateMeterGroupRequest = Partial<CreateMeterGroupRequest>;

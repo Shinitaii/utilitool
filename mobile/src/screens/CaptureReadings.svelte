@@ -7,11 +7,22 @@
   import { getUtilityTypeBadgeClasses } from '../lib/utils/utility-colors';
   import { findMeterGroupEntry, needsSeedReading } from '../lib/utils/readings-wizard.util';
   import { sessionCache } from '../lib/stores/session';
-  import BottomNav from '../components/BottomNav.svelte';
+  import { confirmAsync } from '../lib/stores/confirm.svelte';
+  import { getErrorMessage } from '../lib/utils/errors';
+  import { pushToast } from '../lib/stores/toast.svelte';
+  import ErrorBanner from '../components/ErrorBanner.svelte';
 
   let step = $state(1);
   let isLoading = $state(false);
   let error: string | null = $state(null);
+  let headingEl: HTMLElement | undefined = $state();
+
+  // Moves focus to the step heading on every step transition, not just initial mount
+  // (finding #17) — mirrors the aria-live step indicator below.
+  $effect(() => {
+    step;
+    headingEl?.focus();
+  });
 
   // A captured photo is only ever used in-memory to suggest a reading value via OCR —
   // it's never included in the submit payload.
@@ -188,21 +199,40 @@
       }
 
       if (failedSummaries.length > 0) {
-        error = `${createdCount} of ${totalCount} readings saved. ${failedSummaries.length} skipped:\n${failedSummaries.join('\n')}`;
+        pushToast(
+          `${createdCount} of ${totalCount} readings saved. ${failedSummaries.length} skipped: ${failedSummaries.join('; ')}`,
+          'warning'
+        );
         isLoading = false;
         return;
       }
 
       // Success - return to home
       window.location.hash = '#/home';
-    } catch (e: any) {
-      error = e.message || 'Failed to submit readings';
+    } catch (e) {
+      error = getErrorMessage(e, 'Failed to submit readings');
     } finally {
       isLoading = false;
     }
   }
 
-  function goBack() {
+  const filledCount = $derived(
+    Object.values(propertyReadings).filter((r) => r.amount > 0).length
+  );
+
+  function hasEnteredData() {
+    return Object.values(propertyReadings).some((r) => r.amount > 0 || r.image_url);
+  }
+
+  async function goBack() {
+    if (step > 1 && hasEnteredData()) {
+      const confirmed = await confirmAsync(
+        'Discard entered readings?',
+        'Going back will lose the readings entered for this step.',
+        { danger: true, confirmLabel: 'Discard' }
+      );
+      if (!confirmed) return;
+    }
     if (step === 1) {
       window.location.hash = '#/home';
     } else {
@@ -211,16 +241,25 @@
   }
 </script>
 
-<div class="min-h-screen pb-20" style="background-color: var(--color-bg-primary)">
+<div class="min-h-screen" style="background-color: var(--color-bg-primary)">
   <div class="p-4 flex items-center gap-3 bg-white border-b" style="border-color: var(--color-border); color: var(--color-text-primary)">
-    <button onclick={goBack} class="text-xl" style="color: var(--color-text-primary)">←</button>
-    <h1 class="text-xl font-bold">New Reading Session</h1>
+    <button onclick={goBack} aria-label="Back" class="text-xl" style="color: var(--color-text-primary)">←</button>
+    <h1 bind:this={headingEl} tabindex="-1" class="text-xl font-bold outline-none">New Reading Session</h1>
   </div>
 
+  <div class="flex gap-1 px-4 pt-2" aria-hidden="true">
+    {#each [1, 2, 3] as s (s)}
+      <div
+        class="h-1 flex-1 rounded-full"
+        style="background-color: {s <= step ? 'var(--color-accent)' : 'var(--color-border)'}"
+      ></div>
+    {/each}
+  </div>
+  <span class="sr-only" aria-live="polite">Step {step} of 3</span>
+
+  <main>
   {#if error}
-    <div class="p-4 m-4 rounded border" style="background-color: #fff0f0; border-color: var(--color-status-alert); color: var(--color-status-alert)">
-      {error}
-    </div>
+    <ErrorBanner message={error} />
   {/if}
 
   <!-- Step 1: Session Setup -->
@@ -276,6 +315,9 @@
     <div class="p-4 space-y-4">
       <p class="text-sm" style="color: var(--color-text-secondary)">
         Reading date: <strong>{readingDate}</strong>
+      </p>
+      <p class="text-sm font-medium" style="color: var(--color-accent)">
+        {filledCount} of {properties.length} properties done
       </p>
 
       {#each properties as property (property.id)}
@@ -400,6 +442,5 @@
       </div>
     </div>
   {/if}
-
-  <BottomNav active="home" />
+  </main>
 </div>

@@ -17,7 +17,7 @@
 	import type { Property } from '$lib/types/property.types';
 	import type { PaginatedResult } from '$lib/types/api.types';
 	import { formatFirestoreDate, formatLongDate, formatReading } from '$lib/utils/format';
-	import { toDate } from '$lib/utils/timestamp';
+	import { toDate, toTimestamp } from '$lib/utils/timestamp';
 	import { compressImage } from '$lib/utils/image-compression';
 	import { resolveCurrentVersion, getVersionsSource } from '$lib/utils/true-reading';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
@@ -28,6 +28,8 @@
 	import ImagePreview from '$lib/components/shared/ImagePreview.svelte';
 	import PhotoDropzone from '$lib/components/shared/PhotoDropzone.svelte';
 	import { createCrudStore } from '$lib/stores/crud.svelte';
+	import { confirmAsync } from '$lib/stores/confirm.svelte';
+	import { pushToast } from '$lib/stores/toast.svelte';
 	import { Archive, Plus, X } from 'lucide-svelte';
 
 	const crud = createCrudStore<Reading>();
@@ -57,7 +59,13 @@
 	let meterGroups = $state<MeterGroup[]>([]);
 	let properties = $state<Property[]>([]);
 	let isLoading = $state(false);
+	// Scoped per operation instead of one shared string — a background batch/manual-form
+	// failure can no longer overwrite/mask an unrelated table-filter error (finding #26).
 	let error = $state('');
+	let batchFormError = $state('');
+	let manualFormError = $state('');
+	// Filter-only — the batch form's meter group select uses its own batchMeterGroup state
+	// below so picking one no longer silently desyncs the other (finding #19).
 	let selectedMeterGroup = $state('');
 	let selectedProperty = $state('');
 	let filterStartDate = $state('');
@@ -66,6 +74,9 @@
 	let readingFormTab = $state<'batch' | 'manual'>('batch');
 	let manualReadingLoading = $state(false);
 	let manualImageUploading = $state(false);
+	// Bumped on every manual-form reset so an in-flight OCR suggest from a discarded form
+	// can't land on the next form instance (finding #7).
+	let manualFormGeneration = $state(0);
 	let manualReadingForm = $state<ManualReadingForm>({
 		meter_group_id: '',
 		property_id: '',
@@ -88,16 +99,24 @@
 	});
 
 	// Batch reading form
+	let batchMeterGroup = $state('');
 	let batchDate = $state(new Date().toISOString().split('T')[0]);
 	let batchRows = $state<BatchReadingRow[]>([]);
 	let batchLoading = $state(false);
+	let batchEmptyReason = $state('No properties found for this meter group');
+
+	// Parses a `YYYY-MM-DD` <input type="date"> value as a local-midnight Date, avoiding the
+	// UTC-parse/local-display off-by-one `new Date(dateString)` causes.
+	function parseLocalDateInput(dateString: string): Date {
+		const [y, m, d] = dateString.split('-').map(Number);
+		return new Date(y, m - 1, d);
+	}
 
 	// "Month day, Year" preview of the batch date, parsed as a local date to avoid
 	// the UTC-midnight/local-timezone off-by-one shift new Date(batchDate) would cause.
 	const batchDateDisplay = $derived.by(() => {
 		if (!batchDate) return '';
-		const [y, m, d] = batchDate.split('-').map(Number);
-		return formatLongDate(new Date(y, m - 1, d));
+		return formatLongDate(parseLocalDateInput(batchDate));
 	});
 
 	// Image preview
@@ -173,42 +192,69 @@
 		}
 	}
 
-	async function handleMeterGroupChange() {
-		// Load batch properties for the selected meter group
-		if (selectedMeterGroup) {
-			await loadBatchProperties();
-		} else {
-			batchRows = [];
-		}
-		// Apply filter to readings
-		await applyFilters();
-	}
-
 	async function handleFilterChange() {
 		await applyFilters();
 	}
 
+	// Separate from the table filter's meter group select (finding #19) — changing this one
+	// only loads the batch form's property rows, it never touches the filtered table.
+	async function handleBatchMeterGroupChange() {
+		if (batchMeterGroup) {
+			await loadBatchProperties();
+		} else {
+			batchRows = [];
+		}
+	}
+
 	function resetReadingForm() {
+		batchMeterGroup = '';
 		batchRows = [];
 		batchDate = new Date().toISOString().split('T')[0];
+		batchFormError = '';
 		resetManualReadingForm();
 	}
 
+	function hasUnsavedBatchData() {
+		return batchRows.some((row) => row.reading_amount !== null || row.image_url);
+	}
+
+	function hasUnsavedManualData() {
+		return manualReadingForm.reading_amount !== null || manualReadingForm.image_url !== '';
+	}
+
+	async function switchReadingFormTab(tab: 'batch' | 'manual') {
+		if (tab === readingFormTab) return;
+		const hasUnsaved = readingFormTab === 'batch' ? hasUnsavedBatchData() : hasUnsavedManualData();
+		if (hasUnsaved) {
+			const confirmed = await confirmAsync(
+				'Discard entered readings?',
+				'Switching tabs will discard the readings entered here — continue?',
+				{ danger: true, confirmLabel: 'Discard' }
+			);
+			if (!confirmed) return;
+		}
+		readingFormTab = tab;
+		resetReadingForm();
+	}
+
 	async function loadBatchProperties() {
-		if (!selectedMeterGroup) {
-			error = 'Please select a meter group first';
+		if (!batchMeterGroup) {
+			batchFormError = 'Please select a meter group first';
 			return;
 		}
 
 		batchLoading = true;
-		error = '';
+		batchFormError = '';
 		try {
-			const result = await getProperties({ limit: 100, meterGroupId: selectedMeterGroup });
-			const selectedMeter = meterGroups.find((m) => m.id === selectedMeterGroup);
+			const result = await getProperties({ limit: 100, meterGroupId: batchMeterGroup });
+			const selectedMeter = meterGroups.find((m) => m.id === batchMeterGroup);
 			const utilityType = selectedMeter?.utility_type || 'electricity';
 
 			if (result.data.length === 0) {
-				error = 'No properties found for this meter group';
+				// No error banner here — the "No properties" EmptyState below already
+				// communicates this; a red banner on top of it would be redundant and
+				// wrongly implies a failure rather than an empty selection.
+				batchEmptyReason = 'No properties found for this meter group';
 				batchRows = [];
 			} else {
 				const filteredProperties = result.data.filter((property) => {
@@ -222,12 +268,13 @@
 				});
 
 				if (filteredProperties.length === 0) {
-					error = 'No submeter properties found for this meter group (all are main meters)';
+					batchEmptyReason =
+						'No submeter properties found for this meter group (all are main meters)';
 					batchRows = [];
 				} else {
 					batchRows = filteredProperties.map((property) => ({
 						property,
-						meter_group_id: selectedMeterGroup,
+						meter_group_id: batchMeterGroup,
 						reading_amount: null,
 						image_url: null,
 						data_url: null,
@@ -236,7 +283,7 @@
 				}
 			}
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to load properties';
+			batchFormError = err instanceof Error ? err.message : 'Failed to load properties';
 			batchRows = [];
 		} finally {
 			batchLoading = false;
@@ -244,6 +291,8 @@
 	}
 
 	function resetManualReadingForm() {
+		manualFormGeneration++;
+		manualFormError = '';
 		manualReadingForm = {
 			meter_group_id: '',
 			property_id: '',
@@ -263,8 +312,16 @@
 		const meterGroup = meterGroups.find((g) => g.id === meterGroupId);
 		const currentVersion = meterGroup?.current_version ?? 1;
 
-		const existing = await getReadings({ meterGroupId, propertyId, limit: 100 });
-		return !existing.data.some((r) => r.meter_version === currentVersion);
+		// Paginate through every historical reading for this property/meter-group pair — a
+		// single capped page could silently miss the current-version reading once history
+		// exceeds 100 rows, mis-categorizing a create as a seed (finding #25).
+		let cursor: string | undefined;
+		do {
+			const page = await getReadings({ meterGroupId, propertyId, limit: 100, cursor });
+			if (page.data.some((r) => r.meter_version === currentVersion)) return false;
+			cursor = page.hasMore ? (page.nextCursor ?? undefined) : undefined;
+		} while (cursor);
+		return true;
 	}
 
 	async function handleCreateManualReading() {
@@ -273,21 +330,24 @@
 			!manualReadingForm.property_id ||
 			manualReadingForm.reading_amount === null
 		) {
-			error = 'Please complete all required fields for the manual reading';
+			manualFormError = 'Please complete all required fields for the manual reading';
+			return;
+		}
+		// A still-resolving OCR suggest could otherwise write into a freshly-reset form after
+		// this submit completes (finding #7) — block submit until it settles.
+		if (manualImageUploading) {
+			manualFormError = 'Please wait for the photo suggestion to finish';
 			return;
 		}
 
 		manualReadingLoading = true;
-		error = '';
+		manualFormError = '';
 		try {
 			const payload = {
 				meter_group_id: manualReadingForm.meter_group_id,
 				property_id: manualReadingForm.property_id,
 				reading_amount: manualReadingForm.reading_amount,
-				reading_date: {
-					_seconds: Math.floor(new Date(manualReadingForm.reading_date).getTime() / 1000),
-					_nanoseconds: 0
-				}
+				reading_date: toTimestamp(parseLocalDateInput(manualReadingForm.reading_date))
 			} as any;
 
 			const isSeed = await shouldSeedReading(
@@ -303,71 +363,104 @@
 			readingFormOpen = false;
 			resetManualReadingForm();
 			await loadData();
-			alert(
+			pushToast(
 				isSeed
 					? 'Seed reading created successfully — this establishes the baseline for this meter version.'
-					: 'Manual reading created successfully. If this property has a previous-month reading, the billing was auto-created.'
+					: 'Manual reading created successfully. If this property has a previous-month reading, the billing was auto-created.',
+				'success'
 			);
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to create manual reading';
+			manualFormError = err instanceof Error ? err.message : 'Failed to create manual reading';
 		} finally {
 			manualReadingLoading = false;
 		}
 	}
 
+	type CompressAndSuggestResult =
+		{ ok: true; imageUrl: string; amount: number | null } | { ok: false; message: string };
+
+	// Shared by the batch and manual tabs: compress → auto-suggest via OCR — no separate
+	// Suggest button on either. `onCompressed` fires as soon as the compressed image is ready
+	// (before the OCR await) so a busy indicator can clear at the same point it always did.
+	// Extracting this one helper closes the race in finding #8 (only the batch copy guarded
+	// against a stale row) and, combined with the caller-side generation/identity checks
+	// below, finding #7.
+	async function compressAndSuggest(
+		file: File,
+		onCompressed?: (imageUrl: string) => void
+	): Promise<CompressAndSuggestResult> {
+		let imageUrl: string;
+		try {
+			// Compress image to avoid "request entity too large" errors. Photo is only ever
+			// used transiently for OCR suggest — never persisted.
+			imageUrl = await compressImage(file, 800, 0.7);
+		} catch (err) {
+			return { ok: false, message: err instanceof Error ? err.message : 'Failed to process image' };
+		}
+		onCompressed?.(imageUrl);
+		try {
+			const result = await ocrReadingImage(imageUrl);
+			return { ok: true, imageUrl, amount: result.suggested_reading_amount };
+		} catch (err) {
+			return {
+				ok: false,
+				message: err instanceof Error ? err.message : 'Failed to suggest reading'
+			};
+		}
+	}
+
 	async function handleBatchImageUpload(rowIndex: number, file: File | null) {
 		if (!file) return;
+		// Stable identity across the async gap, not the array index — batchRows can be
+		// reassigned (meter group change) while this is in flight (finding #8).
+		const propertyId = batchRows[rowIndex].property.id;
+		batchRows[rowIndex].is_uploading = true;
+
+		const result = await compressAndSuggest(file, (imageUrl) => {
+			const current = batchRows[rowIndex];
+			if (current && current.property.id === propertyId) {
+				current.data_url = imageUrl;
+				current.image_url = imageUrl;
+				current.is_uploading = false;
+			}
+		});
 
 		const row = batchRows[rowIndex];
-
-		row.is_uploading = true;
-		try {
-			// Compress image to avoid "request entity too large" errors
-			const compressedDataUrl = await compressImage(file, 800, 0.7);
-
-			// Photo is only ever used transiently for OCR suggest — never persisted.
-			row.data_url = compressedDataUrl;
-			row.image_url = compressedDataUrl;
-		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to process image';
-			row.is_uploading = false;
+		if (!row || row.property.id !== propertyId) return; // stale — row moved on, discard
+		row.is_uploading = false;
+		if (!result.ok) {
+			batchFormError = result.message;
 			return;
 		}
-		row.is_uploading = false;
-
-		// Auto-suggest a reading value from the photo — no separate Suggest button.
-		await handleSuggestReading(rowIndex);
+		if (result.amount !== null) row.reading_amount = result.amount;
 	}
 
 	async function handleManualImageUpload(file: File | null) {
 		if (!file) return;
-
+		// Captured before the async gap — a reset (tab switch, successful submit) bumps this,
+		// so a stale suggestion can no longer write into the next form instance (finding #7).
+		const generation = manualFormGeneration;
 		manualImageUploading = true;
-		try {
-			// Compress image to avoid "request entity too large" errors
-			const compressedDataUrl = await compressImage(file, 800, 0.7);
-			manualReadingForm.image_url = compressedDataUrl;
-		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to process image';
-			manualImageUploading = false;
+
+		const result = await compressAndSuggest(file, (imageUrl) => {
+			if (generation === manualFormGeneration) {
+				manualReadingForm.image_url = imageUrl;
+				manualImageUploading = false;
+			}
+		});
+
+		if (generation !== manualFormGeneration) return; // stale — form was reset, discard
+		manualImageUploading = false;
+		if (!result.ok) {
+			manualFormError = result.message;
 			return;
 		}
-		manualImageUploading = false;
-
-		// Auto-suggest a reading value from the photo — no separate Suggest button.
-		try {
-			const result = await ocrReadingImage(manualReadingForm.image_url);
-			if (result.suggested_reading_amount !== null) {
-				manualReadingForm.reading_amount = result.suggested_reading_amount;
-			}
-		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to suggest reading';
-		}
+		if (result.amount !== null) manualReadingForm.reading_amount = result.amount;
 	}
 
 	async function handleCreateBatch() {
-		if (!selectedMeterGroup || !batchDate) {
-			error = 'Please select a meter group and reading date';
+		if (!batchMeterGroup || !batchDate) {
+			batchFormError = 'Please select a meter group and reading date';
 			return;
 		}
 
@@ -375,45 +468,45 @@
 			(r) => r.reading_amount === null || r.reading_amount === undefined
 		);
 		if (invalidRows.length > 0) {
-			error = `Please enter reading amounts for all properties (${invalidRows.length} missing)`;
+			batchFormError = `Please enter reading amounts for all properties (${invalidRows.length} missing)`;
 			return;
 		}
 
 		batchLoading = true;
-		error = '';
+		batchFormError = '';
 
 		try {
-			const dateObj = new Date(batchDate);
+			const readingDate = toTimestamp(parseLocalDateInput(batchDate));
 			const readingsData = batchRows.map((row) => ({
 				meter_group_id: row.meter_group_id,
 				property_id: row.property.id,
 				reading_amount: row.reading_amount!,
-				reading_date: {
-					_seconds: Math.floor(dateObj.getTime() / 1000),
-					_nanoseconds: 0
-				}
+				reading_date: readingDate
 			}));
 
 			const result = await createReadingsBatch(readingsData);
 
 			readingFormOpen = false;
 			batchRows = [];
+			batchMeterGroup = '';
 			batchDate = new Date().toISOString().split('T')[0];
-			await handleMeterGroupChange();
+			await applyFilters();
 
 			if (result.failed.length > 0) {
-				const failedSummary = result.failed.map((f) => `Row ${f.index + 1}: ${f.error}`).join('\n');
-				alert(
+				const failedSummary = result.failed.map((f) => `Row ${f.index + 1}: ${f.error}`).join('; ');
+				pushToast(
 					`${result.created.length} of ${result.created.length + result.failed.length} readings created. ` +
-						`${result.failed.length} skipped:\n${failedSummary}`
+						`${result.failed.length} skipped — ${failedSummary}`,
+					'warning'
 				);
 			} else {
-				alert(
-					'Readings created successfully! If a previous-month reading exists for this meter group, billings have been auto-created for each property.'
+				pushToast(
+					'Readings created successfully! If a previous-month reading exists for this meter group, billings have been auto-created for each property.',
+					'success'
 				);
 			}
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to create readings';
+			batchFormError = err instanceof Error ? err.message : 'Failed to create readings';
 		} finally {
 			batchLoading = false;
 		}
@@ -425,7 +518,7 @@
 		try {
 			await updateReading(crud.editingItem.id, crud.editFormData as UpdateReadingRequest);
 			crud.closeEditModal();
-			await handleMeterGroupChange();
+			await applyFilters();
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to update reading';
 		} finally {
@@ -439,28 +532,11 @@
 
 	function canBatchSubmit(): boolean {
 		return (
-			selectedMeterGroup.length > 0 &&
+			batchMeterGroup.length > 0 &&
 			batchDate.length > 0 &&
 			batchRows.length > 0 &&
 			batchRows.every((r) => r.reading_amount !== null && r.reading_amount !== undefined)
 		);
-	}
-
-	async function handleSuggestReading(rowIndex: number) {
-		const row = batchRows[rowIndex];
-		if (!row.image_url) {
-			error = 'Please upload an image first';
-			return;
-		}
-
-		try {
-			const result = await ocrReadingImage(row.image_url);
-			if (result.suggested_reading_amount !== null) {
-				row.reading_amount = result.suggested_reading_amount;
-			}
-		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to suggest reading';
-		}
 	}
 </script>
 
@@ -509,10 +585,7 @@
 			<!-- Tabs -->
 			<div class="flex border-b border-gray-200">
 				<button
-					onclick={() => {
-						readingFormTab = 'batch';
-						resetReadingForm();
-					}}
+					onclick={() => switchReadingFormTab('batch')}
 					class="border-b-2 px-4 py-2 text-sm font-medium"
 					class:border-blue-500={readingFormTab === 'batch'}
 					class:border-transparent={readingFormTab !== 'batch'}
@@ -522,10 +595,7 @@
 					Batch / OCR
 				</button>
 				<button
-					onclick={() => {
-						readingFormTab = 'manual';
-						resetReadingForm();
-					}}
+					onclick={() => switchReadingFormTab('manual')}
 					class="border-b-2 px-4 py-2 text-sm font-medium"
 					class:border-blue-500={readingFormTab === 'manual'}
 					class:border-transparent={readingFormTab !== 'manual'}
@@ -537,6 +607,11 @@
 			</div>
 
 			{#if readingFormTab === 'batch'}
+				{#if batchFormError}
+					<div class="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+						{batchFormError}
+					</div>
+				{/if}
 				<div class="grid grid-cols-2 gap-4">
 					<div>
 						<label for="batch-meter-group" class="block text-sm font-medium text-gray-700"
@@ -544,8 +619,8 @@
 						>
 						<select
 							id="batch-meter-group"
-							bind:value={selectedMeterGroup}
-							onchange={loadBatchProperties}
+							bind:value={batchMeterGroup}
+							onchange={handleBatchMeterGroupChange}
 							disabled={batchLoading}
 							class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
 						>
@@ -575,9 +650,9 @@
 					</div>
 				</div>
 
-				{#if batchRows.length === 0 && selectedMeterGroup}
+				{#if batchRows.length === 0 && batchMeterGroup}
 					<div class="rounded-lg border border-gray-200 p-6">
-						<EmptyState title="No properties" message="No properties found for this meter group" />
+						<EmptyState title="No properties" message={batchEmptyReason} />
 					</div>
 				{:else if batchRows.length > 0}
 					<div class="overflow-x-auto rounded-lg border border-gray-200">
@@ -609,16 +684,16 @@
 												class="w-32 rounded border border-gray-300 px-3 py-2"
 											/>
 											{#if row.reading_amount !== null}
-												{@const selectedMg = meterGroups.find((g) => g.id === selectedMeterGroup)}
+												{@const selectedMg = meterGroups.find((g) => g.id === batchMeterGroup)}
 												{@const version = resolveCurrentVersion(
 													selectedMg,
 													row.property,
-													selectedMeterGroup
+													batchMeterGroup
 												)}
 												{@const versionsSource = getVersionsSource(
 													selectedMg,
 													row.property,
-													selectedMeterGroup
+													batchMeterGroup
 												)}
 												{@const resetInfo =
 													version > 1 ? versionsSource?.[String(version - 1)] : undefined}
@@ -634,6 +709,7 @@
 											<div class="w-48">
 												<PhotoDropzone
 													imageUrl={row.image_url}
+													alt={`Meter reading for ${row.property.room_name}`}
 													isBusy={row.is_uploading}
 													onFile={(file) => handleBatchImageUpload(i, file)}
 													onPreview={(url) => (previewImageUrl = url)}
@@ -665,6 +741,11 @@
 					</div>
 				{/if}
 			{:else if readingFormTab === 'manual'}
+				{#if manualFormError}
+					<div class="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+						{manualFormError}
+					</div>
+				{/if}
 				<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
 					<div>
 						<label class="block text-sm font-medium text-gray-700">
@@ -722,6 +803,7 @@
 						<div class="mt-1 w-48">
 							<PhotoDropzone
 								imageUrl={manualReadingForm.image_url || null}
+								alt={`Meter reading for ${properties.find((p) => p.id === manualReadingForm.property_id)?.room_name ?? 'property'}`}
 								isBusy={manualImageUploading}
 								onFile={handleManualImageUpload}
 								onPreview={(url) => (previewImageUrl = url)}
@@ -732,11 +814,15 @@
 				<div class="flex gap-2">
 					<button
 						onclick={handleCreateManualReading}
-						disabled={manualReadingLoading}
+						disabled={manualReadingLoading || manualImageUploading}
 						class="rounded px-4 py-2 font-medium text-white disabled:opacity-50"
 						style="background-color: var(--color-accent)"
 					>
-						{manualReadingLoading ? 'Creating...' : 'Create Reading'}
+						{manualReadingLoading
+							? 'Creating...'
+							: manualImageUploading
+								? 'Waiting for photo suggestion...'
+								: 'Create Reading'}
 					</button>
 					<button
 						onclick={() => {
@@ -762,7 +848,7 @@
 				<select
 					id="meter-filter"
 					bind:value={selectedMeterGroup}
-					onchange={handleMeterGroupChange}
+					onchange={handleFilterChange}
 					class="mt-1 block w-full rounded border border-gray-300 px-3 py-2"
 					disabled={isLoading}
 				>
@@ -849,7 +935,7 @@
 				<SelectionToolbar
 					selectedCount={crud.selectedIds.size}
 					isBatchDeleting={crud.isBatchDeleting}
-					onBatchDelete={() => crud.handleBatchDelete(softDeleteReading, handleMeterGroupChange)}
+					onBatchDelete={() => crud.handleBatchDelete(softDeleteReading, applyFilters)}
 					entityLabel="reading"
 				/>
 			</div>
@@ -859,6 +945,7 @@
 						<th scope="col" class="w-8 px-4 py-3">
 							<input
 								type="checkbox"
+								aria-label="Select all readings"
 								checked={crud.selectedIds.size === readings.data.length && readings.data.length > 0}
 								onchange={() =>
 									crud.toggleSelectAll(
@@ -868,13 +955,13 @@
 								class="rounded"
 							/>
 						</th>
-						<th class="px-6 py-3 text-left font-semibold text-gray-700">Property</th>
-						<th class="px-6 py-3 text-left font-semibold text-gray-700">Meter Group</th>
+						<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Property</th>
+						<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Meter Group</th>
 						<th scope="col" class="px-6 py-3 text-right font-semibold text-gray-700">Reading</th>
 						<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Meter Cycle</th>
-						<th class="px-6 py-3 text-left font-semibold text-gray-700">Date</th>
-						<th class="px-6 py-3 text-left font-semibold text-gray-700">Created</th>
-						<th class="px-6 py-3 text-left font-semibold text-gray-700">Actions</th>
+						<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Date</th>
+						<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Created</th>
+						<th scope="col" class="px-6 py-3 text-left font-semibold text-gray-700">Actions</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -893,6 +980,7 @@
 							<td class="w-8 px-4 py-4">
 								<input
 									type="checkbox"
+									aria-label={`Select reading for ${itemProperty?.room_name ?? 'property'}`}
 									checked={crud.selectedIds.has(item.id)}
 									onchange={() => crud.toggleSelection(item.id)}
 									class="rounded"
@@ -929,8 +1017,12 @@
 										} as any);
 									}}
 									onSoftDelete={() =>
-										crud.handleSoftDelete(item.id, softDeleteReading, handleMeterGroupChange, () =>
-											confirm('Archive this reading? It can be restored from the archive.')
+										crud.handleSoftDelete(item.id, softDeleteReading, applyFilters, () =>
+											confirmAsync(
+												'Archive reading',
+												'Archive this reading? It can be restored from the archive.',
+												{ danger: true }
+											)
 										)}
 									isLoading={crud.deletingId === item.id}
 								/>

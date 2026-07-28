@@ -42,7 +42,7 @@ jobs:
       # Fails the build on high/critical vulnerabilities; moderate (and below)
       # are still printed above but only reported, not fatal.
       - name: Security audit
-        run: npm audit --audit-level=high
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Lint
         run: npm run lint

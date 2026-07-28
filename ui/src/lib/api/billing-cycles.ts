@@ -1,60 +1,38 @@
-import { apiGet, apiPost, apiPatch, apiDelete, toQueryString } from './client';
+import { apiPost } from './client';
+import { createCrudApi } from './crud-api-factory';
 import type {
 	BillingCycle,
 	CreateBillingCycleRequest,
 	UpdateBillingCycleRequest
 } from '$lib/types/billing-cycle.types';
-import type { PaginatedResult, BatchCreateResult } from '$lib/types/api.types';
+import type { BatchCreateResult } from '$lib/types/api.types';
 
-export async function getBillingCycles(params?: {
+interface GetBillingCyclesParams {
 	meterGroupId?: string;
 	billingStartDate?: string;
 	billingEndDate?: string;
 	limit?: number;
 	cursor?: string;
 	archived?: boolean;
-}): Promise<PaginatedResult<BillingCycle>> {
-	return apiGet<PaginatedResult<BillingCycle>>(`/billing-cycles${toQueryString(params)}`);
 }
 
-export async function getBillingCycleById(id: string): Promise<BillingCycle> {
-	return apiGet<BillingCycle>(`/billing-cycles/${id}`);
-}
+const billingCyclesApi = createCrudApi<
+	BillingCycle,
+	CreateBillingCycleRequest,
+	UpdateBillingCycleRequest,
+	GetBillingCyclesParams,
+	BatchCreateResult<BillingCycle>
+>('/billing-cycles');
 
-export async function createBillingCycle(data: CreateBillingCycleRequest): Promise<BillingCycle> {
-	return apiPost<BillingCycle>('/billing-cycles', data);
-}
-
-export async function createBillingCyclesBatch(
-	data: CreateBillingCycleRequest[]
-): Promise<BatchCreateResult<BillingCycle>> {
-	return apiPost<BatchCreateResult<BillingCycle>>('/billing-cycles/batch', data);
-}
-
-export async function updateBillingCycle(
-	id: string,
-	data: UpdateBillingCycleRequest
-): Promise<BillingCycle> {
-	return apiPatch<BillingCycle>(`/billing-cycles/${id}`, data);
-}
-
-export async function updateBillingCyclesBatch(
-	data: { id: string; data: UpdateBillingCycleRequest }[]
-): Promise<BillingCycle[]> {
-	return apiPatch<BillingCycle[]>('/billing-cycles/batch', data);
-}
-
-export async function deleteBillingCycle(id: string): Promise<void> {
-	return apiDelete<void>(`/billing-cycles/${id}`);
-}
-
-export async function softDeleteBillingCycle(id: string): Promise<BillingCycle> {
-	return apiDelete<BillingCycle>(`/billing-cycles/${id}`);
-}
-
-export async function restoreBillingCycle(id: string): Promise<BillingCycle> {
-	return apiPatch<BillingCycle>(`/billing-cycles/${id}/restore`, {});
-}
+export const getBillingCycles = billingCyclesApi.get;
+export const getBillingCycleById = billingCyclesApi.getById;
+export const createBillingCycle = billingCyclesApi.create;
+export const createBillingCyclesBatch = billingCyclesApi.createBatch;
+export const updateBillingCycle = billingCyclesApi.update;
+export const updateBillingCyclesBatch = billingCyclesApi.updateBatch;
+export const softDeleteBillingCycle = billingCyclesApi.softDelete;
+export const restoreBillingCycle = billingCyclesApi.restore;
+export const clearCache = billingCyclesApi.clearCache;
 
 export interface BillingCycleOcrResult {
 	billing_start_date: string;
@@ -66,8 +44,4 @@ export interface BillingCycleOcrResult {
 
 export async function ocrBillingCycle(imageUrl: string): Promise<BillingCycleOcrResult> {
 	return apiPost<BillingCycleOcrResult>('/billing-cycles/ocr', { image_url: imageUrl });
-}
-
-export async function clearCache(): Promise<{ message: string }> {
-	return apiPost<{ message: string }>('/billing-cycles/cache/clear', {});
 }

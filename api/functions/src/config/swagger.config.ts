@@ -567,6 +567,14 @@ const swaggerSpec = {
                 format: "date-time",
                 description: "ISO 8601 timestamp when billing was marked as paid",
               },
+              estimated_cost: {
+                type: ["number", "null"],
+                description: "Cost estimate (known consumption x the meter group's rate EMA), " +
+                  "computed at auto-billing time before the official billing cycle/rate lands. " +
+                  "null on manually-created billings, cold-start meter groups with no cycle " +
+                  "history yet, or readings that cross a meter-version reset. Frozen at " +
+                  "creation — never updated by later billing-cycle corrections.",
+              },
             },
             required: ["property_id", "previous_reading_id", "current_reading_id", "payment_status"],
           },
@@ -666,6 +674,14 @@ const swaggerSpec = {
               },
               overdue_date: {
                 $ref: "#/components/schemas/Timestamp",
+              },
+              rate_ema: {
+                type: "number",
+                description: "Exponential moving average of billing_rate for this meter " +
+                  "group, as of this cycle (inclusive). An immutable per-cycle snapshot, " +
+                  "recomputed for the whole meter-group history on every create/rate-or-date " +
+                  "correction. Absent on cycles created before this field existed, until " +
+                  "scripts/backfill-rate-ema.ts runs.",
               },
             },
             required: [

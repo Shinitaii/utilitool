@@ -20,8 +20,4 @@ export interface CreatePropertyRequest {
 	meter_groups: Record<string, MeterGroupEntry>; // at least one of "electricity" or "water" required
 }
 
-export interface UpdatePropertyRequest {
-	room_name?: string;
-	tenant_amount?: number;
-	meter_groups?: Record<string, MeterGroupEntry>;
-}
+export type UpdatePropertyRequest = Partial<CreatePropertyRequest>;

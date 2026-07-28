@@ -3,6 +3,7 @@ import {AppError} from "../../utils/error.util";
 import {propertyRepository} from "../property/property.repository";
 import {readingRepository} from "../reading/reading.repository";
 import {billingRepository} from "./billing.repository";
+import {fetchAllPages} from "../../utils/list-cache.util";
 import type {Property} from "../property/property.model";
 import type {Reading} from "../reading/reading.model";
 
@@ -125,14 +126,17 @@ export class BillingValidator {
       }
     }
 
-    // Batch check for duplicate billings once instead of per-item
-    const duplicateCheck = await billingRepository.search({
+    // Batch check for duplicate billings once instead of per-item. fetchAllPages instead of a
+    // single limit:1000 page — a landlord past 1000 total billings previously could silently
+    // miss a duplicate here.
+    const allBillings = await fetchAllPages((cursor) => billingRepository.search({
       limit: 1000,
       orderBy: "created_at",
+      cursor,
       filters: {},
-    });
+    }));
     const existingBillings = new Map<string, boolean>();
-    for (const billing of duplicateCheck.data) {
+    for (const billing of allBillings) {
       const key = `${billing.property_id}:${billing.current_reading_id}`;
       existingBillings.set(key, true);
     }

@@ -152,6 +152,12 @@
 	function goBack() {
 		step = step - 1;
 	}
+
+	const stepTitles: Record<number, string> = {
+		1: 'Upload Bill Image',
+		2: 'Review & Map Billings',
+		3: 'Review & Submit'
+	};
 </script>
 
 <div class="space-y-6">
@@ -159,6 +165,8 @@
 		<h1 class="text-3xl font-bold">Bill Upload & OCR</h1>
 		<p class="mt-1 text-gray-600">Extract utility bill data and create billing cycles</p>
 	</div>
+
+	<div aria-live="polite" class="sr-only">{`Step ${step} of 3: ${stepTitles[step]}`}</div>
 
 	{#if error}
 		<div class="rounded-lg bg-red-50 p-4 text-sm text-red-700">

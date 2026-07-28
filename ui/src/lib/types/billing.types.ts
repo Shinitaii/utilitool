@@ -8,6 +8,13 @@ export interface Billing extends BaseModel {
 	billing_period_date: FirestoreTimestamp;
 	payment_status: 'pending' | 'paid';
 	paid_at?: string;
+	/**
+	 * Cost estimate (known consumption x the meter group's rate EMA), computed when the
+	 * billing was auto-created — before the official billing cycle/rate lands. null on
+	 * manually-created billings, cold-start meter groups with no cycle history yet, or
+	 * readings that cross a meter-version reset. Frozen at creation.
+	 */
+	estimated_cost: number | null;
 }
 
 export interface CreateBillingRequest {

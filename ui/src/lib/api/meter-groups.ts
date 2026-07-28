@@ -1,61 +1,37 @@
-import { apiGet, apiPost, apiPatch, apiDelete, toQueryString } from './client';
+import { apiPost } from './client';
+import { createCrudApi } from './crud-api-factory';
 import type {
 	MeterGroup,
 	CreateMeterGroupRequest,
 	UpdateMeterGroupRequest
 } from '$lib/types/meter-group.types';
-import type { PaginatedResult } from '$lib/types/api.types';
 
-export async function getMeterGroups(params?: {
+interface GetMeterGroupsParams {
 	meterName?: string;
 	utilityType?: string;
 	limit?: number;
 	cursor?: string;
 	minimal?: boolean;
 	archived?: boolean;
-}): Promise<PaginatedResult<MeterGroup>> {
-	return apiGet<PaginatedResult<MeterGroup>>(`/meter-groups${toQueryString(params)}`);
 }
 
-export async function getMeterGroupById(id: string): Promise<MeterGroup> {
-	return apiGet<MeterGroup>(`/meter-groups/${id}`);
-}
+const meterGroupsApi = createCrudApi<
+	MeterGroup,
+	CreateMeterGroupRequest,
+	UpdateMeterGroupRequest,
+	GetMeterGroupsParams
+>('/meter-groups');
 
-export async function createMeterGroup(data: CreateMeterGroupRequest): Promise<MeterGroup> {
-	return apiPost<MeterGroup>('/meter-groups', data);
-}
-
-export async function createMeterGroupsBatch(
-	data: CreateMeterGroupRequest[]
-): Promise<MeterGroup[]> {
-	return apiPost<MeterGroup[]>('/meter-groups/batch', data);
-}
-
-export async function updateMeterGroup(
-	id: string,
-	data: UpdateMeterGroupRequest
-): Promise<MeterGroup> {
-	return apiPatch<MeterGroup>(`/meter-groups/${id}`, data);
-}
-
-export async function updateMeterGroupsBatch(
-	data: { id: string; data: UpdateMeterGroupRequest }[]
-): Promise<MeterGroup[]> {
-	return apiPatch<MeterGroup[]>('/meter-groups/batch', data);
-}
-
-export async function softDeleteMeterGroup(id: string): Promise<MeterGroup> {
-	return apiDelete<MeterGroup>(`/meter-groups/${id}`);
-}
-
-export async function restoreMeterGroup(id: string): Promise<MeterGroup> {
-	return apiPatch<MeterGroup>(`/meter-groups/${id}/restore`, {});
-}
+export const getMeterGroups = meterGroupsApi.get;
+export const getMeterGroupById = meterGroupsApi.getById;
+export const createMeterGroup = meterGroupsApi.create;
+export const createMeterGroupsBatch = meterGroupsApi.createBatch;
+export const updateMeterGroup = meterGroupsApi.update;
+export const updateMeterGroupsBatch = meterGroupsApi.updateBatch;
+export const softDeleteMeterGroup = meterGroupsApi.softDelete;
+export const restoreMeterGroup = meterGroupsApi.restore;
+export const clearCache = meterGroupsApi.clearCache;
 
 export async function recordMeterGroupReset(id: string): Promise<MeterGroup> {
 	return apiPost<MeterGroup>(`/meter-groups/${id}/reset`, {});
-}
-
-export async function clearCache(): Promise<{ message: string }> {
-	return apiPost<{ message: string }>('/meter-groups/cache/clear', {});
 }

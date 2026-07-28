@@ -1,58 +1,39 @@
-import { apiGet, apiPost, apiPatch, apiDelete, toQueryString } from './client';
+import { apiPost } from './client';
+import { createCrudApi } from './crud-api-factory';
 import type {
 	Property,
 	CreatePropertyRequest,
 	UpdatePropertyRequest
 } from '$lib/types/property.types';
-import type { PaginatedResult } from '$lib/types/api.types';
 
-export async function getProperties(params?: {
+interface GetPropertiesParams {
 	roomName?: string;
 	meterGroupId?: string;
 	limit?: number;
 	cursor?: string;
 	archived?: boolean;
-}): Promise<PaginatedResult<Property>> {
-	return apiGet<PaginatedResult<Property>>(`/properties${toQueryString(params)}`);
 }
 
-export async function getPropertyById(id: string): Promise<Property> {
-	return apiGet<Property>(`/properties/${id}`);
-}
+const propertiesApi = createCrudApi<
+	Property,
+	CreatePropertyRequest,
+	UpdatePropertyRequest,
+	GetPropertiesParams
+>('/properties');
 
-export async function createProperty(data: CreatePropertyRequest): Promise<Property> {
-	return apiPost<Property>('/properties', data);
-}
-
-export async function createPropertiesBatch(data: CreatePropertyRequest[]): Promise<Property[]> {
-	return apiPost<Property[]>('/properties/batch', data);
-}
-
-export async function updateProperty(id: string, data: UpdatePropertyRequest): Promise<Property> {
-	return apiPatch<Property>(`/properties/${id}`, data);
-}
-
-export async function updatePropertiesBatch(
-	data: { id: string; data: UpdatePropertyRequest }[]
-): Promise<Property[]> {
-	return apiPatch<Property[]>('/properties/batch', data);
-}
-
-export async function softDeleteProperty(id: string): Promise<Property> {
-	return apiDelete<Property>(`/properties/${id}`);
-}
-
-export async function restoreProperty(id: string): Promise<Property> {
-	return apiPatch<Property>(`/properties/${id}/restore`, {});
-}
+export const getProperties = propertiesApi.get;
+export const getPropertyById = propertiesApi.getById;
+export const createProperty = propertiesApi.create;
+export const createPropertiesBatch = propertiesApi.createBatch;
+export const updateProperty = propertiesApi.update;
+export const updatePropertiesBatch = propertiesApi.updateBatch;
+export const softDeleteProperty = propertiesApi.softDelete;
+export const restoreProperty = propertiesApi.restore;
+export const clearCache = propertiesApi.clearCache;
 
 export async function recordPropertyMeterGroupReset(
 	propertyId: string,
 	meterGroupId: string
 ): Promise<Property> {
 	return apiPost<Property>(`/properties/${propertyId}/meter-groups/${meterGroupId}/reset`, {});
-}
-
-export async function clearCache(): Promise<{ message: string }> {
-	return apiPost<{ message: string }>('/properties/cache/clear', {});
 }

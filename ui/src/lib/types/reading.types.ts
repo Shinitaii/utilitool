@@ -15,12 +15,7 @@ export interface CreateReadingRequest {
 	reading_date: FirestoreTimestamp | string;
 }
 
-export interface CreateSeedReadingRequest {
-	meter_group_id: string;
-	property_id: string;
-	reading_amount: number;
-	reading_date: FirestoreTimestamp | string;
-}
+export type CreateSeedReadingRequest = CreateReadingRequest;
 
 export interface UpdateReadingRequest {
 	meter_group_id?: string;

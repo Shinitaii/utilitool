@@ -14,6 +14,7 @@ import {cacheSet} from "../../utils/cache.util";
 import {listAppend} from "../../utils/list-cache.util";
 import {CachedRepository} from "../../lib/cached-repository.lib";
 import {readingRepository} from "../reading/reading.repository";
+import {fetchSeedAndAffected} from "../../utils/anchor-fetch.util";
 
 const validator = new BillingValidator();
 const CACHE_TTL = 10 * 60; // 10 minutes
@@ -36,6 +37,113 @@ function deriveBillingDenormalizedFields(
     meter_group_id: currReading.meter_group_id,
     billing_period_date: currReading.reading_date,
   };
+}
+
+/**
+ * cost estimate = raw consumption (currReading - prevReading) x the meter group's latest
+ * rate EMA — see createFromReadings' doc comment for why this is null across a meter-version
+ * reset or when no prior cycle exists yet. Extracted as a pure function for unit testing;
+ * production callers always go through createFromReadings.
+ */
+export function computeEstimatedCost(
+  currReadingAmount: number,
+  prevReadingAmount: number,
+  currMeterVersion: number,
+  prevMeterVersion: number,
+  latestCycleRateEma: number | null
+): number | null {
+  if (latestCycleRateEma === null || currMeterVersion !== prevMeterVersion) {
+    return null;
+  }
+  return (currReadingAmount - prevReadingAmount) * latestCycleRateEma;
+}
+
+/**
+ * Recomputes estimated_cost for every pending (uncycled) billing in a meter group, using its
+ * latest rate_ema. Called by billing-cycle.service.ts's recomputeRateEmaForMeterGroup right
+ * after it recomputes the cycle chain, so a rate correction (or a gamma backfill) that shifts
+ * rate_ema propagates into every still-pending billing's estimate instead of leaving it stuck
+ * on the value computed at creation time — see billing.model.ts's estimated_cost doc comment.
+ * `cycledBillingIds` (billing IDs already referenced by some cycle's billing_ids map) marks
+ * which billings to leave alone: once a billing has an official cycle, its estimate is no
+ * longer "pending" and correcting the cycle's own billing_rate replaces it directly.
+ *
+ * `anchorDate`, when given, bounds the billings query to `billing_period_date >= anchorDate`
+ * via the shared `fetchSeedAndAffected` helper (same bounded-fetch shape as
+ * `recomputeRateEmaForMeterGroup`'s cycle chain), instead of scanning every billing in the
+ * group. The caller only passes it when a cycle already existed before that anchor — see
+ * `recomputeRateEmaForMeterGroup`'s `pendingEstimatesAnchor` — so this never has to reason
+ * about the group's very first cycle here. Omitted, this falls back to today's full scan
+ * (bounded to 1000, same assumption as `recomputeRateEmaForMeterGroup`'s own fallback).
+ */
+async function recomputePendingEstimates(
+  userId: string,
+  meterGroupId: string,
+  latestRateEma: number | null,
+  cycledBillingIds: Set<string>,
+  anchorDate?: Date
+): Promise<void> {
+  if (latestRateEma === null) return;
+
+  const cachedRepo = repoFor(userId);
+
+  let candidates: Billing[];
+  if (anchorDate) {
+    // Requires a `billings` index on `(is_deleted, meter_group_id, billing_period_date)` — see
+    // api/firestore.indexes.json.
+    const {affected} = await fetchSeedAndAffected(
+      cachedRepo,
+      {meter_group_id: meterGroupId},
+      "billing_period_date",
+      anchorDate
+    );
+    candidates = affected;
+  } else {
+    // limit: 1000 — same bounded-scale assumption as recomputeRateEmaForMeterGroup's cycle fetch.
+    // searchDirect (bounded, Firestore-side-filtered, bypasses the list cache) instead of
+    // search() — this recompute needs a correctness-critical, narrowly-scoped read, not the
+    // full-collection list cache. Requires a `billings` index on
+    // `(is_deleted, meter_group_id, created_at)` — see api/firestore.indexes.json.
+    const {data} = await cachedRepo.searchDirect({
+      limit: 1000,
+      orderBy: "created_at",
+      orderDirection: "asc",
+      filters: {meter_group_id: meterGroupId},
+    });
+    candidates = data;
+  }
+
+  const pending = candidates.filter((b) => !cycledBillingIds.has(b.id));
+  if (pending.length === 0) return;
+
+  const readingIds = Array.from(
+    new Set(pending.flatMap((b) => [b.previous_reading_id, b.current_reading_id]))
+  );
+  const readings = await readingRepository.getByIds(readingIds);
+  const readingById = new Map(
+    readings.filter((r): r is NonNullable<typeof r> => r !== null).map((r) => [r.id, r])
+  );
+
+  const updates = pending
+    .map((b) => {
+      const prevReading = readingById.get(b.previous_reading_id);
+      const currReading = readingById.get(b.current_reading_id);
+      if (!prevReading || !currReading) return null;
+
+      const newEstimate = computeEstimatedCost(
+        currReading.reading_amount,
+        prevReading.reading_amount,
+        currReading.meter_version ?? 1,
+        prevReading.meter_version ?? 1,
+        latestRateEma
+      );
+      return newEstimate !== b.estimated_cost ? {id: b.id, data: {estimated_cost: newEstimate}} : null;
+    })
+    .filter((u): u is {id: string; data: {estimated_cost: number | null}} => u !== null);
+
+  if (updates.length > 0) {
+    await cachedRepo.updateBatch(updates);
+  }
 }
 
 type BillingSearchOptions = {
@@ -99,6 +207,10 @@ export const billingService = {
         ...data,
         ...deriveBillingDenormalizedFields(currReading as any),
         payment_status: "pending" as const,
+        // Manual/correction path — not the auto-billing flow the rate-EMA estimate targets
+        // (see createFromReadings). No known-consumption-at-creation-time signal exists here
+        // worth estimating from.
+        estimated_cost: null,
         created_at: FieldValue.serverTimestamp(),
         is_deleted: false,
         deleted_at: null,
@@ -134,6 +246,7 @@ export const billingService = {
           ...item,
           ...deriveBillingDenormalizedFields(currReading),
           payment_status: "pending" as const,
+          estimated_cost: null, // manual path — see create()'s comment
         };
       })
     );
@@ -295,6 +408,13 @@ export const billingService = {
    * Applies the meter_version rollback bypass: if currReading.meter_version differs
    * from prevReading.meter_version the reading_amount comparison is not enforced.
    *
+   * `latestCycleRateEma` is the meter group's latest closed BillingCycle.rate_ema, resolved by
+   * the caller *before* this transaction opens (Firestore transactions require all reads
+   * before any writes — see reading.util.ts's createReadingWithAutoBilling). estimated_cost is
+   * null when that's unavailable (cold start, no cycle yet) or when the reading pair crosses a
+   * meter-version reset, since a raw reading_amount diff isn't meaningful without resolving
+   * the full cumulative-offset chain for that case.
+   *
    * Returns the newly generated billing ID for cache population post-transaction.
    */
   createFromReadings(
@@ -304,6 +424,7 @@ export const billingService = {
     currReadingId: string,
     prevReading: DocumentData,
     currReading: DocumentData,
+    latestCycleRateEma: number | null,
   ): string {
     if (prevReading.meter_group_id !== currReading.meter_group_id) {
       throw new AppError(400, "Previous and current readings must belong to the same meter group");
@@ -317,6 +438,14 @@ export const billingService = {
       currMeterVersion
     );
 
+    const estimatedCost = computeEstimatedCost(
+      currReading.reading_amount,
+      prevReading.reading_amount,
+      currMeterVersion,
+      prevMeterVersion,
+      latestCycleRateEma
+    );
+
     const newRef = firestore.collection(COLLECTIONS.BILLINGS).doc();
     txn.set(newRef, {
       property_id: propertyId,
@@ -324,10 +453,13 @@ export const billingService = {
       current_reading_id: currReadingId,
       ...deriveBillingDenormalizedFields(currReading as any),
       payment_status: "pending" as const,
+      estimated_cost: estimatedCost,
       created_at: FieldValue.serverTimestamp(),
       is_deleted: false,
       deleted_at: null,
     });
     return newRef.id;
   },
+
+  recomputePendingEstimates,
 };

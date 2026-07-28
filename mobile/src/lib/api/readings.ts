@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from './client';
+import { apiGet, apiPost, buildQueryString } from './client';
 
 export interface Reading {
   id: string;
@@ -28,35 +28,37 @@ export interface BatchCreateResult<T> {
   failed: { index: number; error: string }[];
 }
 
+export interface ReadingsListResponse {
+  data: Reading[];
+  nextCursor?: string | null;
+  hasMore: boolean;
+}
+
 export async function listReadings(options?: {
   meterGroupId?: string;
   limit?: number;
   offset?: number;
-}) {
-  const params = new URLSearchParams();
-  if (options?.meterGroupId) params.append('meterGroupId', options.meterGroupId);
-  if (options?.limit) params.append('limit', String(options.limit));
-  if (options?.offset) params.append('offset', String(options.offset));
-  return apiGet(`/readings${params.toString() ? '?' + params.toString() : ''}`);
+}): Promise<ReadingsListResponse> {
+  return apiGet<ReadingsListResponse>(`/readings${buildQueryString(options)}`);
 }
 
 export async function getReading(id: string): Promise<Reading> {
-  return apiGet(`/readings/${id}`);
+  return apiGet<Reading>(`/readings/${id}`);
 }
 
 export async function createReadingsBatch(data: BatchReadingRequest): Promise<BatchCreateResult<Reading>> {
   if (!data.readings || data.readings.length === 0) {
     throw new Error('Cannot submit an empty batch — add at least one reading.');
   }
-  return apiPost('/readings/batch', data);
+  return apiPost<BatchCreateResult<Reading>>('/readings/batch', data);
 }
 
-export async function createSeedReading(data: CreateReadingRequest) {
-  return apiPost('/readings/seed', data);
+export async function createSeedReading(data: CreateReadingRequest): Promise<Reading> {
+  return apiPost<Reading>('/readings/seed', data);
 }
 
 export async function ocrReadingImage(
   imageUrl: string
 ): Promise<{ suggested_reading_amount: number | null }> {
-  return apiPost('/readings/ocr', { image_url: imageUrl });
+  return apiPost<{ suggested_reading_amount: number | null }>('/readings/ocr', { image_url: imageUrl });
 }

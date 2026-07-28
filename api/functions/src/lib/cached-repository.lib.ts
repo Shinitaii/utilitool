@@ -2,7 +2,10 @@ import type {BaseModel, WithoutBaseModel} from "../utils/model.util";
 import type {PaginatedResult} from "../utils/pagination.util";
 import type {Repository, SearchFilter, SearchOptions} from "./repository.lib";
 import {cacheGet, cacheSet, cacheDel, cacheDelPattern} from "../utils/cache.util";
-import {loadAll, listAppend, listUpdate, listRemove, paginate, fetchAllPages} from "../utils/list-cache.util";
+import {
+  loadAll, listAppend, listUpdate, listRemove, listAppendMany, listUpdateMany, listRemoveMany,
+  paginate, fetchAllPages,
+} from "../utils/list-cache.util";
 
 /**
  * CachedRepository wraps Repository<T> with a two-tier caching strategy:
@@ -76,6 +79,18 @@ export class CachedRepository<T extends BaseModel> {
     });
 
     return result;
+  }
+
+  /**
+   * Bounded, Firestore-side-filtered read that bypasses the list cache entirely — for
+   * correctness-critical or narrowly-scoped reads (recompute functions, validators) where loading
+   * the user's entire collection into memory would be wasteful or wrong. Supports the full
+   * SearchOptions the underlying Repository does, including range and array-contains filters that
+   * applyFilters() below cannot express in-memory. Prefer this over search()/searchAll() any time
+   * the caller isn't serving a simple paginated list endpoint.
+   */
+  async searchDirect(options: SearchOptions<T>): Promise<PaginatedResult<T>> {
+    return this.repo.search(options);
   }
 
   /**
@@ -175,11 +190,14 @@ export class CachedRepository<T extends BaseModel> {
   async createBatch(documents: WithoutBaseModel<T>[]): Promise<T[]> {
     const created = await this.repo.createBatch(documents);
 
-    // Update both cache tiers for each item
-    for (const item of created) {
-      await cacheSet(this.idCacheKey(item.id), item, this.cacheTTL);
-      await listAppend(this.listCacheKey(), item, this.cacheTTL);
-    }
+    // ID-cache writes are independent keys, safe in parallel. The list cache is a single
+    // read-modify-write key shared by every item, so it gets one batched append instead of
+    // one call per item (both for correctness — parallel single-item calls would race and
+    // could drop entries — and to cut round-trips).
+    await Promise.all([
+      Promise.all(created.map((item) => cacheSet(this.idCacheKey(item.id), item, this.cacheTTL))),
+      listAppendMany(this.listCacheKey(), created, this.cacheTTL),
+    ]);
 
     return created;
   }
@@ -199,11 +217,11 @@ export class CachedRepository<T extends BaseModel> {
   async updateBatch(updates: { id: string; data: Partial<WithoutBaseModel<T>> }[]): Promise<T[]> {
     const updated = await this.repo.updateBatch(updates);
 
-    // Update both cache tiers for each item
-    for (const item of updated) {
-      await cacheSet(this.idCacheKey(item.id), item, this.cacheTTL);
-      await listUpdate(this.listCacheKey(), item);
-    }
+    // Same reasoning as createBatch: parallel ID-cache writes, one batched list update.
+    await Promise.all([
+      Promise.all(updated.map((item) => cacheSet(this.idCacheKey(item.id), item, this.cacheTTL))),
+      listUpdateMany(this.listCacheKey(), updated),
+    ]);
 
     return updated;
   }
@@ -214,9 +232,11 @@ export class CachedRepository<T extends BaseModel> {
   async delete(id: string): Promise<void> {
     await this.repo.delete(id);
 
-    // Invalidate both cache tiers
-    await cacheDel(this.idCacheKey(id));
-    await listRemove(this.listCacheKey(), id);
+    // Invalidate both cache tiers — different keys, safe in parallel.
+    await Promise.all([
+      cacheDel(this.idCacheKey(id)),
+      listRemove(this.listCacheKey(), id),
+    ]);
   }
 
   /**
@@ -235,11 +255,11 @@ export class CachedRepository<T extends BaseModel> {
   async deleteBatch(ids: string[]): Promise<void> {
     await this.repo.deleteBatch(ids);
 
-    // Invalidate both cache tiers for each item
-    for (const id of ids) {
-      await cacheDel(this.idCacheKey(id));
-      await listRemove(this.listCacheKey(), id);
-    }
+    // Same reasoning as createBatch/updateBatch: parallel ID-cache deletes, one batched list removal.
+    await Promise.all([
+      Promise.all(ids.map((id) => cacheDel(this.idCacheKey(id)))),
+      listRemoveMany(this.listCacheKey(), ids),
+    ]);
   }
 
   /**
@@ -248,9 +268,11 @@ export class CachedRepository<T extends BaseModel> {
   async softDelete(id: string): Promise<T> {
     const deleted = await this.repo.softDelete(id);
 
-    // Invalidate both cache tiers
-    await cacheDel(this.idCacheKey(id));
-    await listRemove(this.listCacheKey(), id);
+    // Invalidate both cache tiers — different keys, safe in parallel.
+    await Promise.all([
+      cacheDel(this.idCacheKey(id)),
+      listRemove(this.listCacheKey(), id),
+    ]);
 
     return deleted;
   }
@@ -261,11 +283,11 @@ export class CachedRepository<T extends BaseModel> {
   async softDeleteBatch(ids: string[]): Promise<T[]> {
     const deleted = await this.repo.softDeleteBatch(ids);
 
-    // Invalidate both cache tiers for each item
-    for (const id of ids) {
-      await cacheDel(this.idCacheKey(id));
-      await listRemove(this.listCacheKey(), id);
-    }
+    // Same reasoning as createBatch/updateBatch: parallel ID-cache deletes, one batched list removal.
+    await Promise.all([
+      Promise.all(ids.map((id) => cacheDel(this.idCacheKey(id)))),
+      listRemoveMany(this.listCacheKey(), ids),
+    ]);
 
     return deleted;
   }

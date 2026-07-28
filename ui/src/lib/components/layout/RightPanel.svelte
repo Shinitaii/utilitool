@@ -24,7 +24,7 @@
 <style>
 	aside {
 		position: fixed;
-		top: 52px;
+		top: var(--topbar-height);
 		right: 0;
 		bottom: 0;
 		z-index: 20;

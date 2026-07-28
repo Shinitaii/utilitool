@@ -26,7 +26,7 @@
 	import type { PaginatedResult } from '$lib/types/api.types';
 	import { formatDate, formatCurrency, formatReading, getReadingUnit } from '$lib/utils/format';
 	import { billAmount, sumMoney } from '$lib/utils/money';
-	import { toDate } from '$lib/utils/timestamp';
+	import { toDate, fromISOString } from '$lib/utils/timestamp';
 	import { trueReading } from '$lib/utils/true-reading';
 	import { getUtilityTypeBadgeClasses } from '$lib/utils/utility-colors';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
@@ -34,9 +34,12 @@
 	import EditModal from '$lib/components/shared/EditModal.svelte';
 	import StatusPill from '$lib/components/shared/StatusPill.svelte';
 	import { createCrudStore } from '$lib/stores/crud.svelte';
+	import { confirmAsync } from '$lib/stores/confirm.svelte';
+	import { pushToast } from '$lib/stores/toast.svelte';
 	import { CheckCircle2, Pencil, Archive, Printer, Plus, ChevronRight } from 'lucide-svelte';
 
 	const crud = createCrudStore<Billing>();
+	const cycleCrud = createCrudStore<BillingCycle>();
 
 	let cycles = $state<BillingCycle[]>([]);
 	let billings: SvelteMap<string, Billing[]> = new SvelteMap();
@@ -79,9 +82,10 @@
 	let isCreatingCycle = $state(false);
 
 	// Billing cycle edit modal state — lets corrections to rate/consumption/dates be made
-	// when company error or OCR misreads slip into a cycle after creation.
-	let cycleEditModalOpen = $state(false);
-	let editingCycle = $state<BillingCycle | null>(null);
+	// when company error or OCR misreads slip into a cycle after creation. Open/editingItem
+	// tracking is delegated to cycleCrud (createCrudStore<BillingCycle>()); the individual
+	// form fields below stay separate scalars since the edit form isn't a plain field-mirror
+	// of BillingCycle (dates are split into three text inputs).
 	let cycleEditConsumption = $state(0);
 	let cycleEditRate = $state(0);
 	let cycleEditStartDate = $state('');
@@ -124,7 +128,6 @@
 
 	let isUpdating = $state(false);
 	let markingAsPaidId = $state<string | null>(null);
-	let selectedCyclesForPrint = $state<string[]>([]);
 
 	// Round to 2 decimal places to avoid floating-point precision errors
 	const round = (value: number, decimals = 2) =>
@@ -181,6 +184,67 @@
 	const cycleFormUtilityType = $derived.by(() => {
 		const selectedMeterGroup = meterGroups.find((m) => m.id === cycleFormMeterGroup);
 		return selectedMeterGroup?.utility_type || 'electricity';
+	});
+
+	// Billings referenced by any cycle's billing_ids — everything else is still "uncycled"
+	// (the official rate/amount hasn't landed yet).
+	const cycledBillingIds = $derived.by(() => {
+		const ids = new SvelteSet<string>();
+		for (const cycle of cycles) {
+			for (const billingId of Object.keys(cycle.billing_ids)) ids.add(billingId);
+		}
+		return ids;
+	});
+
+	// Show derived-estimate row toggle — off by default so the list stays scoped to genuinely
+	// pending (uncycled) billings. A main-meter property's billing is derived from
+	// (total - submeters) at the same moment its cycle is created, so it's never actually
+	// "waiting" the way a physically-metered property is — but it does carry a real
+	// estimated_cost (computed against the *previous* cycle's rate_ema), so it belongs in this
+	// same list once it exists, not a separate comparison view.
+	let showDerivedEstimates = $state(false);
+
+	function isMainMeterBilling(billing: Billing): boolean {
+		const property = properties.find((p) => p.id === billing.property_id);
+		return Object.values(property?.meter_groups ?? {}).some(
+			(entry) =>
+				typeof entry !== 'string' &&
+				entry?.meter_group_id === billing.meter_group_id &&
+				entry?.is_main_meter
+		);
+	}
+
+	// != null (loose) deliberately treats both null and undefined as "no usable estimate" —
+	// billings created before this field existed have it missing entirely (undefined), not
+	// null, and a strict !== null check would have let all of that pre-existing history back in.
+	function hasEstimate(billing: Billing): boolean {
+		return billing.estimated_cost != null;
+	}
+
+	// Uncycled billings that do have a usable rate-EMA estimate — the "before the official bill
+	// lands" view.
+	const pendingEstimateBillings = $derived.by(() =>
+		allBillings.filter(
+			(b) => b.payment_status === 'pending' && hasEstimate(b) && !cycledBillingIds.has(b.id)
+		)
+	);
+
+	// The single most recent already-cycled main-meter billing per meter group — the one just
+	// derived alongside its cycle, which the "uncycled only" filter above would otherwise hide
+	// entirely even though it belongs in this list. Scoped to "most recent per meter group"
+	// rather than every main-meter billing ever, so this doesn't grow unbounded as more cycles
+	// accumulate over time. Only surfaced when the toggle is on.
+	const derivedEstimateBillings = $derived.by(() => {
+		if (!showDerivedEstimates) return [];
+		const latestByMeterGroup = new SvelteMap<string, Billing>();
+		for (const b of allBillings) {
+			if (!hasEstimate(b) || !cycledBillingIds.has(b.id) || !isMainMeterBilling(b)) continue;
+			const current = latestByMeterGroup.get(b.meter_group_id);
+			if (!current || toDate(b.billing_period_date) > toDate(current.billing_period_date)) {
+				latestByMeterGroup.set(b.meter_group_id, b);
+			}
+		}
+		return [...latestByMeterGroup.values()];
 	});
 
 	$effect(() => {
@@ -412,6 +476,8 @@
 
 	// Discovery needs the selected meter group's readings — fetch them scoped (one meter group,
 	// small) before computing, replacing the old full readings load.
+	let discoveryRequestId = 0;
+
 	async function runDiscovery() {
 		error = '';
 		if (!cycleFormMeterGroup || !cycleFormEndDate) {
@@ -419,11 +485,18 @@
 			cycleFormGapProperties = [];
 			return;
 		}
+		// Same cancellation-guard pattern as the other scoped fetches in this file (see the
+		// editReadings/stragglerReadings $effects) — fast meter-group/end-date switching can no
+		// longer land a stale response as if it were current (finding #12).
+		const requestId = ++discoveryRequestId;
 		try {
-			cycleFormReadings = await fetchAllPages((cursor) =>
+			const readings = await fetchAllPages((cursor) =>
 				getReadings({ meterGroupId: cycleFormMeterGroup, limit: 100, cursor })
 			);
+			if (requestId !== discoveryRequestId) return;
+			cycleFormReadings = readings;
 		} catch (err) {
+			if (requestId !== discoveryRequestId) return;
 			error = err instanceof Error ? err.message : 'Failed to load readings for this meter group';
 			cycleFormReadings = [];
 			return;
@@ -580,29 +653,17 @@
 
 			const totalConsumption = cycleFormTotalConsumption;
 
-			const startTs = {
-				_seconds: Math.floor(new Date(cycleFormStartDate).getTime() / 1000),
-				_nanoseconds: 0
-			};
-			const endTs = {
-				_seconds: Math.floor(new Date(cycleFormEndDate).getTime() / 1000),
-				_nanoseconds: 0
-			};
-
 			const createPayload: any = {
 				meter_group_id: cycleFormMeterGroup,
 				billing_ids,
 				billing_rate: cycleFormRate,
 				billing_consumption: totalConsumption,
-				billing_start_date: startTs,
-				billing_end_date: endTs
+				billing_start_date: fromISOString(cycleFormStartDate),
+				billing_end_date: fromISOString(cycleFormEndDate)
 			};
 
 			if (cycleFormDueDate) {
-				createPayload.overdue_date = {
-					_seconds: Math.floor(new Date(cycleFormDueDate).getTime() / 1000),
-					_nanoseconds: 0
-				};
+				createPayload.overdue_date = fromISOString(cycleFormDueDate);
 			}
 
 			await createBillingCycle(createPayload);
@@ -610,7 +671,7 @@
 			cycleFormOpen = false;
 			resetCycleForm();
 			await loadData();
-			alert('Billing cycle created successfully!');
+			pushToast('Billing cycle created successfully!');
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to create billing cycle';
 		} finally {
@@ -619,7 +680,6 @@
 	}
 
 	function openCycleEditModal(cycle: BillingCycle) {
-		editingCycle = cycle;
 		cycleEditConsumption = cycle.billing_consumption;
 		cycleEditRate = cycle.billing_rate;
 		cycleEditStartDate = toDate(cycle.billing_start_date).toISOString().split('T')[0];
@@ -627,39 +687,25 @@
 		cycleEditDueDate = cycle.overdue_date
 			? toDate(cycle.overdue_date).toISOString().split('T')[0]
 			: '';
-		cycleEditModalOpen = true;
-	}
-
-	function closeCycleEditModal() {
-		cycleEditModalOpen = false;
-		editingCycle = null;
+		cycleCrud.openEditModal(cycle, {});
 	}
 
 	async function handleUpdateCycle() {
-		if (!editingCycle) return;
+		if (!cycleCrud.editingItem) return;
 		isUpdatingCycle = true;
 		try {
 			const payload: UpdateBillingCycleRequest = {
 				billing_consumption: cycleEditConsumption,
 				billing_rate: cycleEditRate,
-				billing_start_date: {
-					_seconds: Math.floor(new Date(cycleEditStartDate).getTime() / 1000),
-					_nanoseconds: 0
-				},
-				billing_end_date: {
-					_seconds: Math.floor(new Date(cycleEditEndDate).getTime() / 1000),
-					_nanoseconds: 0
-				}
+				billing_start_date: fromISOString(cycleEditStartDate),
+				billing_end_date: fromISOString(cycleEditEndDate)
 			};
 			if (cycleEditDueDate) {
-				payload.overdue_date = {
-					_seconds: Math.floor(new Date(cycleEditDueDate).getTime() / 1000),
-					_nanoseconds: 0
-				};
+				payload.overdue_date = fromISOString(cycleEditDueDate);
 			}
 
-			await updateBillingCycle(editingCycle.id, payload);
-			closeCycleEditModal();
+			await updateBillingCycle(cycleCrud.editingItem.id, payload);
+			cycleCrud.closeEditModal();
 			await loadData();
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to update billing cycle';
@@ -777,7 +823,7 @@
 
 			closeStragglerModal();
 			await loadData();
-			alert('Straggler billing added to the cycle.');
+			pushToast('Straggler billing added to the cycle.');
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to add straggler billing';
 		} finally {
@@ -1075,9 +1121,69 @@
 		</div>
 	</div>
 
-	{#if error}
+	{#if error || crud.error || cycleCrud.error}
 		<div class="rounded-lg bg-red-50 p-4 text-sm text-red-700">
-			{error}
+			{error || crud.error || cycleCrud.error}
+		</div>
+	{/if}
+
+	{#if pendingEstimateBillings.length > 0 || derivedEstimateBillings.length > 0}
+		<div class="rounded-lg border border-gray-200 bg-white">
+			<div class="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+				<div>
+					<h2 class="font-semibold">Pending Estimates</h2>
+					<p class="mt-1 text-sm text-gray-500">
+						Readings already captured, official bill not in yet — estimated from the meter group's
+						recent rate history.
+					</p>
+				</div>
+				<label class="flex items-center gap-2 text-sm text-gray-600">
+					<input type="checkbox" bind:checked={showDerivedEstimates} class="h-4 w-4" />
+					Show derived estimates (main meter)
+				</label>
+			</div>
+			<table class="w-full text-sm">
+				<thead>
+					<tr
+						class="border-b border-gray-100 text-left text-xs font-medium text-gray-500 uppercase"
+					>
+						<th class="px-6 py-2">Property</th>
+						<th class="px-6 py-2 text-right">Estimated Amount</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each pendingEstimateBillings as billing (billing.id)}
+						{@const billingProperty = properties.find((p) => p.id === billing.property_id)}
+						<tr class="border-b border-gray-50 last:border-0">
+							<td class="px-6 py-3 text-gray-900"
+								>{billingProperty?.room_name ?? 'Unknown Property'}</td
+							>
+							<td class="px-6 py-3 text-right font-semibold text-gray-700">
+								~{formatCurrency(billing.estimated_cost ?? 0)}
+								<span
+									class="ml-1 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700"
+									>estimated</span
+								>
+							</td>
+						</tr>
+					{/each}
+					{#each derivedEstimateBillings as billing (billing.id)}
+						{@const billingProperty = properties.find((p) => p.id === billing.property_id)}
+						<tr class="border-b border-gray-50 last:border-0">
+							<td class="px-6 py-3 text-gray-900"
+								>{billingProperty?.room_name ?? 'Unknown Property'}</td
+							>
+							<td class="px-6 py-3 text-right font-semibold text-gray-700">
+								~{formatCurrency(billing.estimated_cost ?? 0)}
+								<span
+									class="ml-1 rounded bg-purple-50 px-1.5 py-0.5 text-[10px] font-medium text-purple-700"
+									>derived</span
+								>
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
 		</div>
 	{/if}
 
@@ -1288,7 +1394,7 @@
 					{#if cycleFormOverrideMode}
 						<div class="mt-4 space-y-3">
 							{#each cycleFormDiscoveredBillings as d (d.billingId)}
-								{@const property = properties.find((p) => p.room_name === d.propertyName)}
+								{@const property = properties.find((p) => p.id === d.propertyId)}
 								<div class="rounded border border-gray-200 p-3">
 									<div class="mb-2 font-medium text-gray-900">{d.propertyName}</div>
 									<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -1434,17 +1540,17 @@
 	{/if}
 
 	<div class="space-y-4">
-		{#if selectedCyclesForPrint.length > 0}
+		{#if cycleCrud.selectedIds.size > 0}
 			<div class="flex gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
 				<div class="flex-1">
 					<p class="text-sm font-medium text-blue-900">
-						{selectedCyclesForPrint.length} cycle(s) selected
+						{cycleCrud.selectedIds.size} cycle(s) selected
 					</p>
 				</div>
 				<div class="flex gap-2">
 					<button
 						onclick={async () => {
-							const cyclesToPrint = cycles.filter((c) => selectedCyclesForPrint.includes(c.id));
+							const cyclesToPrint = cycles.filter((c) => cycleCrud.selectedIds.has(c.id));
 							// Load billings for any cycles that don't have data yet
 							for (const cycle of cyclesToPrint) {
 								if (!billings.has(cycle.id)) {
@@ -1463,34 +1569,23 @@
 						<Printer size={20} />
 					</button>
 					<button
-						onclick={() => {
-							if (
-								confirm(
-									`Archive ${selectedCyclesForPrint.length} billing cycle(s)? They can be restored from the archive.`
+						onclick={() =>
+							cycleCrud.handleBatchDelete(softDeleteBillingCycle, loadData, (n) =>
+								confirmAsync(
+									'Archive billing cycles',
+									`Archive ${n} billing cycle(s)? They can be restored from the archive.`,
+									{ danger: true }
 								)
-							) {
-								Promise.all(
-									selectedCyclesForPrint.map((cycleId) => softDeleteBillingCycle(cycleId))
-								)
-									.then(() => {
-										selectedCyclesForPrint = [];
-										loadData();
-									})
-									.catch((err) => {
-										error = err instanceof Error ? err.message : 'Failed to archive cycles';
-									});
-							}
-						}}
+							)}
+						disabled={cycleCrud.isBatchDeleting}
 						aria-label="Archive"
-						class="rounded p-2 text-red-600 hover:bg-red-100"
+						class="rounded p-2 text-red-600 hover:bg-red-100 disabled:opacity-50"
 						title="Archive selected cycles"
 					>
 						<Archive size={20} />
 					</button>
 					<button
-						onclick={() => {
-							selectedCyclesForPrint = [];
-						}}
+						onclick={() => cycleCrud.clearSelection()}
 						aria-label="Clear selection"
 						class="rounded p-2 text-gray-600 hover:bg-gray-200"
 						title="Clear selection"
@@ -1616,16 +1711,8 @@
 							<div class="flex items-center gap-3">
 								<input
 									type="checkbox"
-									checked={selectedCyclesForPrint.includes(cycle.id)}
-									onchange={(e) => {
-										if ((e.target as HTMLInputElement).checked) {
-											selectedCyclesForPrint = [...selectedCyclesForPrint, cycle.id];
-										} else {
-											selectedCyclesForPrint = selectedCyclesForPrint.filter(
-												(id) => id !== cycle.id
-											);
-										}
-									}}
+									checked={cycleCrud.selectedIds.has(cycle.id)}
+									onchange={() => cycleCrud.toggleSelection(cycle.id)}
 									class="h-4 w-4"
 								/>
 								<button
@@ -1744,20 +1831,16 @@
 								<button
 									onclick={(e) => {
 										e.stopPropagation();
-										if (
-											confirm(
-												'Archive this billing cycle and all its billings? They can be restored from the archive.'
+										cycleCrud.handleSoftDelete(cycle.id, softDeleteBillingCycle, loadData, () =>
+											confirmAsync(
+												'Archive billing cycle',
+												'Archive this billing cycle and all its billings? They can be restored from the archive.',
+												{ danger: true }
 											)
-										) {
-											softDeleteBillingCycle(cycle.id)
-												.then(() => loadData())
-												.catch((err) => {
-													error =
-														err instanceof Error ? err.message : 'Failed to archive billing cycle';
-												});
-										}
+										);
 									}}
-									class="rounded p-2 text-red-700 hover:bg-red-100"
+									disabled={cycleCrud.isDeleting && cycleCrud.deletingId === cycle.id}
+									class="rounded p-2 text-red-700 hover:bg-red-100 disabled:opacity-50"
 									title="Archive billing cycle"
 								>
 									<Archive size={18} />
@@ -1876,9 +1959,13 @@
 																? 'text-purple-800'
 																: 'text-gray-900'}"
 														>
-															{formatCurrency(
-																(cycle.billing_ids[billing.id] ?? 0) * cycle.billing_rate
-															)}
+															{#if currentReading}
+																{formatCurrency(
+																	billAmount(cycle.billing_ids[billing.id] ?? 0, cycle.billing_rate)
+																)}
+															{:else}
+																N/A
+															{/if}
 														</td>
 														<td class="px-6 py-3">
 															<StatusPill status={billing.payment_status} />
@@ -1910,8 +1997,10 @@
 																			softDeleteBilling,
 																			loadData,
 																			() =>
-																				confirm(
-																					'Archive this billing? It can be restored from the archive.'
+																				confirmAsync(
+																					'Archive billing',
+																					'Archive this billing? It can be restored from the archive.',
+																					{ danger: true }
 																				)
 																		)}
 																	disabled={isLoading || crud.deletingId === billing.id}
@@ -1978,6 +2067,13 @@
 			<select
 				id="edit-property"
 				bind:value={editData.property_id}
+				onchange={() => {
+					// The readings list is scoped per-property (see the editReadings $effect
+					// above) — clear stale reading IDs so a PATCH can't submit a billing whose
+					// property_id no longer matches its previous/current reading IDs (finding #3).
+					editData.previous_reading_id = '';
+					editData.current_reading_id = '';
+				}}
 				class="mt-1 w-full rounded border border-gray-300 px-3 py-2"
 			>
 				{#each properties as prop (prop.id)}
@@ -2029,10 +2125,10 @@
 </EditModal>
 
 <EditModal
-	bind:isOpen={cycleEditModalOpen}
+	bind:isOpen={cycleCrud.editModalOpen}
 	title="Edit Billing Cycle"
 	isLoading={isUpdatingCycle}
-	onClose={closeCycleEditModal}
+	onClose={cycleCrud.closeEditModal}
 	onSubmit={handleUpdateCycle}
 >
 	<div class="space-y-4">

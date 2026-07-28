@@ -128,36 +128,67 @@ export async function listAppend<T extends BaseModel>(
   item: T,
   ttlSeconds: number = 30 * 60
 ): Promise<void> {
-  const cached = await cacheGet<T[]>(cacheKey);
-  if (!cached) return; // Cache miss, let next GET populate it
-
-  cached.push(item);
-  await cacheSet(cacheKey, cached, ttlSeconds);
+  return listAppendMany(cacheKey, [item], ttlSeconds);
 }
 
 export async function listUpdate<T extends BaseModel>(
   cacheKey: string,
   item: T
 ): Promise<void> {
-  const cached = await cacheGet<T[]>(cacheKey);
-  if (!cached) return;
-
-  const index = cached.findIndex((i) => i.id === item.id);
-  if (index !== -1) {
-    cached[index] = item;
-    const ttl = 30 * 60;
-    await cacheSet(cacheKey, cached, ttl);
-  }
+  return listUpdateMany(cacheKey, [item]);
 }
 
 export async function listRemove(
   cacheKey: string,
   id: string
 ): Promise<void> {
+  return listRemoveMany(cacheKey, [id]);
+}
+
+/**
+ * Batch variants of listAppend/listUpdate/listRemove: one cacheGet + one cacheSet for the
+ * whole batch instead of one round-trip pair per item. Also correctness-critical, not just an
+ * optimization — the list cache is a single read-modify-write key, so calling the single-item
+ * versions concurrently (e.g. via Promise.all across a batch) would race: two calls can both
+ * read the same stale array and the second write clobbers the first, silently dropping an item.
+ */
+export async function listAppendMany<T extends BaseModel>(
+  cacheKey: string,
+  items: T[],
+  ttlSeconds: number = 30 * 60
+): Promise<void> {
+  if (items.length === 0) return;
+  const cached = await cacheGet<T[]>(cacheKey);
+  if (!cached) return; // Cache miss, let next GET populate it
+
+  cached.push(...items);
+  await cacheSet(cacheKey, cached, ttlSeconds);
+}
+
+export async function listUpdateMany<T extends BaseModel>(
+  cacheKey: string,
+  items: T[]
+): Promise<void> {
+  if (items.length === 0) return;
+  const cached = await cacheGet<T[]>(cacheKey);
+  if (!cached) return;
+
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const updated = cached.map((existing) => byId.get(existing.id) ?? existing);
+  const ttl = 30 * 60;
+  await cacheSet(cacheKey, updated, ttl);
+}
+
+export async function listRemoveMany(
+  cacheKey: string,
+  ids: string[]
+): Promise<void> {
+  if (ids.length === 0) return;
   const cached = await cacheGet<BaseModel[]>(cacheKey);
   if (!cached) return;
 
-  const filtered = cached.filter((i) => i.id !== id);
+  const idSet = new Set(ids);
+  const filtered = cached.filter((i) => !idSet.has(i.id));
   const ttl = 30 * 60;
   await cacheSet(cacheKey, filtered, ttl);
 }

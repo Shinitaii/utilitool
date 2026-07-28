@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { goto } from '$app/navigation';
+	import { signOut } from 'firebase/auth';
+	import { auth } from '$lib/firebase';
 	import { clearAllCaches } from '$lib/api/cache';
 	import { authStore } from '$lib/stores/auth.svelte';
 
@@ -28,7 +31,9 @@
 	async function handleSignOut() {
 		error = '';
 		try {
-			await authStore.logout();
+			await signOut(auth);
+			authStore.logout();
+			await goto(resolve('/login'));
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to sign out';
 		}

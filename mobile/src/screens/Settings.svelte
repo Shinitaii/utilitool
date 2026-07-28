@@ -1,45 +1,62 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { auth } from '../firebase';
   import { signOut } from 'firebase/auth';
   import { sessionCache } from '../lib/stores/session';
+  import { markManualSignOut } from '../lib/stores/auth-notice.svelte';
+  import { confirmAsync } from '../lib/stores/confirm.svelte';
+  import { pushToast } from '../lib/stores/toast.svelte';
+  import { goToHash } from '../lib/utils/navigation';
+  import { getErrorMessage } from '../lib/utils/errors';
   import BottomNav from '../components/BottomNav.svelte';
+  import ErrorBanner from '../components/ErrorBanner.svelte';
 
   let isSigningOut = $state(false);
   let error: string | null = $state(null);
+  let headingEl: HTMLElement | undefined = $state();
+
+  onMount(() => {
+    headingEl?.focus();
+  });
 
   async function handleSignOut() {
     try {
       isSigningOut = true;
+      markManualSignOut();
       await signOut(auth);
       sessionCache.clear();
       window.location.hash = '#/login';
-    } catch (e: any) {
-      error = e.message || 'Failed to sign out';
+    } catch (e) {
+      error = getErrorMessage(e, 'Failed to sign out');
     } finally {
       isSigningOut = false;
     }
   }
 
-  function clearCache() {
+  async function clearCache() {
+    const confirmed = await confirmAsync(
+      'Clear cache',
+      "Clear cached data? You'll need to reload meter groups and properties next time.",
+      { danger: true }
+    );
+    if (!confirmed) return;
     sessionCache.clear();
     error = null;
+    pushToast('Cache cleared', 'success');
   }
 </script>
 
 <div class="min-h-screen pb-20" style="background-color: var(--color-bg-primary)">
   <div class="p-4 flex items-center gap-3 bg-white border-b" style="border-color: var(--color-border); color: var(--color-text-primary)">
-    <button onclick={() => window.history.back()} class="text-xl" style="color: var(--color-text-primary)">←</button>
-    <h1 class="text-xl font-bold">Settings</h1>
+    <button onclick={() => goToHash('#/home')} aria-label="Back" class="text-xl" style="color: var(--color-text-primary)">←</button>
+    <h1 bind:this={headingEl} tabindex="-1" class="text-xl font-bold outline-none">Settings</h1>
   </div>
 
   {#if error}
-    <div class="p-4 m-4 rounded border flex items-center justify-between" style="background-color: #fff0f0; border-color: var(--color-status-alert); color: var(--color-status-alert)">
-      <span>{error}</span>
-      <button onclick={() => (error = null)} class="text-lg leading-none" style="color: var(--color-status-alert)">✕</button>
-    </div>
+    <ErrorBanner message={error} onDismiss={() => (error = null)} />
   {/if}
 
-  <div class="p-4 space-y-6">
+  <main class="p-4 space-y-6">
     <!-- Account Section -->
     <div>
       <h2 class="text-lg font-semibold mb-3" style="color: var(--color-text-primary)">Account</h2>
@@ -70,7 +87,7 @@
         </button>
       </div>
     </div>
-  </div>
+  </main>
 
   <BottomNav active="settings" />
 </div>

@@ -16,10 +16,12 @@
 	import { formatFirestoreDate } from '$lib/utils/format';
 	import { getUtilityTypeBadgeClasses } from '$lib/utils/utility-colors';
 	import EmptyState from '$lib/components/shared/EmptyState.svelte';
+	import TableSkeleton from '$lib/components/shared/TableSkeleton.svelte';
 	import EditModal from '$lib/components/shared/EditModal.svelte';
 	import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
 	import SelectionToolbar from '$lib/components/shared/SelectionToolbar.svelte';
 	import { createCrudStore } from '$lib/stores/crud.svelte';
+	import { confirmAsync } from '$lib/stores/confirm.svelte';
 	import { Archive, Plus } from 'lucide-svelte';
 
 	const crud = createCrudStore<MeterGroup>();
@@ -30,6 +32,7 @@
 		hasMore: false
 	});
 	let error = $state('');
+	let isLoading = $state(false);
 	let createFormOpen = $state(false);
 	let isUpdating = $state(false);
 	let isCreating = $state(false);
@@ -44,11 +47,14 @@
 	});
 
 	async function loadData() {
+		isLoading = true;
 		error = '';
 		try {
 			data = await getMeterGroups({ limit: 100 });
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load meter groups';
+		} finally {
+			isLoading = false;
 		}
 	}
 
@@ -169,7 +175,9 @@
 	{/if}
 
 	<div class="overflow-x-auto rounded-lg border border-gray-200">
-		{#if data.data.length === 0}
+		{#if isLoading}
+			<TableSkeleton rows={6} cols={5} />
+		{:else if data.data.length === 0}
 			<div class="p-6">
 				<EmptyState
 					title="No meter groups"
@@ -191,6 +199,7 @@
 						<th scope="col" class="w-8 px-4 py-3">
 							<input
 								type="checkbox"
+								aria-label="Select all meter groups"
 								checked={crud.selectedIds.size === data.data.length && data.data.length > 0}
 								onchange={() =>
 									crud.toggleSelectAll(
@@ -213,6 +222,7 @@
 							<td class="w-8 px-4 py-4">
 								<input
 									type="checkbox"
+									aria-label={`Select ${item.meter_name}`}
 									checked={crud.selectedIds.has(item.id)}
 									onchange={() => crud.toggleSelection(item.id)}
 									class="rounded"
@@ -239,7 +249,11 @@
 											})}
 										onSoftDelete={() =>
 											crud.handleSoftDelete(item.id, softDeleteMeterGroup, loadData, () =>
-												confirm('Archive this meter group? It can be restored from the archive.')
+												confirmAsync(
+													'Archive meter group',
+													'Archive this meter group? It can be restored from the archive.',
+													{ danger: true }
+												)
 											)}
 										isLoading={crud.deletingId === item.id}
 									/>
