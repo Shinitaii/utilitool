@@ -22,12 +22,4 @@ export interface CreateBillingCycleRequest {
 	overdue_date?: FirestoreTimestamp | string;
 }
 
-export interface UpdateBillingCycleRequest {
-	meter_group_id?: string;
-	billing_ids?: Record<string, number>;
-	billing_rate?: number;
-	billing_consumption?: number;
-	billing_start_date?: FirestoreTimestamp | string;
-	billing_end_date?: FirestoreTimestamp | string;
-	overdue_date?: FirestoreTimestamp | string;
-}
+export type UpdateBillingCycleRequest = Partial<CreateBillingCycleRequest>;

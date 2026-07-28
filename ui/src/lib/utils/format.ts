@@ -19,10 +19,6 @@ export function formatReading(amount: number, utilityType: string): string {
 	return `${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${unit}`;
 }
 
-export function formatKwh(kwh: number): string {
-	return `${kwh.toLocaleString()} kWh`;
-}
-
 export function formatDate(date: Date): string {
 	return format(date, 'MMM d, yyyy');
 }
