@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { listReadings, type Reading } from '../lib/api/readings';
   import type { MeterGroup } from '../lib/api/meter-groups';
   import type { Property } from '../lib/api/properties';
@@ -6,6 +7,8 @@
   import { formatTimestampDate } from '../lib/utils/timestamp';
   import { sessionCache } from '../lib/stores/session';
   import { getUtilityTypeBadgeClasses } from '../lib/utils/utility-colors';
+  import { pushToast } from '../lib/stores/toast.svelte';
+  import { ChevronDown } from '@lucide/svelte';
   import BottomNav from '../components/BottomNav.svelte';
 
   let readings: Reading[] = $state([]);
@@ -17,6 +20,11 @@
   let selectedReading: Reading | null = $state(null);
   let utilityFilter: 'all' | 'electricity' | 'water' = $state('all');
   let selectedPropertyId: string = $state('');
+  let headingEl: HTMLElement | undefined = $state();
+
+  onMount(() => {
+    headingEl?.focus();
+  });
 
   const meterGroupMap = $derived(
     Object.fromEntries(meterGroups.map(g => [g.id, g]))
@@ -61,6 +69,9 @@
   // Reset property filter when utility type changes
   $effect(() => {
     utilityFilter;
+    if (selectedPropertyId) {
+      pushToast('Property filter cleared for the new utility type', 'warning');
+    }
     selectedPropertyId = '';
   });
 
@@ -72,12 +83,14 @@
 
 <div class="min-h-screen pb-20" style="background-color: var(--color-bg-primary)">
   <div class="p-4 border-b bg-white" style="border-color: var(--color-border)">
-    <h1 class="text-xl font-bold mb-3" style="color: var(--color-text-primary)">Reading History</h1>
+    <h1 bind:this={headingEl} tabindex="-1" class="text-xl font-bold mb-3 outline-none" style="color: var(--color-text-primary)">Reading History</h1>
 
     <!-- Utility type tabs -->
-    <div class="flex gap-2 mb-3">
+    <div class="flex gap-2 mb-3" role="tablist" aria-label="Filter by utility type">
       {#each [['all', 'All'], ['electricity', 'Electricity'], ['water', 'Water']] as [value, label]}
         <button
+          role="tab"
+          aria-selected={utilityFilter === value}
           onclick={() => { utilityFilter = value as typeof utilityFilter; }}
           class="px-3 py-1 rounded-full text-sm font-semibold border transition {value !== 'all' && utilityFilter !== value ? getUtilityTypeBadgeClasses(value) : ''}"
           style={utilityFilter === value
@@ -105,6 +118,7 @@
     {/if}
   </div>
 
+  <main>
   {#if error}
     <div class="p-3 rounded-lg text-sm m-4" style="background-color: #fde5e0; color: var(--color-status-alert); border: 1px solid var(--color-status-alert)">
       {error}
@@ -120,6 +134,7 @@
       {#each filteredReadings as reading (reading.id)}
         <button
           onclick={() => (selectedReading = selectedReading?.id === reading.id ? null : reading)}
+          aria-expanded={selectedReading?.id === reading.id}
           class="card-base w-full text-left hover:opacity-90 transition"
         >
           <div class="flex justify-between items-start mb-2">
@@ -134,9 +149,15 @@
                 {/if}
               </p>
             </div>
-            <span class="text-lg font-bold" style="color: var(--color-accent)">
-              {reading.reading_amount} {getUnit(reading.meter_group_id)}
-            </span>
+            <div class="flex items-center gap-1.5">
+              <span class="text-lg font-bold" style="color: var(--color-accent)">
+                {reading.reading_amount} {getUnit(reading.meter_group_id)}
+              </span>
+              <ChevronDown
+                size={16}
+                style="color: var(--color-text-secondary); transition: transform 0.15s; transform: rotate({selectedReading?.id === reading.id ? 180 : 0}deg)"
+              />
+            </div>
           </div>
           <p class="text-xs" style="color: var(--color-text-secondary)">{formatTimestampDate(reading.reading_date)}</p>
 
@@ -154,6 +175,7 @@
       {/each}
     </div>
   {/if}
+  </main>
 
   <BottomNav active="history" />
 </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { listBillingCycles, type BillingCycle } from '../lib/api/billing-cycles';
   import { listBillings, updateBillingStatus, type Billing } from '../lib/api/billings';
   import { listMeterGroups, type MeterGroup } from '../lib/api/meter-groups';
@@ -6,20 +7,29 @@
   import { getReadingUnit } from '../lib/utils/format';
   import { getStatusSummary } from '../lib/utils/billing-cycle.util';
   import { sessionCache } from '../lib/stores/session';
+  import { confirmAsync } from '../lib/stores/confirm.svelte';
+  import { getErrorMessage } from '../lib/utils/errors';
+  import { ChevronDown } from '@lucide/svelte';
   import BottomNav from '../components/BottomNav.svelte';
 
   let cycles: BillingCycle[] = $state([]);
   let propertyNames: Record<string, string> = $state({});
   let meterGroups: MeterGroup[] = $state([]);
   let isLoading = $state(true);
-  let error: string | null = $state(null);
+  let listError: string | null = $state(null);
+  let actionError: string | null = $state(null);
   let expandedCycleId: string | null = $state(null);
   let billingMap = $state<Map<string, Billing>>(new Map());
+  let headingEl: HTMLElement | undefined = $state();
+
+  onMount(() => {
+    headingEl?.focus();
+  });
 
   $effect(async () => {
     try {
       isLoading = true;
-      error = null;
+      listError = null;
 
       const [cyclesRes, billingsRes, meterGroupsRes] = await Promise.all([
         listBillingCycles({ limit: 50 }),
@@ -55,7 +65,7 @@
 
       propertyNames = names;
     } catch (e) {
-      error = 'Failed to load billings';
+      listError = 'Failed to load billings';
     } finally {
       isLoading = false;
     }
@@ -88,16 +98,23 @@
   }
 
   async function markAsPaid(billingId: string) {
+    const confirmed = await confirmAsync(
+      'Mark as paid',
+      'Mark this billing as paid? This cannot be undone from the app.',
+      { danger: true, confirmLabel: 'Mark Paid' }
+    );
+    if (!confirmed) return;
+
     try {
-      error = null;
+      actionError = null;
       await updateBillingStatus(billingId, 'paid');
       const billing = billingMap.get(billingId);
       if (billing) {
         billing.payment_status = 'paid';
         billingMap = billingMap;
       }
-    } catch (e: any) {
-      error = e.message || 'Failed to update billing status';
+    } catch (e) {
+      actionError = getErrorMessage(e, 'Failed to update billing status');
     }
   }
 
@@ -148,12 +165,18 @@
 
 <div class="min-h-screen pb-20" style="background-color: var(--color-bg-primary)">
   <div class="p-4 border-b bg-white" style="border-color: var(--color-border)">
-    <h1 class="text-xl font-bold" style="color: var(--color-text-primary)">Billings</h1>
+    <h1 bind:this={headingEl} tabindex="-1" class="text-xl font-bold outline-none" style="color: var(--color-text-primary)">Billings</h1>
   </div>
 
-  {#if error}
+  <main>
+  {#if listError}
     <div class="p-4 m-4 rounded" style="background-color: #fde5e0; color: var(--color-status-alert); border: 1px solid var(--color-status-alert)">
-      {error}
+      {listError}
+    </div>
+  {/if}
+  {#if actionError}
+    <div class="p-4 m-4 rounded" style="background-color: #fde5e0; color: var(--color-status-alert); border: 1px solid var(--color-status-alert)">
+      {actionError}
     </div>
   {/if}
 
@@ -172,49 +195,55 @@
             {#each group.cycles as cycle (cycle.id)}
               {@const billings = getCycleBillings(cycle)}
               {@const statusSummary = getStatusSummary(cycle, billingMap)}
-              <div
-                role="button"
-                tabindex="0"
-                onclick={() => toggleCycleExpand(cycle.id)}
-                onkeydown={(e) => e.key === 'Enter' && toggleCycleExpand(cycle.id)}
-                class="card-base w-full p-4 text-left transition cursor-pointer"
-              >
-                <div class="flex justify-between items-start mb-2">
-                  <h4 class="font-semibold" style="color: var(--color-text-primary)">
-                    {formatTimestampDate(cycle.billing_start_date)} – {formatTimestampDate(cycle.billing_end_date)}
-                  </h4>
-                  <span class="text-xs font-semibold text-gray-600">{billings.length} billing(s)</span>
-                </div>
-
-                <div class="space-y-1 mb-2">
-                  <div class="text-xs" style="color: var(--color-text-tertiary)">
-                    Rate: ₱{cycle.billing_rate.toFixed(2)} | Consumption: {cycle.billing_consumption.toLocaleString()}
-                  </div>
-                  {#if cycle.overdue_date}
-                    <div class="text-xs" style="color: var(--color-status-alert)">
-                      Due: {formatTimestampDate(cycle.overdue_date)}
+              <div class="card-base w-full p-4">
+                <button
+                  onclick={() => toggleCycleExpand(cycle.id)}
+                  aria-expanded={expandedCycleId === cycle.id}
+                  class="w-full text-left"
+                >
+                  <div class="flex justify-between items-start mb-2">
+                    <h4 class="font-semibold" style="color: var(--color-text-primary)">
+                      {formatTimestampDate(cycle.billing_start_date)} – {formatTimestampDate(cycle.billing_end_date)}
+                    </h4>
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-xs font-semibold text-gray-600">{billings.length} billing(s)</span>
+                      <ChevronDown
+                        size={16}
+                        style="color: var(--color-text-secondary); transition: transform 0.15s; transform: rotate({expandedCycleId === cycle.id ? 180 : 0}deg)"
+                      />
                     </div>
-                  {/if}
-                </div>
+                  </div>
 
-                <!-- Status Summary Badges -->
-                <div class="flex gap-2 flex-wrap">
-                  {#if statusSummary.overdue > 0}
-                    <span class="text-xs font-semibold px-2 py-0.5 rounded-full border" style={getStatusColor('overdue')}>
-                      ⚠ {statusSummary.overdue} overdue
-                    </span>
-                  {/if}
-                  {#if statusSummary.pending > 0}
-                    <span class="text-xs font-semibold px-2 py-0.5 rounded-full border" style={getStatusColor('pending')}>
-                      ⏳ {statusSummary.pending} pending
-                    </span>
-                  {/if}
-                  {#if statusSummary.paid > 0}
-                    <span class="text-xs font-semibold px-2 py-0.5 rounded-full border" style={getStatusColor('paid')}>
-                      ✓ {statusSummary.paid} paid
-                    </span>
-                  {/if}
-                </div>
+                  <div class="space-y-1 mb-2">
+                    <div class="text-xs" style="color: var(--color-text-tertiary)">
+                      Rate: ₱{cycle.billing_rate.toFixed(2)} | Consumption: {cycle.billing_consumption.toLocaleString()}
+                    </div>
+                    {#if cycle.overdue_date}
+                      <div class="text-xs" style="color: var(--color-status-alert)">
+                        Due: {formatTimestampDate(cycle.overdue_date)}
+                      </div>
+                    {/if}
+                  </div>
+
+                  <!-- Status Summary Badges -->
+                  <div class="flex gap-2 flex-wrap">
+                    {#if statusSummary.overdue > 0}
+                      <span class="text-xs font-semibold px-2 py-0.5 rounded-full border" style={getStatusColor('overdue')}>
+                        ⚠ {statusSummary.overdue} overdue
+                      </span>
+                    {/if}
+                    {#if statusSummary.pending > 0}
+                      <span class="text-xs font-semibold px-2 py-0.5 rounded-full border" style={getStatusColor('pending')}>
+                        ⏳ {statusSummary.pending} pending
+                      </span>
+                    {/if}
+                    {#if statusSummary.paid > 0}
+                      <span class="text-xs font-semibold px-2 py-0.5 rounded-full border" style={getStatusColor('paid')}>
+                        ✓ {statusSummary.paid} paid
+                      </span>
+                    {/if}
+                  </div>
+                </button>
 
                 <!-- Expanded Billings List -->
                 {#if expandedCycleId === cycle.id}
@@ -234,11 +263,8 @@
                         </div>
                         {#if billing.payment_status === 'pending' || billing.payment_status === 'overdue'}
                           <button
-                            onclick={(e) => {
-                              e.stopPropagation();
-                              markAsPaid(billing.id);
-                            }}
-                            class="px-2 py-1 rounded text-xs font-semibold"
+                            onclick={() => markAsPaid(billing.id)}
+                            class="px-3 py-2 rounded text-sm font-semibold"
                             style="background-color: var(--color-status-good); color: white"
                           >
                             Mark Paid
@@ -255,6 +281,7 @@
       {/each}
     </div>
   {/if}
+  </main>
 
   <BottomNav active="billings" />
 </div>

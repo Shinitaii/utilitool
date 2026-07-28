@@ -2,11 +2,14 @@
   import { signInWithEmailAndPassword } from 'firebase/auth';
   import { auth } from '../firebase';
   import { getReadableAuthError } from '../lib/utils/auth-errors';
+  import { authNotice } from '../lib/stores/auth-notice.svelte';
 
   let email = $state('');
   let password = $state('');
-  let error = $state('');
+  let error = $state(authNotice.message ?? '');
   let loading = $state(false);
+
+  authNotice.clear();
 
   async function handleLogin(e: Event) {
     e.preventDefault();

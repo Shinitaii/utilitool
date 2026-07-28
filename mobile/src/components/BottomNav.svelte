@@ -15,7 +15,7 @@
   ] as const;
 </script>
 
-<div class="fixed bottom-0 left-0 right-0 border-t flex justify-around" style="background-color: var(--color-bg-secondary); border-color: var(--color-border)">
+<nav aria-label="Primary" class="fixed bottom-0 left-0 right-0 border-t flex justify-around" style="background-color: var(--color-bg-secondary); border-color: var(--color-border)">
   {#each items as item}
     <button
       onclick={() => { window.location.hash = item.hash; }}
@@ -26,4 +26,4 @@
       <span class="text-xs font-medium">{item.label}</span>
     </button>
   {/each}
-</div>
+</nav>
