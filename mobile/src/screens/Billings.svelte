@@ -11,6 +11,7 @@
   import { getErrorMessage } from '../lib/utils/errors';
   import { ChevronDown } from '@lucide/svelte';
   import BottomNav from '../components/BottomNav.svelte';
+  import ErrorBanner from '../components/ErrorBanner.svelte';
 
   let cycles: BillingCycle[] = $state([]);
   let propertyNames: Record<string, string> = $state({});
@@ -170,14 +171,10 @@
 
   <main>
   {#if listError}
-    <div class="p-4 m-4 rounded" style="background-color: #fde5e0; color: var(--color-status-alert); border: 1px solid var(--color-status-alert)">
-      {listError}
-    </div>
+    <ErrorBanner message={listError} />
   {/if}
   {#if actionError}
-    <div class="p-4 m-4 rounded" style="background-color: #fde5e0; color: var(--color-status-alert); border: 1px solid var(--color-status-alert)">
-      {actionError}
-    </div>
+    <ErrorBanner message={actionError} />
   {/if}
 
   {#if isLoading}

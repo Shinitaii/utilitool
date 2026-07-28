@@ -7,7 +7,9 @@
   import { confirmAsync } from '../lib/stores/confirm.svelte';
   import { pushToast } from '../lib/stores/toast.svelte';
   import { goToHash } from '../lib/utils/navigation';
+  import { getErrorMessage } from '../lib/utils/errors';
   import BottomNav from '../components/BottomNav.svelte';
+  import ErrorBanner from '../components/ErrorBanner.svelte';
 
   let isSigningOut = $state(false);
   let error: string | null = $state(null);
@@ -24,8 +26,8 @@
       await signOut(auth);
       sessionCache.clear();
       window.location.hash = '#/login';
-    } catch (e: any) {
-      error = e.message || 'Failed to sign out';
+    } catch (e) {
+      error = getErrorMessage(e, 'Failed to sign out');
     } finally {
       isSigningOut = false;
     }
@@ -51,10 +53,7 @@
   </div>
 
   {#if error}
-    <div class="p-4 m-4 rounded border flex items-center justify-between" style="background-color: #fff0f0; border-color: var(--color-status-alert); color: var(--color-status-alert)">
-      <span>{error}</span>
-      <button onclick={() => (error = null)} aria-label="Dismiss error" class="text-lg leading-none" style="color: var(--color-status-alert)">✕</button>
-    </div>
+    <ErrorBanner message={error} onDismiss={() => (error = null)} />
   {/if}
 
   <main class="p-4 space-y-6">

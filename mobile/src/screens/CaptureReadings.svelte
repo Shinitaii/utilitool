@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
   import type { MeterGroup } from '../lib/api/meter-groups';
   import type { Property } from '../lib/api/properties';
@@ -9,14 +8,19 @@
   import { findMeterGroupEntry, needsSeedReading } from '../lib/utils/readings-wizard.util';
   import { sessionCache } from '../lib/stores/session';
   import { confirmAsync } from '../lib/stores/confirm.svelte';
+  import { getErrorMessage } from '../lib/utils/errors';
+  import { pushToast } from '../lib/stores/toast.svelte';
+  import ErrorBanner from '../components/ErrorBanner.svelte';
 
   let step = $state(1);
   let isLoading = $state(false);
   let error: string | null = $state(null);
-  let resultBanner: { variant: 'success' | 'warning'; message: string } | null = $state(null);
   let headingEl: HTMLElement | undefined = $state();
 
-  onMount(() => {
+  // Moves focus to the step heading on every step transition, not just initial mount
+  // (finding #17) — mirrors the aria-live step indicator below.
+  $effect(() => {
+    step;
     headingEl?.focus();
   });
 
@@ -153,7 +157,6 @@
     try {
       isLoading = true;
       error = null;
-      resultBanner = null;
 
       const seedEntries = Object.entries(propertyReadings).filter(([propertyId]) => propertyNeedsSeed[propertyId]);
       const regularEntries = Object.entries(propertyReadings).filter(([propertyId]) => !propertyNeedsSeed[propertyId]);
@@ -196,18 +199,18 @@
       }
 
       if (failedSummaries.length > 0) {
-        resultBanner = {
-          variant: 'warning',
-          message: `${createdCount} of ${totalCount} readings saved. ${failedSummaries.length} skipped: ${failedSummaries.join('; ')}`
-        };
+        pushToast(
+          `${createdCount} of ${totalCount} readings saved. ${failedSummaries.length} skipped: ${failedSummaries.join('; ')}`,
+          'warning'
+        );
         isLoading = false;
         return;
       }
 
       // Success - return to home
       window.location.hash = '#/home';
-    } catch (e: any) {
-      error = e.message || 'Failed to submit readings';
+    } catch (e) {
+      error = getErrorMessage(e, 'Failed to submit readings');
     } finally {
       isLoading = false;
     }
@@ -252,24 +255,11 @@
       ></div>
     {/each}
   </div>
-  <span class="sr-only">Step {step} of 3</span>
+  <span class="sr-only" aria-live="polite">Step {step} of 3</span>
 
   <main>
   {#if error}
-    <div class="p-4 m-4 rounded border" style="background-color: #fff0f0; border-color: var(--color-status-alert); color: var(--color-status-alert)">
-      {error}
-    </div>
-  {/if}
-
-  {#if resultBanner}
-    <div
-      class="p-4 m-4 rounded border"
-      style={resultBanner.variant === 'warning'
-        ? 'background-color: #fff3e8; border-color: #8b5a3c; color: #8b5a3c'
-        : 'background-color: #e8f4ea; border-color: #2c6b3a; color: #2c6b3a'}
-    >
-      {resultBanner.message}
-    </div>
+    <ErrorBanner message={error} />
   {/if}
 
   <!-- Step 1: Session Setup -->

@@ -10,6 +10,7 @@
   import { pushToast } from '../lib/stores/toast.svelte';
   import { ChevronDown } from '@lucide/svelte';
   import BottomNav from '../components/BottomNav.svelte';
+  import ErrorBanner from '../components/ErrorBanner.svelte';
 
   let readings: Reading[] = $state([]);
   let meterGroups: MeterGroup[] = $state([]);
@@ -36,7 +37,7 @@
       : readings.filter(r => meterGroupMap[r.meter_group_id]?.utility_type === utilityFilter)
   );
 
-  const availableProperties = $derived(() => {
+  const availableProperties = $derived.by(() => {
     const ids = new Set(utilityFilteredReadings.map(r => r.property_id));
     return properties.filter(p => ids.has(p.id));
   });
@@ -49,12 +50,16 @@
 
   $effect(async () => {
     try {
-      // Fetch readings (always fresh, not cached)
-      const readingsRes = await listReadings();
+      // Independent fetches — batched instead of sequential awaits, matching the
+      // already-correct pattern in Billings.svelte/Home.svelte (finding #54).
+      const [readingsRes, meterGroupsRes, propertiesRes] = await Promise.all([
+        listReadings(), // always fresh, not cached
+        sessionCache.getOrFetchMeterGroups(),
+        sessionCache.getOrFetchProperties()
+      ]);
       readings = readingsRes.data || [];
-
-      meterGroups = await sessionCache.getOrFetchMeterGroups();
-      properties = await sessionCache.getOrFetchProperties();
+      meterGroups = meterGroupsRes;
+      properties = propertiesRes;
 
       const names: Record<string, string> = {};
       properties.forEach((p: Property) => { names[p.id] = p.room_name; });
@@ -66,13 +71,26 @@
     }
   });
 
-  // Reset property filter when utility type changes
+  // Reset property filter when utility type changes. Tracks the previous utilityFilter value
+  // explicitly instead of relying on implicit $effect dependency tracking — reading
+  // selectedPropertyId unconditionally in the body would make Svelte track it too, so every
+  // property selection (which changes selectedPropertyId) would re-trigger this effect and
+  // immediately wipe the selection right back out (finding #1). Initialized lazily on the
+  // effect's first run (rather than at top-level) so it's a plain closure variable, not a
+  // premature read of the $state value outside a reactive context.
+  let previousUtilityFilter: typeof utilityFilter | undefined;
   $effect(() => {
-    utilityFilter;
-    if (selectedPropertyId) {
-      pushToast('Property filter cleared for the new utility type', 'warning');
+    if (previousUtilityFilter === undefined) {
+      previousUtilityFilter = utilityFilter;
+      return;
     }
-    selectedPropertyId = '';
+    if (utilityFilter !== previousUtilityFilter) {
+      previousUtilityFilter = utilityFilter;
+      if (selectedPropertyId) {
+        pushToast('Property filter cleared for the new utility type', 'warning');
+      }
+      selectedPropertyId = '';
+    }
   });
 
   function getUnit(meterGroupId: string): string {
@@ -105,13 +123,13 @@
     </div>
 
     <!-- Property filter -->
-    {#if availableProperties().length > 0}
+    {#if availableProperties.length > 0}
       <select
         bind:value={selectedPropertyId}
         class="input-base w-full text-sm"
       >
         <option value="">All properties</option>
-        {#each availableProperties() as property (property.id)}
+        {#each availableProperties as property (property.id)}
           <option value={property.id}>{property.room_name}</option>
         {/each}
       </select>
@@ -120,9 +138,7 @@
 
   <main>
   {#if error}
-    <div class="p-3 rounded-lg text-sm m-4" style="background-color: #fde5e0; color: var(--color-status-alert); border: 1px solid var(--color-status-alert)">
-      {error}
-    </div>
+    <ErrorBanner message={error} />
   {/if}
 
   {#if isLoading}

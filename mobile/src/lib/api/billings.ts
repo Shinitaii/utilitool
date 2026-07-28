@@ -1,4 +1,4 @@
-import { apiGet, apiPatch } from './client';
+import { apiGet, apiPatch, buildQueryString } from './client';
 
 export interface Billing {
   id: string;
@@ -12,12 +12,16 @@ export interface Billing {
   is_deleted: boolean;
 }
 
-export async function listBillings(propertyId?: string) {
-  const params = new URLSearchParams();
-  if (propertyId) params.append('propertyId', propertyId);
-  return apiGet(`/billings${params.toString() ? '?' + params.toString() : ''}`);
+export interface BillingsListResponse {
+  data: Billing[];
+  nextCursor?: string | null;
+  hasMore: boolean;
 }
 
-export async function updateBillingStatus(id: string, paymentStatus: string) {
-  return apiPatch(`/billings/${id}`, { payment_status: paymentStatus });
+export async function listBillings(propertyId?: string): Promise<BillingsListResponse> {
+  return apiGet<BillingsListResponse>(`/billings${buildQueryString({ propertyId })}`);
+}
+
+export async function updateBillingStatus(id: string, paymentStatus: string): Promise<Billing> {
+  return apiPatch<Billing>(`/billings/${id}`, { payment_status: paymentStatus });
 }
