@@ -539,22 +539,6 @@
 		);
 	}
 
-	async function handleSuggestReading(rowIndex: number) {
-		const row = batchRows[rowIndex];
-		if (!row.image_url) {
-			batchFormError = 'Please upload an image first';
-			return;
-		}
-
-		try {
-			const result = await ocrReadingImage(row.image_url);
-			if (result.suggested_reading_amount !== null) {
-				row.reading_amount = result.suggested_reading_amount;
-			}
-		} catch (err) {
-			batchFormError = err instanceof Error ? err.message : 'Failed to suggest reading';
-		}
-	}
 </script>
 
 <div class="space-y-6">

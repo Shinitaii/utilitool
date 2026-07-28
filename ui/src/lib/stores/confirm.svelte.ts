@@ -30,7 +30,7 @@ interface QueuedConfirm {
 }
 
 let resolver: ((value: boolean) => void) | null = null;
-let queue: QueuedConfirm[] = [];
+const queue: QueuedConfirm[] = [];
 
 function openNext() {
 	const next = queue.shift();
