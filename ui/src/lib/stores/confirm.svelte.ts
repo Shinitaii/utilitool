@@ -22,7 +22,29 @@ let state = $state<ConfirmState>({
 	danger: false
 });
 
+interface QueuedConfirm {
+	title: string;
+	message: string;
+	options?: ConfirmOptions;
+	resolve: (value: boolean) => void;
+}
+
 let resolver: ((value: boolean) => void) | null = null;
+let queue: QueuedConfirm[] = [];
+
+function openNext() {
+	const next = queue.shift();
+	if (!next) return;
+	state = {
+		open: true,
+		title: next.title,
+		message: next.message,
+		confirmLabel: next.options?.confirmLabel ?? 'Confirm',
+		cancelLabel: next.options?.cancelLabel ?? 'Cancel',
+		danger: next.options?.danger ?? false
+	};
+	resolver = next.resolve;
+}
 
 export const confirmState = {
 	get open() {
@@ -50,23 +72,18 @@ export function confirmAsync(
 	message: string,
 	options?: ConfirmOptions
 ): Promise<boolean> {
-	// Resolve any stale pending confirm as cancelled before opening a new one.
-	resolver?.(false);
-	state = {
-		open: true,
-		title,
-		message,
-		confirmLabel: options?.confirmLabel ?? 'Confirm',
-		cancelLabel: options?.cancelLabel ?? 'Cancel',
-		danger: options?.danger ?? false
-	};
+	// Queued rather than resolved-as-cancelled: a second call while one is pending
+	// waits its turn instead of silently dropping the first action (see finding #6).
 	return new Promise((resolve) => {
-		resolver = resolve;
+		queue.push({ title, message, options, resolve });
+		if (!state.open) openNext();
 	});
 }
 
 export function resolveConfirm(result: boolean) {
 	state = { ...state, open: false };
-	resolver?.(result);
+	const currentResolver = resolver;
 	resolver = null;
+	currentResolver?.(result);
+	openNext();
 }

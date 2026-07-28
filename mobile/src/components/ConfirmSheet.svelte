@@ -1,5 +1,6 @@
 <script lang="ts">
   import { confirmState, resolveConfirm } from '../lib/stores/confirm.svelte';
+  import { focusTrap } from '../lib/utils/focus-trap';
 </script>
 
 {#if confirmState.open}
@@ -11,6 +12,7 @@
     }}
   >
     <div
+      use:focusTrap={{ active: true, onEscape: () => resolveConfirm(false) }}
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="confirm-sheet-title"

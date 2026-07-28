@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { focusTrap } from '$lib/utils/focus-trap';
+
 	interface Props {
 		isOpen: boolean;
 		title: string;
@@ -20,54 +22,18 @@
 	}: Props = $props();
 
 	const titleId = `modal-title-${Math.random().toString(36).slice(2)}`;
-	let dialogEl: HTMLDivElement | undefined = $state();
-
-	const FOCUSABLE =
-		'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-	function trapFocus(e: KeyboardEvent) {
-		if (!dialogEl) return;
-		const focusable = Array.from(dialogEl.querySelectorAll<HTMLElement>(FOCUSABLE));
-		if (focusable.length === 0) return;
-		const first = focusable[0];
-		const last = focusable[focusable.length - 1];
-
-		if (e.key === 'Tab') {
-			if (e.shiftKey && document.activeElement === first) {
-				e.preventDefault();
-				last.focus();
-			} else if (!e.shiftKey && document.activeElement === last) {
-				e.preventDefault();
-				first.focus();
-			}
-		}
-		if (e.key === 'Escape') {
-			onClose();
-		}
-	}
-
-	$effect(() => {
-		if (isOpen && dialogEl) {
-			const first = dialogEl.querySelector<HTMLElement>(FOCUSABLE);
-			first?.focus();
-			document.body.classList.add('modal-open');
-		} else {
-			document.body.classList.remove('modal-open');
-		}
-	});
 </script>
 
 {#if isOpen}
 	<div
 		role="presentation"
-		class="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black"
+		class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
 		onclick={(e) => {
 			if (e.target === e.currentTarget) onClose();
 		}}
-		onkeydown={trapFocus}
 	>
 		<div
-			bind:this={dialogEl}
+			use:focusTrap={{ active: true, onEscape: onClose, lockScroll: true }}
 			role="dialog"
 			aria-modal="true"
 			aria-labelledby={titleId}

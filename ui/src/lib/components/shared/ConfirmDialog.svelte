@@ -1,51 +1,20 @@
 <script lang="ts">
 	import { confirmState, resolveConfirm } from '$lib/stores/confirm.svelte';
+	import { focusTrap } from '$lib/utils/focus-trap';
 
 	const titleId = `confirm-title-${Math.random().toString(36).slice(2)}`;
-	let dialogEl: HTMLDivElement | undefined = $state();
-
-	const FOCUSABLE = 'button:not([disabled])';
-
-	function trapFocus(e: KeyboardEvent) {
-		if (!dialogEl) return;
-		const focusable = Array.from(dialogEl.querySelectorAll<HTMLElement>(FOCUSABLE));
-		if (focusable.length === 0) return;
-		const first = focusable[0];
-		const last = focusable[focusable.length - 1];
-
-		if (e.key === 'Tab') {
-			if (e.shiftKey && document.activeElement === first) {
-				e.preventDefault();
-				last.focus();
-			} else if (!e.shiftKey && document.activeElement === last) {
-				e.preventDefault();
-				first.focus();
-			}
-		}
-		if (e.key === 'Escape') {
-			resolveConfirm(false);
-		}
-	}
-
-	$effect(() => {
-		if (confirmState.open && dialogEl) {
-			const first = dialogEl.querySelector<HTMLElement>(FOCUSABLE);
-			first?.focus();
-		}
-	});
 </script>
 
 {#if confirmState.open}
 	<div
 		role="presentation"
-		class="bg-opacity-50 fixed inset-0 z-[60] flex items-center justify-center bg-black"
+		class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
 		onclick={(e) => {
 			if (e.target === e.currentTarget) resolveConfirm(false);
 		}}
-		onkeydown={trapFocus}
 	>
 		<div
-			bind:this={dialogEl}
+			use:focusTrap={{ active: true, onEscape: () => resolveConfirm(false), lockScroll: true }}
 			role="alertdialog"
 			aria-modal="true"
 			aria-labelledby={titleId}
