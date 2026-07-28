@@ -41,22 +41,24 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
 	const url = `${API_BASE_URL}${path}`;
 
-	const controller = new AbortController();
-	const timeoutId = setTimeout(() => controller.abort(), 20_000);
-
-	let response: Response;
-	try {
+	// Shared by the initial request and the 401-retry below so timeout/abort/error-shape
+	// behavior can't silently drift between the two call sites.
+	async function doFetch(requestHeaders: Headers): Promise<Response> {
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), 20_000);
 		try {
-			response = await fetch(url, { ...fetchOptions, headers, signal: controller.signal });
+			return await fetch(url, { ...fetchOptions, headers: requestHeaders, signal: controller.signal });
+		} catch {
+			throw {
+				status: 0,
+				message: 'Could not reach the server. Check your connection and that the API is running.'
+			} satisfies ApiError;
 		} finally {
 			clearTimeout(timeoutId);
 		}
-	} catch {
-		throw {
-			status: 0,
-			message: 'Could not reach the server. Check your connection and that the API is running.'
-		} satisfies ApiError;
 	}
+
+	let response = await doFetch(headers);
 
 	// Handle 401 by force-refreshing token and retrying once
 	if (response.status === 401 && !skipAuth) {
@@ -66,24 +68,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 			if (token) {
 				headers.set('Authorization', `Bearer ${token}`);
 			}
-			const retryController = new AbortController();
-			const retryTimeoutId = setTimeout(() => retryController.abort(), 20_000);
-			try {
-				try {
-					response = await fetch(url, {
-						...fetchOptions,
-						headers,
-						signal: retryController.signal
-					});
-				} finally {
-					clearTimeout(retryTimeoutId);
-				}
-			} catch {
-				throw {
-					status: 0,
-					message: 'Could not reach the server. Check your connection and that the API is running.'
-				} satisfies ApiError;
-			}
+			response = await doFetch(headers);
 		}
 	}
 
