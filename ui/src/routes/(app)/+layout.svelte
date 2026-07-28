@@ -5,7 +5,10 @@
 	import TopBar from '$lib/components/layout/TopBar.svelte';
 	import RightPanel from '$lib/components/layout/RightPanel.svelte';
 	import ChatWidget from '$lib/components/shared/ChatWidget.svelte';
+	import ConfirmDialog from '$lib/components/shared/ConfirmDialog.svelte';
+	import Toast from '$lib/components/shared/Toast.svelte';
 	import { authStore, initAuthListener, type AuthState } from '$lib/stores/auth.svelte';
+	import { loadNavCounts } from '$lib/stores/nav-counts.svelte';
 
 	let { children } = $props();
 
@@ -30,6 +33,8 @@
 	$effect(() => {
 		if (!authState.isLoading && !authState.isAuthenticated) {
 			goto(resolve('/login'));
+		} else if (authState.isAuthenticated) {
+			loadNavCounts();
 		}
 	});
 </script>
@@ -56,4 +61,7 @@
 	{#if authState.user?.role === 'admin'}
 		<ChatWidget />
 	{/if}
+
+	<ConfirmDialog />
+	<Toast />
 </div>

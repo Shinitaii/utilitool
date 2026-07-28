@@ -28,6 +28,7 @@
 	import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
 	import SelectionToolbar from '$lib/components/shared/SelectionToolbar.svelte';
 	import { createCrudStore } from '$lib/stores/crud.svelte';
+	import { confirmAsync } from '$lib/stores/confirm.svelte';
 
 	const crud = createCrudStore<Property>();
 
@@ -152,12 +153,12 @@
 		if (!selectedProperty) return;
 		const meterGroupName = getMeterGroupName(meterGroupId);
 		const nextVersion = currentVersion + 1;
-		if (
-			!confirm(
-				`Record a meter reset for "${meterGroupName}" on "${selectedProperty.room_name}"?\n\nThis will start version ${nextVersion}. The server will use the latest recorded reading as the previous meter total.\n\nContinue?`
-			)
-		)
-			return;
+		const confirmed = await confirmAsync(
+			'Record meter reset',
+			`Record a meter reset for "${meterGroupName}" on "${selectedProperty.room_name}"? This will start version ${nextVersion}. The server will use the latest recorded reading as the previous meter total.`,
+			{ danger: true }
+		);
+		if (!confirmed) return;
 		resettingMeterGroupId = meterGroupId;
 		try {
 			selectedProperty = await recordPropertyMeterGroupReset(selectedProperty.id, meterGroupId);
@@ -295,14 +296,57 @@
 		await loadPropertyDetails();
 	}
 
-	async function handleTabChange(tab: typeof activeTab) {
-		activeTab = tab;
-		readingsUtilityFilter = 'all';
-		billingsUtilityFilter = 'all';
+	async function handleTabChange(
+		section: typeof activeTab,
+		filter?: 'all' | 'electricity' | 'water'
+	) {
+		activeTab = section;
+		if (section === 'readings' && filter) readingsUtilityFilter = filter;
+		if (section === 'billings' && filter) billingsUtilityFilter = filter;
 		tenants = [];
 		readings = { data: [], nextCursor: null, hasMore: false };
 		billings = { data: [], nextCursor: null, hasMore: false };
 		await loadPropertyDetails();
+	}
+
+	// Flattened tab bar — utility-type sub-tabs are sibling tabs here instead of a
+	// separately nested tab row, removing one level of the page's tab-within-tab nesting.
+	const flatTabs = [
+		{ key: 'tenants', label: 'Tenants', section: 'tenants' as const },
+		{ key: 'readings-all', label: 'Readings · All', section: 'readings' as const, filter: 'all' as const },
+		{
+			key: 'readings-electricity',
+			label: 'Readings · Electricity',
+			section: 'readings' as const,
+			filter: 'electricity' as const
+		},
+		{
+			key: 'readings-water',
+			label: 'Readings · Water',
+			section: 'readings' as const,
+			filter: 'water' as const
+		},
+		{ key: 'billings-all', label: 'Billings · All', section: 'billings' as const, filter: 'all' as const },
+		{
+			key: 'billings-electricity',
+			label: 'Billings · Electricity',
+			section: 'billings' as const,
+			filter: 'electricity' as const
+		},
+		{
+			key: 'billings-water',
+			label: 'Billings · Water',
+			section: 'billings' as const,
+			filter: 'water' as const
+		},
+		{ key: 'history', label: 'History', section: 'history' as const }
+	];
+
+	function isFlatTabActive(tab: (typeof flatTabs)[number]): boolean {
+		if (activeTab !== tab.section) return false;
+		if (tab.section === 'readings') return readingsUtilityFilter === tab.filter;
+		if (tab.section === 'billings') return billingsUtilityFilter === tab.filter;
+		return true;
 	}
 
 	async function handleCreateProperty() {
@@ -435,7 +479,7 @@
 	}
 </script>
 
-<div class="flex h-screen flex-col">
+<div class="flex h-screen flex-col overflow-hidden">
 	<div class="space-y-4 border-b border-gray-200 bg-white p-6">
 		<div class="flex items-center justify-between">
 			<div>
@@ -630,6 +674,7 @@
 							<div class="flex items-start gap-2">
 								<input
 									type="checkbox"
+									aria-label={`Select ${property.room_name}`}
 									checked={crud.selectedIds.has(property.id)}
 									onchange={() => crud.toggleSelection(property.id)}
 									class="mt-2 rounded"
@@ -664,7 +709,11 @@
 									}}
 									onSoftDelete={() =>
 										crud.handleSoftDelete(property.id, softDeleteProperty, loadProperties, () =>
-											confirm('Archive this property? It can be restored from the archive.')
+											confirmAsync(
+												'Archive property',
+												'Archive this property? It can be restored from the archive.',
+												{ danger: true }
+											)
 										)}
 									isLoading={crud.deletingId === property.id}
 								/>
@@ -726,20 +775,19 @@
 
 					<!-- Tabs -->
 					<div class="border-b border-gray-200">
-						<div class="flex" role="tablist">
-							{#each ['tenants', 'readings', 'billings', 'history'] as tab (tab)}
+						<div class="flex flex-wrap" role="tablist">
+							{#each flatTabs as tab (tab.key)}
 								<button
 									role="tab"
-									aria-selected={activeTab === tab}
-									aria-controls={`tab-panel-${tab}`}
-									id={`tab-${tab}`}
-									onclick={() =>
-										handleTabChange(tab as 'tenants' | 'readings' | 'billings' | 'history')}
-									class="px-6 py-3 text-sm font-medium transition {activeTab === tab
+									aria-selected={isFlatTabActive(tab)}
+									aria-controls={`tab-panel-${tab.section}`}
+									id={`tab-${tab.key}`}
+									onclick={() => handleTabChange(tab.section, 'filter' in tab ? tab.filter : undefined)}
+									class="px-4 py-3 text-sm font-medium transition {isFlatTabActive(tab)
 										? 'border-b-2 border-blue-600 text-blue-600'
 										: 'text-gray-600 hover:text-gray-900'}"
 								>
-									{tab.charAt(0).toUpperCase() + tab.slice(1)}
+									{tab.label}
 								</button>
 							{/each}
 						</div>
@@ -795,25 +843,6 @@
 							</div>
 						{:else if activeTab === 'readings'}
 							<div role="tabpanel" id="tab-panel-readings" aria-labelledby="tab-readings">
-								<!-- Utility type filter tabs -->
-								<div class="border-b border-gray-200">
-									<div class="flex gap-1 px-6 pt-4">
-										{#each [['all', 'All'], ['electricity', 'Electricity'], ['water', 'Water']] as [value, label] (value)}
-											<button
-												onclick={() => {
-													readingsUtilityFilter = value as typeof readingsUtilityFilter;
-												}}
-												class="rounded-t px-4 py-2 text-sm font-medium transition-colors"
-												style={readingsUtilityFilter === value
-													? 'background-color: #f3f4f6; color: #1f2937; border-bottom: 2px solid #3b82f6;'
-													: 'color: #6b7280; border-bottom: 2px solid transparent;'}
-											>
-												{label}
-											</button>
-										{/each}
-									</div>
-								</div>
-
 								{#if filteredReadings.length === 0}
 									<div class="p-6">
 										<EmptyState
@@ -862,25 +891,6 @@
 							</div>
 						{:else if activeTab === 'billings'}
 							<div role="tabpanel" id="tab-panel-billings" aria-labelledby="tab-billings">
-								<!-- Utility type filter tabs -->
-								<div class="border-b border-gray-200">
-									<div class="flex gap-1 px-6 pt-4">
-										{#each [['all', 'All'], ['electricity', 'Electricity'], ['water', 'Water']] as [value, label] (value)}
-											<button
-												onclick={() => {
-													billingsUtilityFilter = value as typeof billingsUtilityFilter;
-												}}
-												class="rounded-t px-4 py-2 text-sm font-medium transition-colors"
-												style={billingsUtilityFilter === value
-													? 'background-color: #f3f4f6; color: #1f2937; border-bottom: 2px solid #3b82f6;'
-													: 'color: #6b7280; border-bottom: 2px solid transparent;'}
-											>
-												{label}
-											</button>
-										{/each}
-									</div>
-								</div>
-
 								{#if filteredBillings.length === 0}
 									<div class="p-6">
 										<EmptyState
@@ -1197,8 +1207,3 @@
 	</div>
 </EditModal>
 
-<style>
-	:global(html, body) {
-		overflow: hidden;
-	}
-</style>

@@ -6,6 +6,7 @@
 	import { auth } from '$lib/firebase';
 	import { getInitials } from '$lib/utils/format';
 	import { authStore, type AuthState } from '$lib/stores/auth.svelte';
+	import { navCounts } from '$lib/stores/nav-counts.svelte';
 
 	type NavHref =
 		| '/dashboard'
@@ -20,19 +21,19 @@
 	interface NavItem {
 		label: string;
 		href: NavHref;
-		badge?: number;
+		badge?: number | null;
 	}
 
-	const navItems: NavItem[] = [
+	const navItems: NavItem[] = $derived([
 		{ label: 'Home', href: '/dashboard' },
-		{ label: 'Meter Groups', href: '/meter-groups', badge: 0 },
-		{ label: 'Properties', href: '/properties', badge: 4 },
-		{ label: 'Tenants', href: '/tenants', badge: 12 },
-		{ label: 'Readings', href: '/readings', badge: 0 },
-		{ label: 'Billings', href: '/billings', badge: 2 },
+		{ label: 'Meter Groups', href: '/meter-groups', badge: navCounts.meterGroups },
+		{ label: 'Properties', href: '/properties', badge: navCounts.properties },
+		{ label: 'Tenants', href: '/tenants', badge: navCounts.tenants },
+		{ label: 'Readings', href: '/readings', badge: navCounts.readings },
+		{ label: 'Billings', href: '/billings', badge: navCounts.billings },
 		{ label: 'Reports', href: '/reports' },
 		{ label: 'Settings', href: '/settings' }
-	];
+	]);
 
 	let isLoggingOut = $state(false);
 	let authState = $state<AuthState>({
@@ -80,6 +81,7 @@
 			{#each navItems as item (item.href)}
 				<a
 					href={resolve(item.href)}
+					aria-current={isActive(item.href) ? 'page' : undefined}
 					class="flex items-center justify-between rounded px-3 py-2 text-sm font-medium transition-colors"
 					class:active={isActive(item.href)}
 					class:bg-gray-900={isActive(item.href)}

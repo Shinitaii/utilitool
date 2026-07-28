@@ -34,6 +34,8 @@
 	import EditModal from '$lib/components/shared/EditModal.svelte';
 	import StatusPill from '$lib/components/shared/StatusPill.svelte';
 	import { createCrudStore } from '$lib/stores/crud.svelte';
+	import { confirmAsync } from '$lib/stores/confirm.svelte';
+	import { pushToast } from '$lib/stores/toast.svelte';
 	import { CheckCircle2, Pencil, Archive, Printer, Plus, ChevronRight } from 'lucide-svelte';
 
 	const crud = createCrudStore<Billing>();
@@ -1584,12 +1586,13 @@
 						<Printer size={20} />
 					</button>
 					<button
-						onclick={() => {
-							if (
-								confirm(
-									`Archive ${selectedCyclesForPrint.length} billing cycle(s)? They can be restored from the archive.`
-								)
-							) {
+						onclick={async () => {
+							const confirmed = await confirmAsync(
+								'Archive billing cycles',
+								`Archive ${selectedCyclesForPrint.length} billing cycle(s)? They can be restored from the archive.`,
+								{ danger: true }
+							);
+							if (confirmed) {
 								Promise.all(
 									selectedCyclesForPrint.map((cycleId) => softDeleteBillingCycle(cycleId))
 								)
@@ -1863,13 +1866,14 @@
 									<Plus size={18} />
 								</button>
 								<button
-									onclick={(e) => {
+									onclick={async (e) => {
 										e.stopPropagation();
-										if (
-											confirm(
-												'Archive this billing cycle and all its billings? They can be restored from the archive.'
-											)
-										) {
+										const confirmed = await confirmAsync(
+											'Archive billing cycle',
+											'Archive this billing cycle and all its billings? They can be restored from the archive.',
+											{ danger: true }
+										);
+										if (confirmed) {
 											softDeleteBillingCycle(cycle.id)
 												.then(() => loadData())
 												.catch((err) => {
@@ -2026,14 +2030,12 @@
 																</button>
 																<button
 																	onclick={() =>
-																		crud.handleSoftDelete(
-																			billing.id,
-																			softDeleteBilling,
-																			loadData,
-																			() =>
-																				confirm(
-																					'Archive this billing? It can be restored from the archive.'
-																				)
+																		crud.handleSoftDelete(billing.id, softDeleteBilling, loadData, () =>
+																			confirmAsync(
+																				'Archive billing',
+																				'Archive this billing? It can be restored from the archive.',
+																				{ danger: true }
+																			)
 																		)}
 																	disabled={isLoading || crud.deletingId === billing.id}
 																	class="rounded p-2 text-red-700 hover:bg-red-100 disabled:opacity-50"

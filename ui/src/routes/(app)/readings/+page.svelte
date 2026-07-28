@@ -28,6 +28,8 @@
 	import ImagePreview from '$lib/components/shared/ImagePreview.svelte';
 	import PhotoDropzone from '$lib/components/shared/PhotoDropzone.svelte';
 	import { createCrudStore } from '$lib/stores/crud.svelte';
+	import { confirmAsync } from '$lib/stores/confirm.svelte';
+	import { pushToast } from '$lib/stores/toast.svelte';
 	import { Archive, Plus, X } from 'lucide-svelte';
 
 	const crud = createCrudStore<Reading>();
@@ -91,6 +93,7 @@
 	let batchDate = $state(new Date().toISOString().split('T')[0]);
 	let batchRows = $state<BatchReadingRow[]>([]);
 	let batchLoading = $state(false);
+	let batchEmptyReason = $state('No properties found for this meter group');
 
 	// "Month day, Year" preview of the batch date, parsed as a local date to avoid
 	// the UTC-midnight/local-timezone off-by-one shift new Date(batchDate) would cause.
@@ -194,6 +197,30 @@
 		resetManualReadingForm();
 	}
 
+	function hasUnsavedBatchData() {
+		return batchRows.some((row) => row.reading_amount !== null || row.image_url);
+	}
+
+	function hasUnsavedManualData() {
+		return manualReadingForm.reading_amount !== null || manualReadingForm.image_url !== '';
+	}
+
+	async function switchReadingFormTab(tab: 'batch' | 'manual') {
+		if (tab === readingFormTab) return;
+		const hasUnsaved =
+			readingFormTab === 'batch' ? hasUnsavedBatchData() : hasUnsavedManualData();
+		if (hasUnsaved) {
+			const confirmed = await confirmAsync(
+				'Discard entered readings?',
+				'Switching tabs will discard the readings entered here — continue?',
+				{ danger: true, confirmLabel: 'Discard' }
+			);
+			if (!confirmed) return;
+		}
+		readingFormTab = tab;
+		resetReadingForm();
+	}
+
 	async function loadBatchProperties() {
 		if (!selectedMeterGroup) {
 			error = 'Please select a meter group first';
@@ -208,7 +235,10 @@
 			const utilityType = selectedMeter?.utility_type || 'electricity';
 
 			if (result.data.length === 0) {
-				error = 'No properties found for this meter group';
+				// No error banner here — the "No properties" EmptyState below already
+				// communicates this; a red banner on top of it would be redundant and
+				// wrongly implies a failure rather than an empty selection.
+				batchEmptyReason = 'No properties found for this meter group';
 				batchRows = [];
 			} else {
 				const filteredProperties = result.data.filter((property) => {
@@ -222,7 +252,7 @@
 				});
 
 				if (filteredProperties.length === 0) {
-					error = 'No submeter properties found for this meter group (all are main meters)';
+					batchEmptyReason = 'No submeter properties found for this meter group (all are main meters)';
 					batchRows = [];
 				} else {
 					batchRows = filteredProperties.map((property) => ({
@@ -303,10 +333,11 @@
 			readingFormOpen = false;
 			resetManualReadingForm();
 			await loadData();
-			alert(
+			pushToast(
 				isSeed
 					? 'Seed reading created successfully — this establishes the baseline for this meter version.'
-					: 'Manual reading created successfully. If this property has a previous-month reading, the billing was auto-created.'
+					: 'Manual reading created successfully. If this property has a previous-month reading, the billing was auto-created.',
+				'success'
 			);
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to create manual reading';
@@ -402,14 +433,16 @@
 			await handleMeterGroupChange();
 
 			if (result.failed.length > 0) {
-				const failedSummary = result.failed.map((f) => `Row ${f.index + 1}: ${f.error}`).join('\n');
-				alert(
+				const failedSummary = result.failed.map((f) => `Row ${f.index + 1}: ${f.error}`).join('; ');
+				pushToast(
 					`${result.created.length} of ${result.created.length + result.failed.length} readings created. ` +
-						`${result.failed.length} skipped:\n${failedSummary}`
+						`${result.failed.length} skipped — ${failedSummary}`,
+					'warning'
 				);
 			} else {
-				alert(
-					'Readings created successfully! If a previous-month reading exists for this meter group, billings have been auto-created for each property.'
+				pushToast(
+					'Readings created successfully! If a previous-month reading exists for this meter group, billings have been auto-created for each property.',
+					'success'
 				);
 			}
 		} catch (err) {
@@ -509,10 +542,7 @@
 			<!-- Tabs -->
 			<div class="flex border-b border-gray-200">
 				<button
-					onclick={() => {
-						readingFormTab = 'batch';
-						resetReadingForm();
-					}}
+					onclick={() => switchReadingFormTab('batch')}
 					class="border-b-2 px-4 py-2 text-sm font-medium"
 					class:border-blue-500={readingFormTab === 'batch'}
 					class:border-transparent={readingFormTab !== 'batch'}
@@ -522,10 +552,7 @@
 					Batch / OCR
 				</button>
 				<button
-					onclick={() => {
-						readingFormTab = 'manual';
-						resetReadingForm();
-					}}
+					onclick={() => switchReadingFormTab('manual')}
 					class="border-b-2 px-4 py-2 text-sm font-medium"
 					class:border-blue-500={readingFormTab === 'manual'}
 					class:border-transparent={readingFormTab !== 'manual'}
@@ -577,7 +604,7 @@
 
 				{#if batchRows.length === 0 && selectedMeterGroup}
 					<div class="rounded-lg border border-gray-200 p-6">
-						<EmptyState title="No properties" message="No properties found for this meter group" />
+						<EmptyState title="No properties" message={batchEmptyReason} />
 					</div>
 				{:else if batchRows.length > 0}
 					<div class="overflow-x-auto rounded-lg border border-gray-200">
@@ -634,6 +661,7 @@
 											<div class="w-48">
 												<PhotoDropzone
 													imageUrl={row.image_url}
+													alt={`Meter reading for ${row.property.room_name}`}
 													isBusy={row.is_uploading}
 													onFile={(file) => handleBatchImageUpload(i, file)}
 													onPreview={(url) => (previewImageUrl = url)}
@@ -722,6 +750,7 @@
 						<div class="mt-1 w-48">
 							<PhotoDropzone
 								imageUrl={manualReadingForm.image_url || null}
+								alt={`Meter reading for ${properties.find((p) => p.id === manualReadingForm.property_id)?.room_name ?? 'property'}`}
 								isBusy={manualImageUploading}
 								onFile={handleManualImageUpload}
 								onPreview={(url) => (previewImageUrl = url)}
@@ -859,6 +888,7 @@
 						<th scope="col" class="w-8 px-4 py-3">
 							<input
 								type="checkbox"
+								aria-label="Select all readings"
 								checked={crud.selectedIds.size === readings.data.length && readings.data.length > 0}
 								onchange={() =>
 									crud.toggleSelectAll(
@@ -893,6 +923,7 @@
 							<td class="w-8 px-4 py-4">
 								<input
 									type="checkbox"
+									aria-label={`Select reading for ${itemProperty?.room_name ?? 'property'}`}
 									checked={crud.selectedIds.has(item.id)}
 									onchange={() => crud.toggleSelection(item.id)}
 									class="rounded"
@@ -930,7 +961,11 @@
 									}}
 									onSoftDelete={() =>
 										crud.handleSoftDelete(item.id, softDeleteReading, handleMeterGroupChange, () =>
-											confirm('Archive this reading? It can be restored from the archive.')
+											confirmAsync(
+												'Archive reading',
+												'Archive this reading? It can be restored from the archive.',
+												{ danger: true }
+											)
 										)}
 									isLoading={crud.deletingId === item.id}
 								/>

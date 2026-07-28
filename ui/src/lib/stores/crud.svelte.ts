@@ -1,4 +1,5 @@
 import { SvelteSet } from 'svelte/reactivity';
+import { confirmAsync } from './confirm.svelte';
 
 export interface CrudStore<T extends { id: string }> {
 	selectedIds: Set<string>;
@@ -12,14 +13,14 @@ export interface CrudStore<T extends { id: string }> {
 		id: string,
 		deleteFn: (id: string) => Promise<unknown>,
 		reload: () => Promise<void>,
-		confirmFn?: (id: string) => boolean
+		confirmFn?: (id: string) => boolean | Promise<boolean>
 	): Promise<void>;
 
 	isBatchDeleting: boolean;
 	handleBatchDelete(
 		deleteFn: (id: string) => Promise<unknown>,
 		reload: () => Promise<void>,
-		confirmFn?: (count: number) => boolean
+		confirmFn?: (count: number) => boolean | Promise<boolean>
 	): Promise<void>;
 
 	editModalOpen: boolean;
@@ -92,9 +93,9 @@ export function createCrudStore<T extends { id: string }>(): CrudStore<T> {
 			id,
 			deleteFn,
 			reload,
-			confirmFn = () => window.confirm('Archive this item?')
+			confirmFn = () => confirmAsync('Archive item', 'Archive this item?', { danger: true })
 		) {
-			if (!confirmFn(id)) return;
+			if (!(await confirmFn(id))) return;
 			deletingId = id;
 			isDeleting = true;
 			error = '';
@@ -112,10 +113,11 @@ export function createCrudStore<T extends { id: string }>(): CrudStore<T> {
 		async handleBatchDelete(
 			deleteFn,
 			reload,
-			confirmFn = (n) => window.confirm(`Archive ${n} item(s)?`)
+			confirmFn = (n) =>
+				confirmAsync('Archive items', `Archive ${n} item(s)?`, { danger: true })
 		) {
 			if (selectedIds.size === 0) return;
-			if (!confirmFn(selectedIds.size)) return;
+			if (!(await confirmFn(selectedIds.size))) return;
 			isBatchDeleting = true;
 			error = '';
 			try {

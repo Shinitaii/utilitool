@@ -14,6 +14,7 @@
 	import ActionButtons from '$lib/components/shared/ActionButtons.svelte';
 	import SelectionToolbar from '$lib/components/shared/SelectionToolbar.svelte';
 	import { createCrudStore } from '$lib/stores/crud.svelte';
+	import { confirmAsync } from '$lib/stores/confirm.svelte';
 	import { Archive, Plus } from 'lucide-svelte';
 
 	const crud = createCrudStore<Tenant>();
@@ -239,6 +240,7 @@
 						<th scope="col" class="w-8 px-4 py-3">
 							<input
 								type="checkbox"
+								aria-label="Select all tenants"
 								checked={crud.selectedIds.size === filteredData.length && filteredData.length > 0}
 								onchange={() =>
 									crud.toggleSelectAll(
@@ -261,6 +263,7 @@
 							<td class="w-8 px-4 py-4">
 								<input
 									type="checkbox"
+									aria-label={`Select ${item.tenant_name}`}
 									checked={crud.selectedIds.has(item.id)}
 									onchange={() => crud.toggleSelection(item.id)}
 									class="rounded"
@@ -301,7 +304,11 @@
 									}}
 									onSoftDelete={() =>
 										crud.handleSoftDelete(item.id, softDeleteTenant, loadData, () =>
-											confirm('Archive this tenant? It can be restored from the archive.')
+											confirmAsync(
+												'Archive tenant',
+												'Archive this tenant? It can be restored from the archive.',
+												{ danger: true }
+											)
 										)}
 									isLoading={crud.deletingId === item.id}
 								/>
